@@ -62,18 +62,22 @@ This roadmap addresses the identified gaps and flaws in the specification while 
 
 ### Core Deliverables (From Spec Phases 0-3)
 
-- [ ] Phase 0: Foundation (with fixes above)
+- [x] Phase 0: Foundation (with fixes above)
   - Repository setup, dependencies
   - DuckDB schema with constraints and indexes
   - Basic data ingestion (Yahoo Finance)
-- [ ] Phase 1: Core Research Loop
-  - Platform API with validation
-  - VectorBT backtest wrapper
-  - MLflow integration
-  - Simple momentum strategy
-- [ ] Phase 2: Hypothesis & Lineage
-  - Hypothesis registry
-  - Lineage tracking
+- [x] Phase 1: Core Research Loop
+  - Platform API with validation (`hrp/api/platform.py`)
+  - VectorBT backtest wrapper (`hrp/research/backtest.py`)
+  - MLflow integration (`hrp/research/mlflow_utils.py`)
+  - Standard metrics calculation (`hrp/research/metrics.py`)
+  - Simple momentum strategy (`generate_momentum_signals`)
+  - Benchmark comparison (`hrp/research/benchmark.py`)
+- [x] Phase 2: Hypothesis & Lineage
+  - Hypothesis registry (`hrp/research/hypothesis.py`)
+  - Lineage/audit trail system (`hrp/research/lineage.py`)
+  - Hypothesis lifecycle (draft → testing → validated/rejected → deployed)
+  - Experiment linking
   - Basic validation checks
 - [ ] Phase 3: Dashboard MVP
   - Streamlit dashboard
@@ -436,12 +440,19 @@ This roadmap addresses the identified gaps and flaws in the specification while 
 
 | Version | Focus | Critical Fixes | Timeline | Status |
 |---------|-------|----------------|----------|--------|
-| **v1** | MVP Research Platform | Database integrity, concurrency, financial accuracy | 2-3 months | 🔴 Not Started |
+| **v1** | MVP Research Platform | Database integrity, concurrency, financial accuracy | 2-3 months | 🟡 In Progress |
 | **v2** | Production Data Pipeline | Ingestion orchestration, backups, monitoring | 1-2 months | 🔴 Not Started |
 | **v3** | Validation & ML Framework | Statistical rigor, ML pipeline, risk management | 2-3 months | 🔴 Not Started |
 | **v4** | Agent Integration | MCP servers, scheduled agents, safety | 1-2 months | 🔴 Not Started |
 | **v5** | Production Hardening | Security, monitoring, operational excellence | 1-2 months | 🔴 Not Started |
 | **Later** | Advanced Features | Optimizations, advanced strategies, live trading | TBD | 🔴 Not Started |
+
+### v1 Progress
+
+Core deliverables (Phases 0-2) complete. Remaining for v1:
+- Critical Fixes: Database integrity (FK constraints, indexes), financial accuracy (holiday calendar, corporate actions)
+- Testing: Unit tests for Platform API (70%+ coverage)
+- Dashboard MVP (Phase 3)
 
 ---
 

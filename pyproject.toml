@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Fernando", email = "fer@example.com"}
+    {name = "Fernando", email = "fmag79@gmail.com"}
 ]
 keywords = ["quant", "trading", "research", "backtesting", "finance"]
 

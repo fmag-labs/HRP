@@ -99,7 +99,17 @@ mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db
 
 ## Development Status
 
-🔴 **Phase 0: Foundation** - In Progress
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 0: Foundation | ✅ Complete | Repository, schema, data ingestion |
+| Phase 1: Core Research | ✅ Complete | Backtesting, MLflow, metrics |
+| Phase 2: Hypothesis | ✅ Complete | Hypothesis registry, lineage |
+| Phase 3: Dashboard | 🔴 Not Started | Streamlit UI |
+
+### Current Data
+- **10 symbols loaded**: AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA, V, UNH, JNJ
+- **17,720 price records** (2019-2025)
+- **Database**: ~/hrp-data/hrp.duckdb
 
 ## License
 
