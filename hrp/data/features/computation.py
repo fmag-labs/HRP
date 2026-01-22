@@ -251,6 +251,148 @@ class FeatureComputer:
             logger.error(f"Error computing {feature_name}: {e}")
             raise
 
+    def compute_and_store_features(
+        self,
+        symbols: list[str],
+        dates: list[date] | pd.DatetimeIndex,
+        feature_names: list[str],
+        version: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Compute features and store them in the database.
+
+        Args:
+            symbols: List of stock symbols
+            dates: List of dates or DatetimeIndex
+            feature_names: List of feature names to compute
+            version: Optional version string. If None, uses latest active version.
+
+        Returns:
+            Dictionary with storage stats
+
+        Raises:
+            ValueError: If feature definition not found or invalid data
+        """
+        # Compute features
+        features_df = self.compute_features(symbols, dates, feature_names, version)
+
+        if features_df.empty:
+            logger.warning("No features computed, nothing to store")
+            return {
+                "features_computed": 0,
+                "rows_stored": 0,
+            }
+
+        # Get versions used for each feature
+        feature_versions = {}
+        for feature_name in feature_names:
+            feature_def = self.registry.get(feature_name, version)
+            feature_versions[feature_name] = feature_def["version"]
+
+        # Store to database
+        rows_stored = self._upsert_features(features_df, feature_versions)
+
+        stats = {
+            "features_computed": len(feature_names),
+            "rows_stored": rows_stored,
+            "versions": feature_versions,
+        }
+
+        logger.info(
+            f"Stored {rows_stored} feature rows for {len(feature_names)} features "
+            f"(versions: {feature_versions})"
+        )
+
+        return stats
+
+    def _upsert_features(self, df: pd.DataFrame, feature_versions: dict[str, str]) -> int:
+        """
+        Upsert feature data into the database.
+
+        Uses INSERT OR REPLACE to handle duplicates.
+
+        Args:
+            df: DataFrame with MultiIndex (date, symbol) and feature columns
+            feature_versions: Mapping of feature_name to version string
+
+        Returns:
+            Number of rows inserted
+        """
+        if df.empty:
+            return 0
+
+        # Prepare data for insertion
+        records = []
+        df_reset = df.reset_index()
+
+        for _, row in df_reset.iterrows():
+            symbol = row["symbol"]
+            date_val = row["date"]
+
+            # Handle date conversion
+            if isinstance(date_val, pd.Timestamp):
+                date_val = date_val.date()
+
+            # Insert each feature as a separate row
+            for feature_name in df.columns:
+                if feature_name in ["symbol", "date"]:
+                    continue
+
+                value = row[feature_name]
+
+                # Skip NaN values
+                if pd.isna(value):
+                    continue
+
+                records.append({
+                    "symbol": symbol,
+                    "date": date_val,
+                    "feature_name": feature_name,
+                    "value": float(value),
+                    "version": feature_versions.get(feature_name, "v1"),
+                })
+
+        if not records:
+            logger.warning("No valid feature values to store (all NaN)")
+            return 0
+
+        with self.db.connection() as conn:
+            # Create temporary table for bulk insert
+            conn.execute(
+                "CREATE TEMP TABLE IF NOT EXISTS temp_features AS SELECT * FROM features LIMIT 0"
+            )
+            conn.execute("DELETE FROM temp_features")
+
+            # Insert into temp table
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT INTO temp_features (symbol, date, feature_name, value, version)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record["symbol"],
+                        record["date"],
+                        record["feature_name"],
+                        record["value"],
+                        record["version"],
+                    ),
+                )
+
+            # Upsert from temp to main table
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO features (symbol, date, feature_name, value, version, computed_at)
+                SELECT symbol, date, feature_name, value, version, CURRENT_TIMESTAMP
+                FROM temp_features
+                """
+            )
+
+            # Cleanup
+            conn.execute("DROP TABLE temp_features")
+
+        return len(records)
+
     def get_stored_features(
         self,
         symbols: list[str],
