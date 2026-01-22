@@ -14,7 +14,10 @@ from hrp.data.db import get_db
 
 
 # SQL statements for table creation
+# NOTE: Tables are ordered to satisfy foreign key dependencies.
+# Tables without foreign keys come first, then tables with foreign keys.
 TABLES = {
+    # Tables without foreign key dependencies
     "universe": """
         CREATE TABLE IF NOT EXISTS universe (
             symbol VARCHAR NOT NULL,
@@ -44,18 +47,6 @@ TABLES = {
             CHECK (close > 0),
             CHECK (volume IS NULL OR volume >= 0),
             CHECK (high IS NULL OR low IS NULL OR high >= low)
-        )
-    """,
-    "fundamentals": """
-        CREATE TABLE IF NOT EXISTS fundamentals (
-            symbol VARCHAR NOT NULL,
-            report_date DATE NOT NULL,
-            period_end DATE NOT NULL,
-            metric VARCHAR NOT NULL,
-            value DECIMAL(18,4),
-            source VARCHAR REFERENCES data_sources(source_id),
-            ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (symbol, report_date, metric)
         )
     """,
     "features": """
@@ -91,21 +82,6 @@ TABLES = {
             CHECK (status IN ('active', 'inactive', 'deprecated'))
         )
     """,
-    "ingestion_log": """
-        CREATE TABLE IF NOT EXISTS ingestion_log (
-            log_id INTEGER PRIMARY KEY,
-            source_id VARCHAR NOT NULL REFERENCES data_sources(source_id),
-            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            completed_at TIMESTAMP,
-            records_fetched INTEGER NOT NULL DEFAULT 0,
-            records_inserted INTEGER NOT NULL DEFAULT 0,
-            status VARCHAR NOT NULL DEFAULT 'running',
-            error_message VARCHAR,
-            CHECK (records_fetched >= 0),
-            CHECK (records_inserted >= 0),
-            CHECK (status IN ('running', 'completed', 'failed'))
-        )
-    """,
     "hypotheses": """
         CREATE TABLE IF NOT EXISTS hypotheses (
             hypothesis_id VARCHAR PRIMARY KEY,
@@ -121,6 +97,34 @@ TABLES = {
             confidence_score DECIMAL(3,2),
             CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1)),
             CHECK (status IN ('draft', 'active', 'validated', 'falsified', 'archived'))
+        )
+    """,
+    # Tables with foreign key dependencies (must be after referenced tables)
+    "fundamentals": """
+        CREATE TABLE IF NOT EXISTS fundamentals (
+            symbol VARCHAR NOT NULL,
+            report_date DATE NOT NULL,
+            period_end DATE NOT NULL,
+            metric VARCHAR NOT NULL,
+            value DECIMAL(18,4),
+            source VARCHAR REFERENCES data_sources(source_id),
+            ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (symbol, report_date, metric)
+        )
+    """,
+    "ingestion_log": """
+        CREATE TABLE IF NOT EXISTS ingestion_log (
+            log_id INTEGER PRIMARY KEY,
+            source_id VARCHAR NOT NULL REFERENCES data_sources(source_id),
+            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            records_fetched INTEGER NOT NULL DEFAULT 0,
+            records_inserted INTEGER NOT NULL DEFAULT 0,
+            status VARCHAR NOT NULL DEFAULT 'running',
+            error_message VARCHAR,
+            CHECK (records_fetched >= 0),
+            CHECK (records_inserted >= 0),
+            CHECK (status IN ('running', 'completed', 'failed'))
         )
     """,
     "hypothesis_experiments": """
