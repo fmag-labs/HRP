@@ -15,7 +15,7 @@ This roadmap addresses the identified gaps and flaws in the specification while 
 HRP has progressed significantly beyond the MVP stage, with **~15,800 lines of production code** across 80+ modules:
 
 **Foundation & Core Research (v1) — 95% Complete**
-- Full DuckDB schema with 14 tables, sequences, comprehensive constraints and indexes
+- Full DuckDB schema with 12 tables, 3 sequences, 17 indexes, and comprehensive constraints
 - Thread-safe connection pooling with singleton DatabaseManager
 - Platform API serving as the single entry point for all operations
 - Complete hypothesis registry with lifecycle management and lineage tracking
@@ -738,7 +738,7 @@ The QSAT Framework defines a 6-stage workflow. Below are capabilities HRP has im
 **Total Code:** ~15,800 lines of Python across 80+ modules
 
 **Completed Features:**
-- ✅ Full database schema with 14 tables, constraints, and indexes
+- ✅ Full database schema with 12 tables, 3 sequences, 17 indexes, and comprehensive constraints
 - ✅ Thread-safe connection pooling
 - ✅ Platform API with comprehensive validation
 - ✅ Complete research loop (backtest, MLflow, metrics, benchmark)
