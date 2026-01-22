@@ -137,6 +137,26 @@ class ConnectionPool:
             else:
                 logger.warning("Attempted to release connection not in use")
 
+    @contextmanager
+    def connection(self) -> Generator[duckdb.DuckDBPyConnection, None, None]:
+        """
+        Context manager for pooled connection.
+
+        Acquires a connection from the pool, yields it, and releases it back.
+
+        Yields:
+            A DuckDB connection from the pool
+
+        Example:
+            with pool.connection() as conn:
+                conn.execute("SELECT * FROM table")
+        """
+        conn = self.acquire()
+        try:
+            yield conn
+        finally:
+            self.release(conn)
+
     def close_all(self) -> None:
         """Close all connections in the pool."""
         with self._lock:
