@@ -19,11 +19,11 @@ TABLES = {
         CREATE TABLE IF NOT EXISTS universe (
             symbol VARCHAR NOT NULL,
             date DATE NOT NULL,
-            in_universe BOOLEAN DEFAULT TRUE,
+            in_universe BOOLEAN NOT NULL DEFAULT TRUE,
             exclusion_reason VARCHAR,
             sector VARCHAR,
             market_cap DECIMAL(18,2),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, date)
         )
     """,
@@ -37,8 +37,8 @@ TABLES = {
             close DECIMAL(12,4) NOT NULL,
             adj_close DECIMAL(12,4),
             volume BIGINT,
-            source VARCHAR DEFAULT 'unknown',
-            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            source VARCHAR NOT NULL DEFAULT 'unknown',
+            ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, date)
         )
     """,
@@ -50,7 +50,7 @@ TABLES = {
             metric VARCHAR NOT NULL,
             value DECIMAL(18,4),
             source VARCHAR,
-            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, report_date, metric)
         )
     """,
@@ -60,8 +60,8 @@ TABLES = {
             date DATE NOT NULL,
             feature_name VARCHAR NOT NULL,
             value DECIMAL(18,6),
-            version VARCHAR DEFAULT 'v1',
-            computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            version VARCHAR NOT NULL DEFAULT 'v1',
+            computed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, date, feature_name, version)
         )
     """,
@@ -72,28 +72,28 @@ TABLES = {
             action_type VARCHAR NOT NULL,
             factor DECIMAL(12,6),
             source VARCHAR,
-            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, date, action_type)
         )
     """,
     "data_sources": """
         CREATE TABLE IF NOT EXISTS data_sources (
             source_id VARCHAR PRIMARY KEY,
-            source_type VARCHAR,
+            source_type VARCHAR NOT NULL,
             api_name VARCHAR,
             last_fetch TIMESTAMP,
-            status VARCHAR DEFAULT 'active'
+            status VARCHAR NOT NULL DEFAULT 'active'
         )
     """,
     "ingestion_log": """
         CREATE TABLE IF NOT EXISTS ingestion_log (
             log_id INTEGER PRIMARY KEY,
-            source_id VARCHAR,
-            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            source_id VARCHAR NOT NULL,
+            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             completed_at TIMESTAMP,
-            records_fetched INTEGER DEFAULT 0,
-            records_inserted INTEGER DEFAULT 0,
-            status VARCHAR DEFAULT 'running',
+            records_fetched INTEGER NOT NULL DEFAULT 0,
+            records_inserted INTEGER NOT NULL DEFAULT 0,
+            status VARCHAR NOT NULL DEFAULT 'running',
             error_message VARCHAR
         )
     """,
@@ -104,9 +104,9 @@ TABLES = {
             thesis TEXT NOT NULL,
             testable_prediction TEXT NOT NULL,
             falsification_criteria TEXT,
-            status VARCHAR DEFAULT 'draft',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            created_by VARCHAR DEFAULT 'user',
+            status VARCHAR NOT NULL DEFAULT 'draft',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by VARCHAR NOT NULL DEFAULT 'user',
             updated_at TIMESTAMP,
             outcome TEXT,
             confidence_score DECIMAL(3,2)
@@ -116,8 +116,8 @@ TABLES = {
         CREATE TABLE IF NOT EXISTS hypothesis_experiments (
             hypothesis_id VARCHAR NOT NULL,
             experiment_id VARCHAR NOT NULL,
-            relationship VARCHAR DEFAULT 'primary',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            relationship VARCHAR NOT NULL DEFAULT 'primary',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (hypothesis_id, experiment_id)
         )
     """,
@@ -125,8 +125,8 @@ TABLES = {
         CREATE TABLE IF NOT EXISTS lineage (
             lineage_id INTEGER PRIMARY KEY,
             event_type VARCHAR NOT NULL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            actor VARCHAR DEFAULT 'system',
+            timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            actor VARCHAR NOT NULL DEFAULT 'system',
             hypothesis_id VARCHAR,
             experiment_id VARCHAR,
             details JSON,
