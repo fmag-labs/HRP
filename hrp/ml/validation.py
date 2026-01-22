@@ -11,7 +11,11 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+import numpy as np
+import pandas as pd
 from loguru import logger
+from scipy.stats import spearmanr
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from hrp.ml.models import SUPPORTED_MODELS
 
@@ -199,3 +203,49 @@ def generate_folds(
         )
 
     return folds
+
+
+def compute_fold_metrics(y_true: pd.Series, y_pred: np.ndarray) -> dict[str, float]:
+    """
+    Compute evaluation metrics for a single fold.
+
+    Args:
+        y_true: Actual target values
+        y_pred: Predicted values
+
+    Returns:
+        Dict with mse, mae, r2, ic metrics
+    """
+    # Handle potential NaN values
+    mask = ~(np.isnan(y_true) | np.isnan(y_pred))
+    y_true_clean = y_true[mask]
+    y_pred_clean = y_pred[mask]
+
+    if len(y_true_clean) == 0:
+        logger.warning("No valid predictions for metrics computation")
+        return {
+            "mse": float("nan"),
+            "mae": float("nan"),
+            "r2": float("nan"),
+            "ic": float("nan"),
+        }
+
+    mse = float(mean_squared_error(y_true_clean, y_pred_clean))
+    mae = float(mean_absolute_error(y_true_clean, y_pred_clean))
+
+    # R² can be negative for poor models
+    r2 = float(r2_score(y_true_clean, y_pred_clean))
+
+    # Information Coefficient (Spearman rank correlation)
+    if len(y_true_clean) > 1:
+        ic, _ = spearmanr(y_true_clean, y_pred_clean)
+        ic = float(ic) if not np.isnan(ic) else 0.0
+    else:
+        ic = 0.0
+
+    return {
+        "mse": mse,
+        "mae": mae,
+        "r2": r2,
+        "ic": ic,
+    }

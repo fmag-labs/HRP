@@ -2,10 +2,17 @@
 
 from datetime import date
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from hrp.ml.validation import WalkForwardConfig, FoldResult, WalkForwardResult, generate_folds
+from hrp.ml.validation import (
+    WalkForwardConfig,
+    FoldResult,
+    WalkForwardResult,
+    generate_folds,
+    compute_fold_metrics,
+)
 
 
 class TestWalkForwardConfig:
@@ -240,3 +247,52 @@ class TestGenerateFolds:
 
         for train_start, train_end, test_start, test_end in folds:
             assert train_end < test_start
+
+
+class TestComputeFoldMetrics:
+    """Tests for compute_fold_metrics function."""
+
+    def test_compute_metrics_perfect_prediction(self):
+        """Test metrics with perfect predictions."""
+        y_true = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
+        y_pred = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+        metrics = compute_fold_metrics(y_true, y_pred)
+
+        assert metrics["mse"] == 0.0
+        assert metrics["mae"] == 0.0
+        assert metrics["r2"] == 1.0
+        assert abs(metrics["ic"] - 1.0) < 0.0001  # Allow for floating point precision
+
+    def test_compute_metrics_known_values(self):
+        """Test metrics with known values."""
+        y_true = pd.Series([1.0, 2.0, 3.0])
+        y_pred = np.array([1.5, 2.5, 2.5])
+
+        metrics = compute_fold_metrics(y_true, y_pred)
+
+        # MSE = mean((0.5)^2 + (0.5)^2 + (0.5)^2) = 0.25
+        assert abs(metrics["mse"] - 0.25) < 0.001
+        # MAE = mean(0.5 + 0.5 + 0.5) = 0.5
+        assert abs(metrics["mae"] - 0.5) < 0.001
+
+    def test_compute_metrics_returns_all_keys(self):
+        """Test that all expected metrics are returned."""
+        y_true = pd.Series([1.0, 2.0, 3.0, 4.0])
+        y_pred = np.array([1.1, 1.9, 3.2, 3.8])
+
+        metrics = compute_fold_metrics(y_true, y_pred)
+
+        assert "mse" in metrics
+        assert "mae" in metrics
+        assert "r2" in metrics
+        assert "ic" in metrics
+
+    def test_compute_metrics_ic_range(self):
+        """Test that IC is in valid range [-1, 1]."""
+        y_true = pd.Series(np.random.randn(100))
+        y_pred = np.random.randn(100)
+
+        metrics = compute_fold_metrics(y_true, y_pred)
+
+        assert -1.0 <= metrics["ic"] <= 1.0
