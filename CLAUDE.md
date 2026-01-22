@@ -66,6 +66,31 @@ prices = api.get_prices(['AAPL', 'MSFT'], start_date, end_date)
 features = api.get_features(['AAPL'], ['momentum_20d', 'volatility_60d'], date)
 ```
 
+### Check data quality
+```python
+# Run comprehensive quality checks
+report = api.run_quality_checks()  # Checks all data for today
+report = api.run_quality_checks(symbols=['AAPL', 'MSFT'])  # Check specific symbols
+report = api.run_quality_checks(send_alerts=True)  # Send email alerts if issues found
+
+# Get quality history
+history = api.get_quality_metrics(
+    start_date=datetime(2025, 1, 1).date(),
+    end_date=datetime(2025, 1, 31).date(),
+    check_type='anomalies'  # 'completeness', 'anomalies', 'gaps', 'freshness'
+)
+
+# Get latest quality report
+latest_report = api.get_quality_report()  # Returns most recent report
+specific_report = api.get_quality_report(report_date=datetime(2025, 1, 15).date())
+```
+
+Quality checks include:
+- **Completeness**: Missing data, low coverage (<80%)
+- **Anomalies**: Price spikes >50%, negative prices, high<low violations
+- **Gaps**: Missing dates in price history
+- **Freshness**: Data staleness (>2 business days old)
+
 ## File Locations
 
 - Database: `~/hrp-data/hrp.duckdb`
