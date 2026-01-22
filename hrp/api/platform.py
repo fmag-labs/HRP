@@ -7,7 +7,7 @@ All consumers (dashboard, MCP, agents) use this API - no direct database access.
 
 import json
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 from loguru import logger
@@ -53,7 +53,7 @@ class PlatformAPI:
         )
     """
 
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, db_path: Optional[str] = None):
         """
         Initialize the Platform API.
 
@@ -69,7 +69,7 @@ class PlatformAPI:
 
     def get_prices(
         self,
-        symbols: list[str],
+        symbols: List[str],
         start: date,
         end: date,
     ) -> pd.DataFrame:
@@ -108,8 +108,8 @@ class PlatformAPI:
 
     def get_features(
         self,
-        symbols: list[str],
-        features: list[str],
+        symbols: List[str],
+        features: List[str],
         as_of_date: date,
         version: str = "v1",
     ) -> pd.DataFrame:
@@ -155,7 +155,7 @@ class PlatformAPI:
         logger.debug(f"Retrieved features for {len(pivoted)} symbols")
         return pivoted
 
-    def get_universe(self, as_of_date: date) -> list[str]:
+    def get_universe(self, as_of_date: date) -> List[str]:
         """
         Get the trading universe as of a specific date.
 
@@ -232,7 +232,7 @@ class PlatformAPI:
         self,
         hypothesis_id: str,
         status: str,
-        outcome: str | None = None,
+        outcome: Optional[str] = None,
         actor: str = "user",
     ) -> None:
         """
@@ -273,7 +273,7 @@ class PlatformAPI:
 
         logger.info(f"Updated hypothesis {hypothesis_id}: status={status}")
 
-    def list_hypotheses(self, status: str | None = None, limit: int = 100) -> list[dict]:
+    def list_hypotheses(self, status: Optional[str] = None, limit: int = 100) -> List[Dict]:
         """
         List hypotheses, optionally filtered by status.
 
@@ -290,7 +290,7 @@ class PlatformAPI:
                    updated_at, outcome, confidence_score
             FROM hypotheses
         """
-        params: list[Any] = []
+        params: List[Any] = []
 
         if status:
             query += " WHERE status = ?"
@@ -318,7 +318,7 @@ class PlatformAPI:
             for row in result
         ]
 
-    def get_hypothesis(self, hypothesis_id: str) -> dict | None:
+    def get_hypothesis(self, hypothesis_id: str) -> Optional[Dict]:
         """
         Get a single hypothesis by ID.
 
@@ -362,8 +362,8 @@ class PlatformAPI:
     def run_backtest(
         self,
         config: BacktestConfig,
-        signals: pd.DataFrame | None = None,
-        hypothesis_id: str | None = None,
+        signals: Optional[pd.DataFrame] = None,
+        hypothesis_id: Optional[str] = None,
         actor: str = "user",
         experiment_name: str = "backtests",
     ) -> str:
@@ -431,7 +431,7 @@ class PlatformAPI:
         logger.info(f"Backtest complete: {experiment_id} | Sharpe: {result.sharpe:.2f}")
         return experiment_id
 
-    def get_experiment(self, experiment_id: str) -> dict | None:
+    def get_experiment(self, experiment_id: str) -> Optional[Dict]:
         """
         Get experiment details from MLflow.
 
@@ -466,8 +466,8 @@ class PlatformAPI:
 
     def compare_experiments(
         self,
-        experiment_ids: list[str],
-        metrics: list[str] | None = None,
+        experiment_ids: List[str],
+        metrics: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
         Compare multiple experiments side by side.
@@ -563,7 +563,7 @@ class PlatformAPI:
         logger.info(f"Deployment approved for hypothesis {hypothesis_id} by {actor}")
         return True
 
-    def get_deployed_strategies(self) -> list[dict]:
+    def get_deployed_strategies(self) -> List[Dict]:
         """
         Get all currently deployed strategies.
 
@@ -578,10 +578,10 @@ class PlatformAPI:
 
     def get_lineage(
         self,
-        hypothesis_id: str | None = None,
-        experiment_id: str | None = None,
+        hypothesis_id: Optional[str] = None,
+        experiment_id: Optional[str] = None,
         limit: int = 100,
-    ) -> list[dict]:
+    ) -> List[Dict]:
         """
         Get lineage/audit trail events.
 
@@ -599,7 +599,7 @@ class PlatformAPI:
             FROM lineage
             WHERE 1=1
         """
-        params: list[Any] = []
+        params: List[Any] = []
 
         if hypothesis_id:
             query += " AND hypothesis_id = ?"
@@ -642,10 +642,10 @@ class PlatformAPI:
         self,
         event_type: str,
         actor: str,
-        details: dict | None = None,
-        hypothesis_id: str | None = None,
-        experiment_id: str | None = None,
-        parent_lineage_id: int | None = None,
+        details: Optional[Dict] = None,
+        hypothesis_id: Optional[str] = None,
+        experiment_id: Optional[str] = None,
+        parent_lineage_id: Optional[int] = None,
     ) -> int:
         """
         Log an event to the lineage table.
@@ -723,7 +723,7 @@ class PlatformAPI:
         self._db.execute(query, (hypothesis_id, experiment_id, relationship))
         logger.debug(f"Linked experiment {experiment_id} to hypothesis {hypothesis_id}")
 
-    def get_experiments_for_hypothesis(self, hypothesis_id: str) -> list[str]:
+    def get_experiments_for_hypothesis(self, hypothesis_id: str) -> List[str]:
         """
         Get all experiment IDs linked to a hypothesis.
 
