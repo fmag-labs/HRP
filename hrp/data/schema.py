@@ -131,6 +131,21 @@ TABLES = {
             parent_lineage_id INTEGER
         )
     """,
+    "quality_metrics": """
+        CREATE TABLE IF NOT EXISTS quality_metrics (
+            metric_id INTEGER PRIMARY KEY,
+            check_type VARCHAR NOT NULL,
+            check_date DATE NOT NULL,
+            table_name VARCHAR,
+            symbol VARCHAR,
+            metric_name VARCHAR NOT NULL,
+            metric_value DECIMAL(18,6),
+            threshold DECIMAL(18,6),
+            status VARCHAR DEFAULT 'pass',
+            details JSON,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
 }
 
 # Indexes for performance
