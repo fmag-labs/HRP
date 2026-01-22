@@ -288,6 +288,148 @@ class PlatformAPI:
         return versions
 
     # =========================================================================
+    # Data Ingestion Operations
+    # =========================================================================
+
+    def log_ingestion_start(self, source_id: str) -> int:
+        """
+        Log the start of a data ingestion job.
+
+        Args:
+            source_id: Unique identifier for the ingestion source/job
+
+        Returns:
+            log_id: The ingestion_log entry ID
+        """
+        # Generate next log_id
+        result = self._db.fetchone(
+            "SELECT COALESCE(MAX(log_id), 0) + 1 FROM ingestion_log"
+        )
+        log_id = result[0]
+
+        query = """
+            INSERT INTO ingestion_log (log_id, source_id, started_at, status)
+            VALUES (?, ?, CURRENT_TIMESTAMP, 'running')
+        """
+
+        self._db.execute(query, (log_id, source_id))
+
+        logger.debug(f"Started ingestion log {log_id} for source {source_id}")
+        return log_id
+
+    def log_ingestion_complete(
+        self,
+        log_id: int,
+        status: str,
+        records_fetched: int = 0,
+        records_inserted: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        """
+        Log the completion of a data ingestion job.
+
+        Args:
+            log_id: The ingestion_log entry ID from log_ingestion_start()
+            status: Job status ('success' or 'failed')
+            records_fetched: Number of records retrieved from source
+            records_inserted: Number of records successfully inserted
+            error_message: Optional error message if status is 'failed'
+        """
+        query = """
+            UPDATE ingestion_log
+            SET completed_at = CURRENT_TIMESTAMP,
+                status = ?,
+                records_fetched = ?,
+                records_inserted = ?,
+                error_message = ?
+            WHERE log_id = ?
+        """
+
+        self._db.execute(
+            query,
+            (status, records_fetched, records_inserted, error_message, log_id),
+        )
+
+        logger.debug(f"Completed ingestion log {log_id} with status {status}")
+
+    def get_ingestion_status(
+        self,
+        source_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """
+        Get recent ingestion job status.
+
+        Args:
+            source_id: Optional filter by specific source/job ID
+            limit: Maximum number of results (default 100)
+
+        Returns:
+            List of ingestion log dictionaries
+        """
+        query = """
+            SELECT log_id, source_id, started_at, completed_at,
+                   records_fetched, records_inserted, status, error_message
+            FROM ingestion_log
+            WHERE 1=1
+        """
+        params: list[Any] = []
+
+        if source_id:
+            query += " AND source_id = ?"
+            params.append(source_id)
+
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+
+        result = self._db.fetchall(query, tuple(params))
+
+        logs = []
+        for row in result:
+            logs.append(
+                {
+                    "log_id": row[0],
+                    "source_id": row[1],
+                    "started_at": row[2],
+                    "completed_at": row[3],
+                    "records_fetched": row[4],
+                    "records_inserted": row[5],
+                    "status": row[6],
+                    "error_message": row[7],
+                }
+            )
+
+        logger.debug(f"Retrieved {len(logs)} ingestion log entries")
+        return logs
+
+    def get_last_successful_run(self, source_id: str) -> datetime | None:
+        """
+        Get the timestamp of the last successful ingestion for a source.
+
+        Args:
+            source_id: The source/job identifier
+
+        Returns:
+            Datetime of last successful completion, or None if never succeeded
+        """
+        query = """
+            SELECT completed_at
+            FROM ingestion_log
+            WHERE source_id = ? AND status = 'success'
+            ORDER BY completed_at DESC
+            LIMIT 1
+        """
+
+        result = self._db.fetchone(query, (source_id,))
+
+        if result and result[0]:
+            logger.debug(f"Last successful run for {source_id}: {result[0]}")
+            return result[0]
+
+        logger.debug(f"No successful runs found for {source_id}")
+        return None
+
+    # =========================================================================
     # Hypothesis Operations
     # =========================================================================
 
