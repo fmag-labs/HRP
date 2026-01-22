@@ -536,7 +536,7 @@ class TestCheckConstraints:
             )
 
         # Valid statuses should succeed
-        valid_statuses = ["draft", "active", "validated", "falsified", "archived"]
+        valid_statuses = ["draft", "testing", "validated", "rejected", "deployed", "deleted"]
         for i, status in enumerate(valid_statuses, start=1):
             db.execute(
                 f"""
@@ -546,7 +546,7 @@ class TestCheckConstraints:
             )
 
         result = db.fetchall("SELECT status FROM hypotheses ORDER BY hypothesis_id")
-        assert len(result) == 5
+        assert len(result) == 6
         for i, status in enumerate(valid_statuses):
             assert result[i][0] == status
 
@@ -622,6 +622,7 @@ class TestForeignKeyConstraints:
         result = db.fetchone("SELECT source_id FROM ingestion_log WHERE log_id = 1")
         assert result[0] == "test_source"
 
+    @pytest.mark.skip(reason="FK constraint removed due to DuckDB 1.4.3 limitation - FKs prevent UPDATE on parent table")
     def test_hypothesis_experiments_hypothesis_id_fk(self, test_db):
         """Test that hypothesis_experiments.hypothesis_id FK is enforced."""
         from hrp.data.db import get_db
@@ -658,6 +659,7 @@ class TestForeignKeyConstraints:
         )
         assert result[0] == "HYP-001"
 
+    @pytest.mark.skip(reason="FK constraint removed due to DuckDB 1.4.3 limitation - FKs prevent UPDATE on parent table")
     def test_lineage_hypothesis_id_fk(self, test_db):
         """Test that lineage.hypothesis_id FK is enforced."""
         from hrp.data.db import get_db
@@ -700,6 +702,7 @@ class TestForeignKeyConstraints:
         """
         )
 
+    @pytest.mark.skip(reason="FK constraint removed due to DuckDB 1.4.3 limitation - FKs prevent UPDATE on parent table")
     def test_lineage_parent_lineage_id_self_reference_fk(self, test_db):
         """Test that lineage.parent_lineage_id self-reference FK is enforced."""
         from hrp.data.db import get_db
@@ -783,7 +786,7 @@ class TestValidDataInsertion:
                 'Stocks with high momentum continue to outperform',
                 'Top decile > SPY by 3% annually',
                 'Sharpe < 1.0 or p > 0.05',
-                'active', 0.8
+                'testing', 0.8
             )
         """
         )
@@ -815,8 +818,8 @@ class TestValidDataInsertion:
         # Verify all data
         hyp = db.fetchone("SELECT title, status, confidence_score FROM hypotheses WHERE hypothesis_id = 'HYP-001'")
         assert hyp[0] == "Momentum Effect"
-        assert hyp[1] == "active"
-        assert hyp[2] == 0.8
+        assert hyp[1] == "testing"
+        assert float(hyp[2]) == 0.8
 
         exp = db.fetchone("SELECT experiment_id FROM hypothesis_experiments WHERE hypothesis_id = 'HYP-001'")
         assert exp[0] == "EXP-2020-001"
@@ -919,13 +922,14 @@ class TestIndexExistence:
 
         result = db.fetchall(
             """
-            SELECT index_name, column_names
+            SELECT index_name, expressions
             FROM duckdb_indexes()
             WHERE table_name = 'prices' AND index_name = 'idx_prices_symbol_date'
         """
         )
 
         assert len(result) > 0, "idx_prices_symbol_date index not found"
+        assert 'symbol' in result[0][1] and 'date' in result[0][1], "Index should contain symbol and date columns"
 
     def test_features_composite_index(self, test_db):
         """Test that features(symbol, date, feature_name) composite index exists."""
@@ -935,13 +939,14 @@ class TestIndexExistence:
 
         result = db.fetchall(
             """
-            SELECT index_name, column_names
+            SELECT index_name, expressions
             FROM duckdb_indexes()
             WHERE table_name = 'features' AND index_name = 'idx_features_symbol_date'
         """
         )
 
         assert len(result) > 0, "idx_features_symbol_date index not found"
+        assert 'symbol' in result[0][1] and 'date' in result[0][1], "Index should contain symbol and date columns"
 
     def test_lineage_indexes(self, test_db):
         """Test that lineage table has required indexes."""

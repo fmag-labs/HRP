@@ -96,7 +96,7 @@ TABLES = {
             outcome TEXT,
             confidence_score DECIMAL(3,2),
             CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1)),
-            CHECK (status IN ('draft', 'active', 'validated', 'falsified', 'archived'))
+            CHECK (status IN ('draft', 'testing', 'validated', 'rejected', 'deployed', 'deleted'))
         )
     """,
     # Tables with foreign key dependencies (must be after referenced tables)
@@ -129,11 +129,13 @@ TABLES = {
     """,
     "hypothesis_experiments": """
         CREATE TABLE IF NOT EXISTS hypothesis_experiments (
-            hypothesis_id VARCHAR NOT NULL REFERENCES hypotheses(hypothesis_id),
+            hypothesis_id VARCHAR NOT NULL,
             experiment_id VARCHAR NOT NULL,
             relationship VARCHAR NOT NULL DEFAULT 'primary',
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (hypothesis_id, experiment_id)
+            -- Note: FK constraint on hypothesis_id removed due to DuckDB 1.4.3 limitation
+            -- where FKs prevent UPDATE operations on parent table even when not modifying PK
         )
     """,
     "lineage": """
@@ -142,10 +144,13 @@ TABLES = {
             event_type VARCHAR NOT NULL,
             timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             actor VARCHAR NOT NULL DEFAULT 'system',
-            hypothesis_id VARCHAR REFERENCES hypotheses(hypothesis_id),
+            hypothesis_id VARCHAR,
             experiment_id VARCHAR,
             details JSON,
-            parent_lineage_id INTEGER REFERENCES lineage(lineage_id)
+            parent_lineage_id INTEGER
+            -- Note: FK constraints removed due to DuckDB 1.4.3 limitation
+            -- where FKs prevent UPDATE operations on parent tables even when not modifying PK
+            -- Application-level integrity checks must be used instead
         )
     """,
     "feature_definitions": """
@@ -201,13 +206,17 @@ def create_tables(db_path: str | None = None) -> None:
 
 
 def drop_all_tables(db_path: str | None = None) -> None:
-    """Drop all tables (use with caution!)."""
+    """Drop all tables (use with caution!).
+
+    Tables are dropped in reverse order to respect foreign key dependencies.
+    """
     db = get_db(db_path)
 
     with db.connection() as conn:
-        for table_name in TABLES.keys():
+        # Drop in reverse order to handle FK constraints
+        for table_name in reversed(list(TABLES.keys())):
             logger.warning(f"Dropping table: {table_name}")
-            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+            conn.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
 
     logger.warning("All tables dropped")
 

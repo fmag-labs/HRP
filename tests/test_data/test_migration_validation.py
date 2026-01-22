@@ -360,7 +360,7 @@ class TestNoFalsePositives:
         )
 
         # All valid statuses
-        valid_statuses = ["draft", "active", "validated", "falsified", "archived"]
+        valid_statuses = ["draft", "testing", "validated", "rejected", "deployed", "deleted"]
         for i, status in enumerate(valid_statuses):
             db.execute(
                 f"""
@@ -371,7 +371,7 @@ class TestNoFalsePositives:
 
         # Verify all were inserted
         count = db.fetchone("SELECT COUNT(*) FROM hypotheses")[0]
-        assert count == 7  # 2 confidence + 5 status
+        assert count == 8  # 2 confidence + 6 status
 
     def test_valid_null_optional_fields(self, test_db):
         """Test that NULL values are accepted for optional fields."""
@@ -470,11 +470,11 @@ class TestRealisticDataScenarios:
         """
         )
 
-        # Update to active
+        # Update to testing
         db.execute(
             """
             UPDATE hypotheses
-            SET status = 'active', updated_at = CURRENT_TIMESTAMP
+            SET status = 'testing', updated_at = CURRENT_TIMESTAMP
             WHERE hypothesis_id = 'HYP-LIFE-001'
         """
         )
