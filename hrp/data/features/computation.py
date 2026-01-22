@@ -4,6 +4,7 @@ Feature computation engine for HRP.
 Computes features at specific versions to ensure reproducibility.
 """
 
+import json
 from datetime import date
 from typing import Any, Callable
 
@@ -88,6 +89,45 @@ class FeatureComputer:
         self.db = get_db(db_path)
         self.registry = FeatureRegistry(db_path)
         logger.debug("Feature computer initialized")
+
+    def _log_lineage_event(
+        self,
+        event_type: str,
+        details: dict | None = None,
+        actor: str = "system",
+    ) -> int:
+        """
+        Log an event to the lineage table.
+
+        Args:
+            event_type: Type of event (e.g., 'features_computed')
+            details: Optional dictionary of event details
+            actor: Who triggered the event (default: 'system')
+
+        Returns:
+            lineage_id of the created event
+        """
+        details_json = json.dumps(details) if details else None
+
+        result = self.db.fetchone(
+            "SELECT COALESCE(MAX(lineage_id), 0) + 1 FROM lineage"
+        )
+        lineage_id = result[0]
+
+        query = """
+            INSERT INTO lineage (
+                lineage_id, event_type, actor, hypothesis_id,
+                experiment_id, details, parent_lineage_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+
+        self.db.execute(
+            query,
+            (lineage_id, event_type, actor, None, None, details_json, None),
+        )
+
+        logger.debug(f"Logged lineage event: {event_type} by {actor}")
+        return lineage_id
 
     def compute_features(
         self,
@@ -301,6 +341,19 @@ class FeatureComputer:
         logger.info(
             f"Stored {rows_stored} feature rows for {len(feature_names)} features "
             f"(versions: {feature_versions})"
+        )
+
+        # Log to lineage
+        self._log_lineage_event(
+            event_type="features_computed",
+            details={
+                "feature_names": feature_names,
+                "symbols_count": len(symbols),
+                "dates_count": len(dates) if isinstance(dates, list) else len(dates.tolist()),
+                "versions": feature_versions,
+                "rows_stored": rows_stored,
+            },
+            actor="system",
         )
 
         return stats
