@@ -189,6 +189,46 @@ class ConnectionPool:
         finally:
             self.release(conn)
 
+    def get_stats(self) -> dict:
+        """
+        Get current pool statistics.
+
+        Returns:
+            Dictionary with pool statistics:
+                - available: Number of connections available in pool
+                - in_use: Number of connections currently in use
+                - total: Total number of connections (available + in_use)
+                - max_size: Maximum pool size
+                - utilization: Pool utilization percentage (0-100)
+        """
+        with self._lock:
+            available = len(self._pool)
+            in_use = len(self._in_use)
+            total = available + in_use
+            utilization = (in_use / self.max_size * 100) if self.max_size > 0 else 0
+
+            return {
+                "available": available,
+                "in_use": in_use,
+                "total": total,
+                "max_size": self.max_size,
+                "utilization": round(utilization, 1),
+            }
+
+    def log_stats(self) -> None:
+        """
+        Log current pool statistics.
+
+        Logs pool state including available connections, connections in use,
+        total connections, and utilization percentage.
+        """
+        stats = self.get_stats()
+        logger.info(
+            f"Pool stats: {stats['in_use']}/{stats['max_size']} in use, "
+            f"{stats['available']} available, "
+            f"{stats['utilization']}% utilization"
+        )
+
     def close_all(self) -> None:
         """
         Close all connections in the pool.
