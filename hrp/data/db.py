@@ -190,7 +190,12 @@ class ConnectionPool:
             self.release(conn)
 
     def close_all(self) -> None:
-        """Close all connections in the pool."""
+        """
+        Close all connections in the pool.
+
+        Closes both idle connections in the pool and any currently in-use connections.
+        Clears the pool completely. Should be called on shutdown or for cleanup.
+        """
         with self._lock:
             for conn in self._pool:
                 conn.close()
@@ -203,9 +208,22 @@ class ConnectionPool:
 
 class DatabaseManager:
     """
-    Thread-safe DuckDB connection manager.
+    Thread-safe DuckDB connection manager with connection pooling.
 
-    Uses a connection pool to handle concurrent access safely.
+    Uses a ConnectionPool to manage and reuse database connections efficiently.
+    Singleton pattern ensures a single pool is shared across the application.
+    All database operations automatically acquire and release pooled connections.
+
+    Thread Safety:
+        - Safe for concurrent use from multiple threads
+        - Connections are automatically managed and reused
+        - Blocks when pool is exhausted until a connection becomes available
+
+    Connection Lifecycle:
+        - Connections are created on-demand up to max_connections
+        - Reused across operations for efficiency
+        - Validated before reuse to ensure they're still healthy
+        - Automatically cleaned up on close()
     """
 
     _instance = None
@@ -221,7 +239,17 @@ class DatabaseManager:
         return cls._instance
 
     def __init__(self, db_path: Union[Path, str, None] = None, max_connections: int = 5):
-        """Initialize the database manager."""
+        """
+        Initialize the database manager with connection pooling.
+
+        Creates a ConnectionPool with the specified configuration. Due to singleton
+        pattern, only the first call's parameters are used; subsequent calls return
+        the existing instance.
+
+        Args:
+            db_path: Path to DuckDB database file. Defaults to ~/hrp-data/hrp.duckdb
+            max_connections: Maximum number of connections in the pool (default: 5)
+        """
         if self._initialized:
             return
 
@@ -245,9 +273,18 @@ class DatabaseManager:
     @contextmanager
     def connection(self) -> Generator[duckdb.DuckDBPyConnection, None, None]:
         """
-        Context manager for database connection.
+        Context manager for pooled database connection.
 
-        Usage:
+        Acquires a connection from the pool, yields it for use, and automatically
+        releases it back to the pool when done. The connection is reused by
+        subsequent operations for efficiency.
+
+        Blocks if all connections are in use until one becomes available.
+
+        Yields:
+            A DuckDB connection from the pool
+
+        Example:
             with db.connection() as conn:
                 result = conn.execute("SELECT * FROM prices").fetchall()
         """
@@ -262,10 +299,19 @@ class DatabaseManager:
         """
         Execute a query and return a relation-like object with materialized results.
 
-        Returns a MaterializedRelation that provides fetchall() and fetchone() methods
-        but doesn't depend on an active database connection.
+        Acquires a pooled connection, executes the query, materializes all results,
+        and releases the connection back to the pool. The returned MaterializedRelation
+        is independent of the connection, allowing the connection to be reused immediately.
 
-        For better performance with large result sets, use fetchdf() instead.
+        Args:
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+
+        Returns:
+            MaterializedRelation with fetchall() and fetchone() methods
+
+        Note:
+            For better performance with large result sets, use fetchdf() instead.
         """
         with self._pool.connection() as conn:
             if params:
@@ -277,7 +323,19 @@ class DatabaseManager:
             return MaterializedRelation(rows)
 
     def fetchall(self, query: str, params: Union[tuple, None] = None) -> List[tuple]:
-        """Execute a query and fetch all results."""
+        """
+        Execute a query and fetch all results.
+
+        Acquires a pooled connection, executes the query, fetches all rows,
+        and releases the connection back to the pool for reuse.
+
+        Args:
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+
+        Returns:
+            List of tuples containing query results
+        """
         with self._pool.connection() as conn:
             if params:
                 result = conn.execute(query, params).fetchall()
@@ -286,7 +344,19 @@ class DatabaseManager:
             return result
 
     def fetchone(self, query: str, params: Union[tuple, None] = None) -> Union[tuple, None]:
-        """Execute a query and fetch one result."""
+        """
+        Execute a query and fetch one result.
+
+        Acquires a pooled connection, executes the query, fetches one row,
+        and releases the connection back to the pool for reuse.
+
+        Args:
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+
+        Returns:
+            Single tuple containing query result, or None if no results
+        """
         with self._pool.connection() as conn:
             if params:
                 result = conn.execute(query, params).fetchone()
@@ -295,7 +365,20 @@ class DatabaseManager:
             return result
 
     def fetchdf(self, query: str, params: Union[tuple, None] = None) -> Any:
-        """Execute a query and return a pandas DataFrame."""
+        """
+        Execute a query and return a pandas DataFrame.
+
+        Acquires a pooled connection, executes the query, converts to DataFrame,
+        and releases the connection back to the pool for reuse. Recommended for
+        large result sets due to efficient memory handling.
+
+        Args:
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+
+        Returns:
+            pandas DataFrame containing query results
+        """
         with self._pool.connection() as conn:
             if params:
                 result = conn.execute(query, params).df()
@@ -304,7 +387,12 @@ class DatabaseManager:
             return result
 
     def close(self) -> None:
-        """Close all connections in the pool."""
+        """
+        Close all connections in the pool.
+
+        Closes both idle connections in the pool and any currently in-use connections.
+        Should be called on application shutdown to clean up resources.
+        """
         if hasattr(self, "_pool"):
             self._pool.close_all()
             logger.debug("Closed all pooled connections")
@@ -320,5 +408,17 @@ class DatabaseManager:
 
 # Convenience function for quick access
 def get_db(db_path: Union[Path, str, None] = None, max_connections: int = 5) -> DatabaseManager:
-    """Get the database manager instance."""
+    """
+    Get the database manager instance with connection pooling.
+
+    Returns the singleton DatabaseManager instance. If first call, initializes
+    a new instance with the specified connection pool configuration.
+
+    Args:
+        db_path: Path to DuckDB database file. Defaults to ~/hrp-data/hrp.duckdb
+        max_connections: Maximum number of connections in the pool (default: 5)
+
+    Returns:
+        DatabaseManager instance with connection pooling enabled
+    """
     return DatabaseManager(db_path, max_connections)
