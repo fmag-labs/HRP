@@ -243,6 +243,36 @@ class PlatformAPI:
             )
             return features_df
 
+    def get_feature_versions(self, feature_name: str) -> list[str]:
+        """
+        Get all available versions for a feature.
+
+        Args:
+            feature_name: Name of the feature
+
+        Returns:
+            List of version strings, ordered by creation date (newest first)
+        """
+        if not feature_name:
+            raise ValueError("feature_name cannot be empty")
+
+        query = """
+            SELECT version
+            FROM feature_definitions
+            WHERE feature_name = ?
+            ORDER BY created_at DESC
+        """
+
+        result = self._db.fetchall(query, (feature_name,))
+        versions = [row[0] for row in result]
+
+        if not versions:
+            logger.warning(f"No versions found for feature '{feature_name}'")
+        else:
+            logger.debug(f"Found {len(versions)} versions for feature '{feature_name}'")
+
+        return versions
+
     # =========================================================================
     # Hypothesis Operations
     # =========================================================================
