@@ -14,6 +14,7 @@ from typing import Any
 from loguru import logger
 
 from hrp.data.db import get_db
+from hrp.data.ingestion.features import compute_features
 from hrp.data.ingestion.prices import TEST_SYMBOLS, ingest_prices
 
 
@@ -362,6 +363,83 @@ class PriceIngestionJob(IngestionJob):
         # Convert to standardized format expected by base class logging
         return {
             "records_fetched": result["rows_fetched"],
+            "records_inserted": result["rows_inserted"],
+            "symbols_success": result["symbols_success"],
+            "symbols_failed": result["symbols_failed"],
+            "failed_symbols": result.get("failed_symbols", []),
+        }
+
+
+class FeatureComputationJob(IngestionJob):
+    """
+    Scheduled job for feature computation from price data.
+
+    Wraps the compute_features() function with retry logic and logging.
+    Depends on price ingestion completing successfully.
+    """
+
+    def __init__(
+        self,
+        symbols: list[str] | None = None,
+        start: date | None = None,
+        end: date | None = None,
+        lookback_days: int = 252,
+        version: str = "v1",
+        job_id: str = "feature_computation",
+        max_retries: int = 3,
+        retry_backoff: float = 2.0,
+        dependencies: list[str] | None = None,
+    ):
+        """
+        Initialize feature computation job.
+
+        Args:
+            symbols: List of stock tickers to compute features for (None = all symbols in database)
+            start: Start date (default: 30 days ago)
+            end: End date (default: today)
+            lookback_days: Days of price history needed for computation (default: 252)
+            version: Feature version identifier (default: 'v1')
+            job_id: Unique identifier for this job
+            max_retries: Maximum number of retry attempts
+            retry_backoff: Exponential backoff multiplier (seconds)
+            dependencies: List of job IDs that must complete before this job runs
+                         (default: ['price_ingestion'])
+        """
+        # Default dependency on price ingestion
+        if dependencies is None:
+            dependencies = ["price_ingestion"]
+
+        super().__init__(job_id, max_retries, retry_backoff, dependencies)
+        self.symbols = symbols
+        self.start = start or (date.today() - timedelta(days=30))
+        self.end = end or date.today()
+        self.lookback_days = lookback_days
+        self.version = version
+
+    def execute(self) -> dict[str, Any]:
+        """
+        Execute feature computation.
+
+        Returns:
+            Dictionary with job execution stats
+        """
+        logger.info(
+            f"Computing features from {self.start} to {self.end} "
+            f"(lookback: {self.lookback_days} days)"
+        )
+
+        # Call the underlying compute_features function
+        result = compute_features(
+            symbols=self.symbols,
+            start=self.start,
+            end=self.end,
+            lookback_days=self.lookback_days,
+            version=self.version,
+        )
+
+        # Convert to standardized format expected by base class logging
+        return {
+            "records_fetched": result["features_computed"],
             "records_inserted": result["rows_inserted"],
             "symbols_success": result["symbols_success"],
             "symbols_failed": result["symbols_failed"],
