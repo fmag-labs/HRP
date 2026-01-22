@@ -164,9 +164,40 @@ class FeatureRegistry:
                 }
             return None
 
-    def list_features(self, active_only: bool = True) -> list[dict[str, Any]]:
+    def list_features(self, active_only: bool = True) -> list[str]:
         """
         List all registered features.
+
+        Args:
+            active_only: If True, only return active features
+
+        Returns:
+            List of feature names (distinct)
+        """
+        with self.db.connection() as conn:
+            if active_only:
+                results = conn.execute(
+                    """
+                    SELECT DISTINCT feature_name
+                    FROM feature_definitions
+                    WHERE is_active = TRUE
+                    ORDER BY feature_name
+                    """
+                ).fetchall()
+            else:
+                results = conn.execute(
+                    """
+                    SELECT DISTINCT feature_name
+                    FROM feature_definitions
+                    ORDER BY feature_name
+                    """
+                ).fetchall()
+
+            return [row[0] for row in results]
+
+    def list_all_features(self, active_only: bool = True) -> list[dict[str, Any]]:
+        """
+        List all registered features with full details.
 
         Args:
             active_only: If True, only return active features

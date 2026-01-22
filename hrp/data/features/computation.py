@@ -5,13 +5,68 @@ Computes features at specific versions to ensure reproducibility.
 """
 
 from datetime import date
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 from loguru import logger
 
 from hrp.data.db import get_db
 from hrp.data.features.registry import FeatureRegistry
+
+
+# Feature computation functions
+def compute_momentum_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day momentum (trailing return).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with momentum values
+    """
+    # Extract close prices
+    close = prices["close"].unstack(level="symbol")
+
+    # Calculate 20-day return
+    momentum = close.pct_change(20)
+
+    # Stack back to multi-index format
+    result = momentum.stack(level="symbol", future_stack=True)
+
+    return result.to_frame(name="momentum_20d")
+
+
+def compute_volatility_60d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 60-day volatility (annualized standard deviation of returns).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with volatility values
+    """
+    # Extract close prices
+    close = prices["close"].unstack(level="symbol")
+
+    # Calculate daily returns
+    returns = close.pct_change()
+
+    # Calculate 60-day rolling volatility (annualized)
+    volatility = returns.rolling(window=60).std() * (252**0.5)
+
+    # Stack back to multi-index format
+    result = volatility.stack(level="symbol", future_stack=True)
+
+    return result.to_frame(name="volatility_60d")
+
+
+# Registry of feature computation functions
+FEATURE_FUNCTIONS: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
+    "momentum_20d": compute_momentum_20d,
+    "volatility_60d": compute_volatility_60d,
+}
 
 
 class FeatureComputer:
@@ -161,27 +216,40 @@ class FeatureComputer:
 
         Returns:
             DataFrame with feature values, indexed by (date, symbol)
-
-        Note:
-            This is a placeholder implementation. Actual computation logic
-            should be implemented based on feature definitions or by
-            executing the stored computation_code.
         """
         logger.debug(f"Computing feature: {feature_name} ({feature_def['version']})")
 
-        # For now, return a placeholder DataFrame with NaN values
-        # Real implementation will execute the computation_code or
-        # call registered computation functions
-        result = pd.DataFrame(
-            index=prices.index,
-            columns=[feature_name],
-            dtype=float,
-        )
-        result[feature_name] = float("nan")
+        # Get the computation function
+        compute_fn = FEATURE_FUNCTIONS.get(feature_name)
 
-        logger.debug(f"Feature {feature_name} computed: {len(result)} rows")
+        if compute_fn is None:
+            logger.warning(
+                f"No computation function found for {feature_name}, returning NaN"
+            )
+            result = pd.DataFrame(
+                index=prices.index,
+                columns=[feature_name],
+                dtype=float,
+            )
+            result[feature_name] = float("nan")
+            return result
 
-        return result
+        # Compute the feature
+        try:
+            result = compute_fn(prices)
+            # Ensure result is a DataFrame with the feature name as column
+            if isinstance(result, pd.Series):
+                result = result.to_frame(name=feature_name)
+            elif isinstance(result, pd.DataFrame) and feature_name not in result.columns:
+                # Rename first column to feature_name if needed
+                result.columns = [feature_name]
+
+            logger.debug(f"Feature {feature_name} computed: {len(result)} rows")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error computing {feature_name}: {e}")
+            raise
 
     def get_stored_features(
         self,
@@ -272,3 +340,56 @@ class FeatureComputer:
                 result[feature_name] = float("nan")
 
         return result[feature_names]
+
+
+def register_default_features(db_path: str | None = None) -> None:
+    """
+    Register default example features in the registry.
+
+    This registers momentum_20d and volatility_60d features.
+
+    Args:
+        db_path: Optional path to database (defaults to standard location)
+    """
+    from hrp.data.features.registry import FeatureRegistry
+
+    registry = FeatureRegistry(db_path)
+
+    # Define features to register
+    features = [
+        {
+            "feature_name": "momentum_20d",
+            "version": "v1",
+            "computation_fn": compute_momentum_20d,
+            "description": "20-day momentum (trailing return). Calculated as pct_change(20).",
+        },
+        {
+            "feature_name": "volatility_60d",
+            "version": "v1",
+            "computation_fn": compute_volatility_60d,
+            "description": "60-day annualized volatility. Rolling std of returns * sqrt(252).",
+        },
+    ]
+
+    # Register each feature (skip if already exists)
+    for feature in features:
+        try:
+            existing = registry.get(feature["feature_name"], feature["version"])
+            if existing:
+                logger.debug(
+                    f"Feature {feature['feature_name']} ({feature['version']}) already registered"
+                )
+                continue
+
+            registry.register_feature(
+                feature_name=feature["feature_name"],
+                computation_fn=feature["computation_fn"],
+                version=feature["version"],
+                description=feature["description"],
+                is_active=True,
+            )
+            logger.info(f"Registered feature: {feature['feature_name']} ({feature['version']})")
+
+        except Exception as e:
+            # Feature might already exist, that's okay
+            logger.debug(f"Could not register {feature['feature_name']}: {e}")
