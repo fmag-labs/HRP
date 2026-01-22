@@ -249,3 +249,48 @@ def compute_fold_metrics(y_true: pd.Series, y_pred: np.ndarray) -> dict[str, flo
         "r2": r2,
         "ic": ic,
     }
+
+
+def aggregate_fold_metrics(
+    fold_metrics: list[dict[str, float]],
+) -> tuple[dict[str, float], float]:
+    """
+    Aggregate metrics across folds.
+
+    Args:
+        fold_metrics: List of metric dicts from each fold
+
+    Returns:
+        Tuple of (aggregate_metrics dict, stability_score)
+    """
+    if not fold_metrics:
+        return {}, float("inf")
+
+    metric_names = ["mse", "mae", "r2", "ic"]
+    aggregate = {}
+
+    for name in metric_names:
+        values = [fm[name] for fm in fold_metrics if not np.isnan(fm.get(name, float("nan")))]
+        if values:
+            aggregate[f"mean_{name}"] = float(np.mean(values))
+            aggregate[f"std_{name}"] = float(np.std(values))
+        else:
+            aggregate[f"mean_{name}"] = float("nan")
+            aggregate[f"std_{name}"] = float("nan")
+
+    # Stability score: coefficient of variation of MSE
+    mean_mse = aggregate.get("mean_mse", 0)
+    std_mse = aggregate.get("std_mse", 0)
+
+    if mean_mse > 0 and not np.isnan(mean_mse) and not np.isnan(std_mse):
+        stability_score = std_mse / mean_mse
+    else:
+        stability_score = float("inf") if mean_mse == 0 else float("nan")
+
+    logger.debug(
+        f"Aggregated {len(fold_metrics)} folds: "
+        f"mean_mse={aggregate.get('mean_mse', 'nan'):.6f}, "
+        f"stability={stability_score:.4f}"
+    )
+
+    return aggregate, stability_score

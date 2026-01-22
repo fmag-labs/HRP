@@ -12,6 +12,7 @@ from hrp.ml.validation import (
     WalkForwardResult,
     generate_folds,
     compute_fold_metrics,
+    aggregate_fold_metrics,
 )
 
 
@@ -296,3 +297,58 @@ class TestComputeFoldMetrics:
         metrics = compute_fold_metrics(y_true, y_pred)
 
         assert -1.0 <= metrics["ic"] <= 1.0
+
+
+class TestAggregateFoldMetrics:
+    """Tests for aggregate_fold_metrics function."""
+
+    def test_aggregate_metrics_mean_std(self):
+        """Test aggregation computes mean and std."""
+        fold_metrics = [
+            {"mse": 0.001, "mae": 0.02, "r2": 0.1, "ic": 0.05},
+            {"mse": 0.002, "mae": 0.03, "r2": 0.2, "ic": 0.06},
+            {"mse": 0.003, "mae": 0.04, "r2": 0.3, "ic": 0.07},
+        ]
+
+        agg, stability = aggregate_fold_metrics(fold_metrics)
+
+        assert "mean_mse" in agg
+        assert "std_mse" in agg
+        assert "mean_mae" in agg
+        assert "std_mae" in agg
+        assert "mean_r2" in agg
+        assert "std_r2" in agg
+        assert "mean_ic" in agg
+        assert "std_ic" in agg
+
+        # Check mean_mse = mean([0.001, 0.002, 0.003]) = 0.002
+        assert abs(agg["mean_mse"] - 0.002) < 0.0001
+
+    def test_aggregate_metrics_stability_score(self):
+        """Test stability score calculation."""
+        # High variance case
+        fold_metrics = [
+            {"mse": 0.001, "mae": 0.02, "r2": 0.1, "ic": 0.05},
+            {"mse": 0.010, "mae": 0.03, "r2": 0.2, "ic": 0.06},
+            {"mse": 0.001, "mae": 0.04, "r2": 0.3, "ic": 0.07},
+        ]
+
+        agg, stability = aggregate_fold_metrics(fold_metrics)
+
+        # stability = std_mse / mean_mse
+        expected_stability = agg["std_mse"] / agg["mean_mse"]
+        assert abs(stability - expected_stability) < 0.0001
+
+    def test_aggregate_metrics_stable_model(self):
+        """Test stability score for consistent model."""
+        # Low variance case - stable
+        fold_metrics = [
+            {"mse": 0.001, "mae": 0.02, "r2": 0.1, "ic": 0.05},
+            {"mse": 0.001, "mae": 0.02, "r2": 0.1, "ic": 0.05},
+            {"mse": 0.001, "mae": 0.02, "r2": 0.1, "ic": 0.05},
+        ]
+
+        agg, stability = aggregate_fold_metrics(fold_metrics)
+
+        # Zero variance = zero stability score
+        assert stability == 0.0
