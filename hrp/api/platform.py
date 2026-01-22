@@ -472,6 +472,7 @@ class PlatformAPI:
         hypothesis_id: str | None = None,
         actor: str = "user",
         experiment_name: str = "backtests",
+        feature_versions: dict[str, str] | None = None,
     ) -> str:
         """
         Run a backtest and log results to MLflow.
@@ -482,6 +483,7 @@ class PlatformAPI:
             hypothesis_id: Optional linked hypothesis
             actor: Who is running the backtest
             experiment_name: MLflow experiment name
+            feature_versions: Optional dict mapping feature names to versions used
 
         Returns:
             experiment_id: The MLflow run ID
@@ -511,6 +513,7 @@ class PlatformAPI:
             run_name=run_name,
             hypothesis_id=hypothesis_id,
             tags={"actor": actor},
+            feature_versions=feature_versions,
         )
 
         # Link to hypothesis if provided
