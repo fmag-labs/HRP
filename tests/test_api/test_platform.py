@@ -191,6 +191,16 @@ def hypothesis_api(test_api):
             actor="user",
         )
     )
+
+    # Create a mock experiment for the hypothesis to satisfy validation requirements
+    test_api._db.execute(
+        """
+        INSERT INTO hypothesis_experiments (hypothesis_id, experiment_id, created_at)
+        VALUES (?, 'exp-test-001', CURRENT_TIMESTAMP)
+        """,
+        (hyp_ids[2],),
+    )
+
     test_api.update_hypothesis(hyp_ids[2], status="validated", actor="user")
 
     return test_api, hyp_ids
@@ -823,6 +833,16 @@ class TestPlatformAPIHypothesis:
             falsification="Test",
             actor="user",
         )
+
+        # Create experiment for validation (required by validation gates)
+        test_api._db.execute(
+            """
+            INSERT INTO hypothesis_experiments (hypothesis_id, experiment_id, created_at)
+            VALUES (?, 'exp-test-outcome', CURRENT_TIMESTAMP)
+            """,
+            (hyp_id,),
+        )
+
         test_api.update_hypothesis(
             hyp_id,
             status="validated",
@@ -1216,6 +1236,15 @@ class TestPlatformAPIIntegration:
         hyp = test_api.get_hypothesis(hyp_id)
         assert hyp["status"] == "testing"
 
+        # Create experiment for validation (required by validation gates)
+        test_api._db.execute(
+            """
+            INSERT INTO hypothesis_experiments (hypothesis_id, experiment_id, created_at)
+            VALUES (?, 'exp-lifecycle-test', CURRENT_TIMESTAMP)
+            """,
+            (hyp_id,),
+        )
+
         # Move to validated
         test_api.update_hypothesis(
             hyp_id, status="validated", outcome="Validated successfully", actor="user"
@@ -1286,6 +1315,15 @@ class TestPlatformAPIIntegration:
 
         # Agent moves to testing
         test_api.update_hypothesis(hyp_id, status="testing", actor="agent:backtest")
+
+        # Create experiment for validation (required by validation gates)
+        test_api._db.execute(
+            """
+            INSERT INTO hypothesis_experiments (hypothesis_id, experiment_id, created_at)
+            VALUES (?, 'exp-agent-test', CURRENT_TIMESTAMP)
+            """,
+            (hyp_id,),
+        )
 
         # Agent validates
         test_api.update_hypothesis(

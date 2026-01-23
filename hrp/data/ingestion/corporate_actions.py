@@ -1,29 +1,32 @@
 """
-Corporate actions ingestion for HRP.
+Corporate actions data ingestion for HRP.
 
-Fetches and stores corporate actions data (splits, dividends) from configured sources.
+Fetches and stores corporate actions (splits, dividends) from configured sources.
 """
 
-from __future__ import annotations
-
 import argparse
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import pandas as pd
 from loguru import logger
 
 from hrp.data.db import get_db
-from hrp.data.sources.polygon_source import PolygonSource
+from hrp.data.sources.yfinance_source import YFinanceSource
 
 
-# Default test symbols (companies with frequent dividends)
+# Default test symbols (large-cap, liquid)
 TEST_SYMBOLS = [
     "AAPL",   # Apple
     "MSFT",   # Microsoft
+    "GOOGL",  # Alphabet
+    "AMZN",   # Amazon
+    "NVDA",   # NVIDIA
+    "META",   # Meta
+    "TSLA",   # Tesla
+    "V",      # Visa
+    "UNH",    # UnitedHealth
     "JNJ",    # Johnson & Johnson
-    "PG",     # Procter & Gamble
-    "KO",     # Coca-Cola
 ]
 
 
@@ -31,21 +34,16 @@ def ingest_corporate_actions(
     symbols: list[str],
     start: date,
     end: date,
-    action_types: list[str] | None = None,
-    source: str = "polygon",
+    source: str = "yfinance",
 ) -> dict[str, Any]:
     """
-    Ingest corporate actions data for given symbols.
-
-    Currently supports Polygon.io only (YFinance corporate actions not yet implemented).
+    Ingest corporate actions for given symbols.
 
     Args:
         symbols: List of stock tickers
         start: Start date
         end: End date
-        action_types: List of action types to fetch ('split', 'dividend').
-                     If None, fetches all types.
-        source: Data source to use ('polygon', default: 'polygon')
+        source: Data source to use ('yfinance')
 
     Returns:
         Dictionary with ingestion stats
@@ -53,67 +51,49 @@ def ingest_corporate_actions(
     db = get_db()
 
     # Initialize data source
-    primary_source = None
-
-    if source == "polygon":
-        try:
-            primary_source = PolygonSource()
-            logger.info("Using Polygon.io for corporate actions")
-        except ValueError as e:
-            logger.error(f"Polygon.io unavailable ({e}), no fallback available for corporate actions")
-            raise
+    if source == "yfinance":
+        data_source = YFinanceSource()
     else:
-        raise ValueError(f"Unknown source: {source}. Currently only 'polygon' is supported for corporate actions")
+        raise ValueError(f"Unknown source: {source}")
 
     stats = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,
-        "actions_fetched": 0,
-        "actions_inserted": 0,
+        "rows_fetched": 0,
+        "rows_inserted": 0,
         "failed_symbols": [],
-        "action_types": action_types or ['split', 'dividend'],
     }
 
     for symbol in symbols:
-        df = pd.DataFrame()
-
         try:
             logger.info(f"Fetching corporate actions for {symbol} from {start} to {end}")
 
-            # Fetch corporate actions
-            df = primary_source.get_corporate_actions(symbol, start, end, action_types)
+            # Fetch data
+            df = data_source.get_corporate_actions(symbol, start, end)
 
             if df.empty:
-                logger.info(f"No corporate actions found for {symbol}")
-                stats["symbols_success"] += 1
+                logger.warning(f"No corporate actions for {symbol}")
+                stats["symbols_success"] += 1  # Not an error, just no actions
                 continue
 
-        except Exception as e:
-            logger.error(f"Failed to fetch corporate actions for {symbol}: {e}")
-            stats["symbols_failed"] += 1
-            stats["failed_symbols"].append(symbol)
-            continue
-
-        # Process results
-        try:
-            stats["actions_fetched"] += len(df)
+            stats["rows_fetched"] += len(df)
 
             # Insert into database (upsert)
             rows_inserted = _upsert_corporate_actions(db, df)
-            stats["actions_inserted"] += rows_inserted
+            stats["rows_inserted"] += rows_inserted
             stats["symbols_success"] += 1
 
             logger.info(f"Inserted {rows_inserted} corporate actions for {symbol}")
 
         except Exception as e:
-            logger.error(f"Failed to insert corporate actions for {symbol} into database: {e}")
+            logger.error(f"Failed to ingest corporate actions for {symbol}: {e}")
             stats["symbols_failed"] += 1
             stats["failed_symbols"].append(symbol)
 
     logger.info(
         f"Ingestion complete: {stats['symbols_success']}/{stats['symbols_requested']} symbols, "
-        f"{stats['actions_inserted']} actions inserted"
+        f"{stats['rows_inserted']} rows inserted"
     )
 
     return stats
@@ -145,7 +125,7 @@ def _upsert_corporate_actions(db, df: pd.DataFrame) -> int:
                 record['symbol'],
                 record['date'],
                 record['action_type'],
-                record['factor'],
+                record.get('value'),  # YFinanceSource uses 'value', DB uses 'factor'
                 record.get('source', 'unknown'),
             ))
 
@@ -162,74 +142,123 @@ def _upsert_corporate_actions(db, df: pd.DataFrame) -> int:
     return len(records)
 
 
-def main() -> None:
+def get_corporate_action_stats() -> dict[str, Any]:
+    """Get statistics about stored corporate actions data."""
+    db = get_db()
+
+    with db.connection() as conn:
+        # Total rows
+        total = conn.execute("SELECT COUNT(*) FROM corporate_actions").fetchone()[0]
+
+        # Unique symbols
+        symbols = conn.execute("SELECT COUNT(DISTINCT symbol) FROM corporate_actions").fetchone()[0]
+
+        # Date range
+        date_range = conn.execute(
+            "SELECT MIN(date), MAX(date) FROM corporate_actions"
+        ).fetchone()
+
+        # Actions by type
+        by_type = conn.execute("""
+            SELECT action_type, COUNT(*) as count
+            FROM corporate_actions
+            GROUP BY action_type
+            ORDER BY action_type
+        """).fetchall()
+
+        # Rows per symbol
+        per_symbol = conn.execute("""
+            SELECT symbol, COUNT(*) as rows, MIN(date) as start, MAX(date) as end
+            FROM corporate_actions
+            GROUP BY symbol
+            ORDER BY symbol
+        """).fetchall()
+
+    return {
+        "total_rows": total,
+        "unique_symbols": symbols,
+        "date_range": {
+            "start": date_range[0] if date_range[0] else None,
+            "end": date_range[1] if date_range[1] else None,
+        },
+        "by_type": [
+            {"action_type": r[0], "count": r[1]}
+            for r in by_type
+        ],
+        "per_symbol": [
+            {"symbol": r[0], "rows": r[1], "start": r[2], "end": r[3]}
+            for r in per_symbol
+        ],
+    }
+
+
+def main():
     """CLI entry point for corporate actions ingestion."""
-    parser = argparse.ArgumentParser(description="Ingest corporate actions data")
+    parser = argparse.ArgumentParser(description="HRP Corporate Actions Data Ingestion")
     parser.add_argument(
         "--symbols",
+        type=str,
         nargs="+",
         default=TEST_SYMBOLS,
-        help="Stock symbols to fetch (default: test symbols)"
+        help="Symbols to ingest (default: test symbols)",
     )
     parser.add_argument(
         "--start",
-        type=date.fromisoformat,
-        default=(date.today() - timedelta(days=365)).isoformat(),
-        help="Start date (YYYY-MM-DD, default: 1 year ago)"
+        type=str,
+        default="2019-01-01",
+        help="Start date (YYYY-MM-DD)",
     )
     parser.add_argument(
         "--end",
-        type=date.fromisoformat,
-        default=date.today().isoformat(),
-        help="End date (YYYY-MM-DD, default: today)"
-    )
-    parser.add_argument(
-        "--action-types",
-        nargs="+",
-        choices=["split", "dividend"],
+        type=str,
         default=None,
-        help="Action types to fetch (default: all)"
+        help="End date (YYYY-MM-DD, default: today)",
     )
     parser.add_argument(
         "--source",
-        choices=["polygon"],
-        default="polygon",
-        help="Data source (default: polygon)"
+        type=str,
+        default="yfinance",
+        choices=["yfinance"],
+        help="Data source",
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show corporate actions data statistics",
     )
 
     args = parser.parse_args()
 
-    logger.info(f"Starting corporate actions ingestion for {len(args.symbols)} symbols")
-    logger.info(f"Date range: {args.start} to {args.end}")
-    logger.info(f"Source: {args.source}")
-    if args.action_types:
-        logger.info(f"Action types: {args.action_types}")
+    if args.stats:
+        stats = get_corporate_action_stats()
+        print(f"\nCorporate Actions Data Statistics:")
+        print(f"  Total rows: {stats['total_rows']:,}")
+        print(f"  Unique symbols: {stats['unique_symbols']}")
+        if stats['date_range']['start']:
+            print(f"  Date range: {stats['date_range']['start']} to {stats['date_range']['end']}")
+        print(f"\nBy Action Type:")
+        for t in stats['by_type']:
+            print(f"  {t['action_type']:10} {t['count']:6,} actions")
+        print(f"\nPer Symbol:")
+        for s in stats['per_symbol']:
+            print(f"  {s['symbol']:6} {s['rows']:6,} actions  ({s['start']} to {s['end']})")
+        return
+
+    start = date.fromisoformat(args.start)
+    end = date.fromisoformat(args.end) if args.end else date.today()
 
     stats = ingest_corporate_actions(
         symbols=args.symbols,
-        start=args.start,
-        end=args.end,
-        action_types=args.action_types,
+        start=start,
+        end=end,
         source=args.source,
     )
 
-    # Print summary
-    print("\n" + "=" * 60)
-    print("CORPORATE ACTIONS INGESTION SUMMARY")
-    print("=" * 60)
-    print(f"Symbols requested:   {stats['symbols_requested']}")
-    print(f"Symbols succeeded:   {stats['symbols_success']}")
-    print(f"Symbols failed:      {stats['symbols_failed']}")
-    print(f"Actions fetched:     {stats['actions_fetched']}")
-    print(f"Actions inserted:    {stats['actions_inserted']}")
-
+    print(f"\nIngestion Complete:")
+    print(f"  Symbols: {stats['symbols_success']}/{stats['symbols_requested']} success")
+    print(f"  Rows: {stats['rows_fetched']} fetched, {stats['rows_inserted']} inserted")
     if stats['failed_symbols']:
-        print(f"\nFailed symbols: {', '.join(stats['failed_symbols'])}")
-
-    print("=" * 60)
-
-    if stats['symbols_failed'] > 0:
-        exit(1)
+        print(f"  Failed: {', '.join(stats['failed_symbols'])}")
 
 
 if __name__ == "__main__":

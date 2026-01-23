@@ -140,9 +140,12 @@ class TestCompletenessCheck:
         check = CompletenessCheck(test_db)
         result = check.run(date(2024, 1, 15))
 
-        assert not result.passed
+        # Missing prices are flagged as WARNING, not CRITICAL
+        # So passed is True (no critical issues), but there should be 1 warning issue
         assert len(result.issues) == 1
         assert result.issues[0].symbol == "MSFT"
+        assert result.issues[0].severity == IssueSeverity.WARNING
+        assert result.warning_count == 1
 
     def test_passes_when_complete(self, test_db):
         """Should pass when all universe symbols have prices."""
@@ -272,55 +275,148 @@ class TestQualityReport:
 
     def test_health_score_calculation(self):
         """Health score should decrease with issues."""
-        # Perfect report
+        from datetime import datetime
+
+        # Perfect report - no issues
         perfect = QualityReport(
             report_date=date.today(),
-            generated_at=date.today(),
-            checks_run=5,
-            checks_passed=5,
-            total_issues=0,
-            critical_issues=0,
-            warning_issues=0,
+            generated_at=datetime.now(),
+            results=[
+                CheckResult(check_name="check1", issues=[]),
+                CheckResult(check_name="check2", issues=[]),
+                CheckResult(check_name="check3", issues=[]),
+                CheckResult(check_name="check4", issues=[]),
+                CheckResult(check_name="check5", issues=[]),
+            ],
         )
         assert perfect.health_score == 100.0
         assert perfect.passed
+        assert perfect.checks_run == 5
+        assert perfect.checks_passed == 5
 
         # Report with critical issues
         critical = QualityReport(
             report_date=date.today(),
-            generated_at=date.today(),
-            checks_run=5,
-            checks_passed=3,
-            total_issues=5,
-            critical_issues=2,
-            warning_issues=3,
+            generated_at=datetime.now(),
+            results=[
+                CheckResult(check_name="check1", issues=[]),
+                CheckResult(check_name="check2", issues=[]),
+                CheckResult(
+                    check_name="check3",
+                    issues=[
+                        QualityIssue(
+                            check_name="check3",
+                            severity=IssueSeverity.CRITICAL,
+                            symbol="A",
+                            date=date.today(),
+                            description="Critical 1",
+                        ),
+                        QualityIssue(
+                            check_name="check3",
+                            severity=IssueSeverity.CRITICAL,
+                            symbol="B",
+                            date=date.today(),
+                            description="Critical 2",
+                        ),
+                    ],
+                ),
+                CheckResult(
+                    check_name="check4",
+                    issues=[
+                        QualityIssue(
+                            check_name="check4",
+                            severity=IssueSeverity.WARNING,
+                            symbol="C",
+                            date=date.today(),
+                            description="Warning 1",
+                        ),
+                        QualityIssue(
+                            check_name="check4",
+                            severity=IssueSeverity.WARNING,
+                            symbol="D",
+                            date=date.today(),
+                            description="Warning 2",
+                        ),
+                        QualityIssue(
+                            check_name="check4",
+                            severity=IssueSeverity.WARNING,
+                            symbol="E",
+                            date=date.today(),
+                            description="Warning 3",
+                        ),
+                    ],
+                ),
+                CheckResult(check_name="check5", issues=[]),
+            ],
         )
         assert critical.health_score < 100.0
         assert not critical.passed  # Has critical issues
+        assert critical.critical_issues == 2
+        assert critical.warning_issues == 3
 
         # Report with only warnings
         warnings_only = QualityReport(
             report_date=date.today(),
-            generated_at=date.today(),
-            checks_run=5,
-            checks_passed=4,
-            total_issues=3,
-            critical_issues=0,
-            warning_issues=3,
+            generated_at=datetime.now(),
+            results=[
+                CheckResult(check_name="check1", issues=[]),
+                CheckResult(check_name="check2", issues=[]),
+                CheckResult(check_name="check3", issues=[]),
+                CheckResult(check_name="check4", issues=[]),
+                CheckResult(
+                    check_name="check5",
+                    issues=[
+                        QualityIssue(
+                            check_name="check5",
+                            severity=IssueSeverity.WARNING,
+                            symbol="A",
+                            date=date.today(),
+                            description="Warning 1",
+                        ),
+                        QualityIssue(
+                            check_name="check5",
+                            severity=IssueSeverity.WARNING,
+                            symbol="B",
+                            date=date.today(),
+                            description="Warning 2",
+                        ),
+                        QualityIssue(
+                            check_name="check5",
+                            severity=IssueSeverity.WARNING,
+                            symbol="C",
+                            date=date.today(),
+                            description="Warning 3",
+                        ),
+                    ],
+                ),
+            ],
         )
         assert warnings_only.passed  # No critical issues
         assert warnings_only.health_score > critical.health_score
 
     def test_report_to_dict(self):
         """Report should serialize to dictionary."""
+        from datetime import datetime
+
         report = QualityReport(
             report_date=date(2024, 1, 15),
-            generated_at=date(2024, 1, 15),
-            checks_run=3,
-            checks_passed=2,
-            total_issues=1,
-            critical_issues=0,
-            warning_issues=1,
+            generated_at=datetime(2024, 1, 15, 12, 0, 0),
+            results=[
+                CheckResult(check_name="check1", issues=[]),
+                CheckResult(check_name="check2", issues=[]),
+                CheckResult(
+                    check_name="check3",
+                    issues=[
+                        QualityIssue(
+                            check_name="check3",
+                            severity=IssueSeverity.WARNING,
+                            symbol="A",
+                            date=date(2024, 1, 15),
+                            description="Warning",
+                        ),
+                    ],
+                ),
+            ],
         )
 
         d = report.to_dict()
@@ -330,14 +426,16 @@ class TestQualityReport:
 
     def test_summary_text_generation(self):
         """Report should generate readable summary."""
+        from datetime import datetime
+
         report = QualityReport(
             report_date=date(2024, 1, 15),
-            generated_at=date(2024, 1, 15),
-            checks_run=3,
-            checks_passed=3,
-            total_issues=0,
-            critical_issues=0,
-            warning_issues=0,
+            generated_at=datetime(2024, 1, 15, 12, 0, 0),
+            results=[
+                CheckResult(check_name="check1", issues=[]),
+                CheckResult(check_name="check2", issues=[]),
+                CheckResult(check_name="check3", issues=[]),
+            ],
         )
 
         summary = report.get_summary_text()
@@ -379,9 +477,9 @@ class TestCheckResult:
 
     def test_critical_count(self):
         """Should count critical issues correctly."""
+        # Note: passed is now a computed property, not a constructor arg
         result = CheckResult(
             check_name="test",
-            passed=False,
             issues=[
                 QualityIssue(
                     check_name="test",
@@ -409,6 +507,7 @@ class TestCheckResult:
 
         assert result.critical_count == 2
         assert result.warning_count == 1
+        assert not result.passed  # Has critical issues
 
 
 class TestQualityIssue:
@@ -519,6 +618,8 @@ class TestQualityAlertManager:
 
     def test_send_daily_summary(self, test_db):
         """send_daily_summary should send formatted email."""
+        from datetime import datetime
+
         from hrp.data.quality.alerts import QualityAlertManager
 
         with patch("hrp.data.quality.alerts.EmailNotifier") as mock_notifier:
@@ -528,39 +629,31 @@ class TestQualityAlertManager:
 
             alert_manager = QualityAlertManager()
 
-            # Create a report with results
+            # Create a report with results (summary stats are computed from results)
             report = QualityReport(
                 report_date=date(2024, 1, 15),
-                generated_at=date(2024, 1, 15),
-                checks_run=5,
-                checks_passed=4,
-                total_issues=3,
-                critical_issues=1,
-                warning_issues=2,
+                generated_at=datetime(2024, 1, 15, 12, 0, 0),
+                results=[
+                    CheckResult(
+                        check_name="price_anomaly",
+                        issues=[],
+                        run_time_ms=100.0,
+                    ),
+                    CheckResult(
+                        check_name="completeness",
+                        issues=[
+                            QualityIssue(
+                                check_name="completeness",
+                                severity=IssueSeverity.WARNING,
+                                symbol="TEST",
+                                date=date(2024, 1, 15),
+                                description="Missing",
+                            )
+                        ],
+                        run_time_ms=50.0,
+                    ),
+                ],
             )
-            # Add mock results
-            report.results = [
-                CheckResult(
-                    check_name="price_anomaly",
-                    passed=True,
-                    issues=[],
-                    run_time_ms=100.0,
-                ),
-                CheckResult(
-                    check_name="completeness",
-                    passed=False,
-                    issues=[
-                        QualityIssue(
-                            check_name="completeness",
-                            severity=IssueSeverity.WARNING,
-                            symbol="TEST",
-                            date=date(2024, 1, 15),
-                            description="Missing",
-                        )
-                    ],
-                    run_time_ms=50.0,
-                ),
-            ]
 
             result = alert_manager.send_daily_summary(report)
 
@@ -573,6 +666,8 @@ class TestQualityAlertManager:
 
     def test_send_daily_summary_email_failure(self, test_db):
         """send_daily_summary should return False on email error."""
+        from datetime import datetime
+
         from hrp.data.quality.alerts import QualityAlertManager
 
         with patch("hrp.data.quality.alerts.EmailNotifier") as mock_notifier:
@@ -582,22 +677,20 @@ class TestQualityAlertManager:
 
             alert_manager = QualityAlertManager()
 
+            # Create report with empty results list (summary stats computed from results)
             report = QualityReport(
                 report_date=date(2024, 1, 15),
-                generated_at=date(2024, 1, 15),
-                checks_run=5,
-                checks_passed=5,
-                total_issues=0,
-                critical_issues=0,
-                warning_issues=0,
+                generated_at=datetime(2024, 1, 15, 12, 0, 0),
+                results=[],
             )
-            report.results = []
 
             result = alert_manager.send_daily_summary(report)
             assert result is False
 
     def test_process_report_with_critical_issues(self, test_db):
         """process_report should send critical alert when critical issues exist."""
+        from datetime import datetime
+
         from hrp.data.quality.alerts import QualityAlertManager
 
         with patch("hrp.data.quality.alerts.EmailNotifier") as mock_notifier:
@@ -607,30 +700,36 @@ class TestQualityAlertManager:
 
             alert_manager = QualityAlertManager()
 
+            # Create report with critical issues (summary stats computed from results)
             report = QualityReport(
                 report_date=date(2024, 1, 15),
-                generated_at=date(2024, 1, 15),
-                checks_run=5,
-                checks_passed=3,
-                total_issues=2,
-                critical_issues=2,
-                warning_issues=0,
+                generated_at=datetime(2024, 1, 15, 12, 0, 0),
+                results=[
+                    CheckResult(
+                        check_name="price_anomaly",
+                        issues=[
+                            QualityIssue(
+                                check_name="price_anomaly",
+                                severity=IssueSeverity.CRITICAL,
+                                symbol="TEST",
+                                date=date(2024, 1, 15),
+                                description="Critical issue",
+                            ),
+                            QualityIssue(
+                                check_name="price_anomaly",
+                                severity=IssueSeverity.CRITICAL,
+                                symbol="TEST2",
+                                date=date(2024, 1, 15),
+                                description="Critical issue 2",
+                            ),
+                        ],
+                    ),
+                    CheckResult(check_name="check2", issues=[]),
+                    CheckResult(check_name="check3", issues=[]),
+                    CheckResult(check_name="check4", issues=[]),
+                    CheckResult(check_name="check5", issues=[]),
+                ],
             )
-            report.results = [
-                CheckResult(
-                    check_name="price_anomaly",
-                    passed=False,
-                    issues=[
-                        QualityIssue(
-                            check_name="price_anomaly",
-                            severity=IssueSeverity.CRITICAL,
-                            symbol="TEST",
-                            date=date(2024, 1, 15),
-                            description="Critical issue",
-                        )
-                    ],
-                )
-            ]
 
             result = alert_manager.process_report(report, send_summary=True)
 

@@ -33,16 +33,55 @@ class IssueSeverity(Enum):
     CRITICAL = "critical"
 
 
-@dataclass
+@dataclass(frozen=True)
 class QualityIssue:
-    """Represents a single data quality issue."""
+    """
+    Represents a single data quality issue.
+
+    Immutable after creation to ensure issues cannot be modified
+    after being recorded.
+    """
 
     check_name: str
     severity: IssueSeverity
     symbol: str | None
     date: date | None
     description: str
-    details: dict[str, Any] = field(default_factory=dict)
+    details: tuple[tuple[str, Any], ...] = ()
+
+    def __post_init__(self):
+        """Validate required fields."""
+        if not self.check_name:
+            raise ValueError("check_name cannot be empty")
+        if not self.description:
+            raise ValueError("description cannot be empty")
+
+    @classmethod
+    def create(
+        cls,
+        check_name: str,
+        severity: IssueSeverity,
+        description: str,
+        symbol: str | None = None,
+        date: date | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> "QualityIssue":
+        """
+        Factory method for creating QualityIssue with dict-based details.
+
+        Args:
+            check_name: Name of the check that found this issue
+            severity: Issue severity level
+            description: Human-readable description of the issue
+            symbol: Optional ticker symbol related to the issue
+            date: Optional date when issue was detected
+            details: Optional dict of additional details (converted to tuple)
+
+        Returns:
+            QualityIssue instance
+        """
+        details_tuple = tuple(details.items()) if details else ()
+        return cls(check_name, severity, symbol, date, description, details_tuple)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -52,7 +91,7 @@ class QualityIssue:
             "symbol": self.symbol,
             "date": str(self.date) if self.date else None,
             "description": self.description,
-            "details": self.details,
+            "details": dict(self.details) if self.details else {},
         }
 
 
@@ -61,17 +100,23 @@ class CheckResult:
     """Result of running a quality check."""
 
     check_name: str
-    passed: bool
     issues: list[QualityIssue] = field(default_factory=list)
     stats: dict[str, Any] = field(default_factory=dict)
     run_time_ms: float = 0.0
 
     @property
+    def passed(self) -> bool:
+        """Check passes if no critical issues."""
+        return self.critical_count == 0
+
+    @property
     def critical_count(self) -> int:
+        """Count of critical issues."""
         return sum(1 for i in self.issues if i.severity == IssueSeverity.CRITICAL)
 
     @property
     def warning_count(self) -> int:
+        """Count of warning issues."""
         return sum(1 for i in self.issues if i.severity == IssueSeverity.WARNING)
 
 
@@ -164,7 +209,7 @@ class PriceAnomalyCheck(QualityCheck):
             severity = IssueSeverity.CRITICAL if abs(pct_change) > 0.9 else IssueSeverity.WARNING
 
             issues.append(
-                QualityIssue(
+                QualityIssue.create(
                     check_name=self.name,
                     severity=severity,
                     symbol=symbol,
@@ -182,7 +227,6 @@ class PriceAnomalyCheck(QualityCheck):
 
         return CheckResult(
             check_name=self.name,
-            passed=len(issues) == 0,
             issues=issues,
             stats={"anomalies_found": len(issues), "threshold": self.threshold},
             run_time_ms=elapsed_ms,
@@ -248,12 +292,12 @@ class CompletenessCheck(QualityCheck):
 
         for symbol in sorted(missing_symbols):
             issues.append(
-                QualityIssue(
+                QualityIssue.create(
                     check_name=self.name,
                     severity=IssueSeverity.WARNING,
                     symbol=symbol,
                     date=as_of_date,
-                    description=f"Missing price data for active symbol",
+                    description="Missing price data for active symbol",
                     details={"expected_date": str(as_of_date)},
                 )
             )
@@ -262,7 +306,6 @@ class CompletenessCheck(QualityCheck):
 
         return CheckResult(
             check_name=self.name,
-            passed=len(issues) == 0,
             issues=issues,
             stats={
                 "universe_size": len(universe_symbols),
@@ -311,7 +354,6 @@ class GapDetectionCheck(QualityCheck):
             elapsed_ms = (time.time() - start_time) * 1000
             return CheckResult(
                 check_name=self.name,
-                passed=True,
                 issues=[],
                 stats={"trading_days": len(trading_dates), "symbols_checked": 0},
                 run_time_ms=elapsed_ms,
@@ -354,7 +396,7 @@ class GapDetectionCheck(QualityCheck):
             severity = IssueSeverity.CRITICAL if missing_days > 10 else IssueSeverity.WARNING
 
             issues.append(
-                QualityIssue(
+                QualityIssue.create(
                     check_name=self.name,
                     severity=severity,
                     symbol=symbol,
@@ -373,7 +415,6 @@ class GapDetectionCheck(QualityCheck):
 
         return CheckResult(
             check_name=self.name,
-            passed=len(issues) == 0,
             issues=issues,
             stats={
                 "trading_days": len(trading_dates),
@@ -439,13 +480,13 @@ class StaleDataCheck(QualityCheck):
             severity = IssueSeverity.CRITICAL if days_stale is None or days_stale > 7 else IssueSeverity.WARNING
 
             issues.append(
-                QualityIssue(
+                QualityIssue.create(
                     check_name=self.name,
                     severity=severity,
                     symbol=symbol,
                     date=as_of_date,
                     description=(
-                        f"No price data" if last_price_date is None
+                        "No price data" if last_price_date is None
                         else f"Data is {days_stale} days stale"
                     ),
                     details={
@@ -460,7 +501,6 @@ class StaleDataCheck(QualityCheck):
 
         return CheckResult(
             check_name=self.name,
-            passed=len(issues) == 0,
             issues=issues,
             stats={
                 "stale_symbols": len(issues),
@@ -509,7 +549,7 @@ class VolumeAnomalyCheck(QualityCheck):
         for row in zero_results:
             symbol, dt, volume = row
             issues.append(
-                QualityIssue(
+                QualityIssue.create(
                     check_name=self.name,
                     severity=IssueSeverity.WARNING,
                     symbol=symbol,
@@ -552,7 +592,7 @@ class VolumeAnomalyCheck(QualityCheck):
             multiplier = volume / avg_volume if avg_volume else 0
 
             issues.append(
-                QualityIssue(
+                QualityIssue.create(
                     check_name=self.name,
                     severity=IssueSeverity.INFO,
                     symbol=symbol,
@@ -570,7 +610,6 @@ class VolumeAnomalyCheck(QualityCheck):
 
         return CheckResult(
             check_name=self.name,
-            passed=len([i for i in issues if i.severity != IssueSeverity.INFO]) == 0,
             issues=issues,
             stats={
                 "zero_volume_count": len(zero_results),

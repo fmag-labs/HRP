@@ -118,9 +118,10 @@ class TestGetDailyBars:
         source = PolygonSource(api_key="test_key")
 
         # Mock aggregates data
+        # Use noon UTC timestamps to avoid timezone issues (midnight UTC = previous day in US timezones)
         mock_aggs = [
             MockAgg(
-                timestamp=1609459200000,  # 2021-01-01
+                timestamp=1609502400000,  # 2021-01-01 12:00:00 UTC
                 open=100.0,
                 high=105.0,
                 low=99.0,
@@ -128,7 +129,7 @@ class TestGetDailyBars:
                 volume=1000000,
             ),
             MockAgg(
-                timestamp=1609545600000,  # 2021-01-02
+                timestamp=1609588800000,  # 2021-01-02 12:00:00 UTC
                 open=103.0,
                 high=108.0,
                 low=102.0,
@@ -709,7 +710,8 @@ class TestRateLimiting:
 
         # Rate limiter should have been called 6 times
         # (implementation detail, but good to verify integration)
-        assert source.rate_limiter.available_tokens() < 5
+        # Note: available_tokens is a property, not a method
+        assert source.rate_limiter.available_tokens < 5
 
     def test_validate_symbol_acquires_token_before_api_call(self):
         """Test that rate limiter is called before API calls."""
@@ -743,9 +745,11 @@ class TestEdgeCases:
         """Test fetching data for a single day."""
         source = PolygonSource(api_key="test_key")
 
+        # Use noon UTC to avoid timezone issues
         mock_aggs = [
             MockAgg(
-                timestamp=1609459200000, open=100.0, high=105.0, low=99.0, close=103.0, volume=1000000
+                timestamp=1609502400000,  # 2021-01-01 12:00:00 UTC
+                open=100.0, high=105.0, low=99.0, close=103.0, volume=1000000
             )
         ]
 
@@ -797,10 +801,11 @@ class TestEdgeCases:
         """Test ticker details with missing attributes."""
         source = PolygonSource(api_key="test_key")
 
-        # Create mock with minimal attributes
-        mock_details = Mock()
+        # Create mock with minimal attributes - use spec to prevent auto-creation of attributes
+        mock_details = Mock(spec=["name"])
         mock_details.name = "Test Company"
-        # Don't set other attributes
+        # Configure hasattr to return False for missing attributes
+        # by not including them in the spec
 
         with patch.object(source.client, "get_ticker_details", return_value=mock_details):
             details = source.get_ticker_details("TEST")

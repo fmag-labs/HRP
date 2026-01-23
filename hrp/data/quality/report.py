@@ -30,13 +30,33 @@ class QualityReport:
 
     report_date: date
     generated_at: datetime
-    checks_run: int
-    checks_passed: int
-    total_issues: int
-    critical_issues: int
-    warning_issues: int
     results: list[CheckResult] = field(default_factory=list)
     total_run_time_ms: float = 0.0
+
+    @property
+    def checks_run(self) -> int:
+        """Number of checks that were run."""
+        return len(self.results)
+
+    @property
+    def checks_passed(self) -> int:
+        """Number of checks that passed."""
+        return sum(1 for r in self.results if r.passed)
+
+    @property
+    def total_issues(self) -> int:
+        """Total number of issues found."""
+        return sum(len(r.issues) for r in self.results)
+
+    @property
+    def critical_issues(self) -> int:
+        """Number of critical issues found."""
+        return sum(r.critical_count for r in self.results)
+
+    @property
+    def warning_issues(self) -> int:
+        """Number of warning issues found."""
+        return sum(r.warning_count for r in self.results)
 
     @property
     def passed(self) -> bool:
@@ -183,40 +203,33 @@ class QualityReportGenerator:
                 )
             except Exception as e:
                 logger.error(f"Check {check_class.name} failed: {e}")
-                # Create a failed result
+                # Create a failed result with a critical issue (will make passed=False)
                 results.append(
                     CheckResult(
                         check_name=check_class.name,
-                        passed=False,
                         issues=[
-                            QualityIssue(
+                            QualityIssue.create(
                                 check_name=check_class.name,
                                 severity=IssueSeverity.CRITICAL,
+                                description=f"Check failed with error: {e}",
                                 symbol=None,
                                 date=as_of_date,
-                                description=f"Check failed with error: {e}",
                             )
                         ],
                     )
                 )
 
-        # Aggregate stats
-        checks_passed = sum(1 for r in results if r.passed)
-        total_issues = sum(len(r.issues) for r in results)
-        critical_issues = sum(r.critical_count for r in results)
-        warning_issues = sum(r.warning_count for r in results)
-
+        # Create report - summary stats are now computed properties
         report = QualityReport(
             report_date=as_of_date,
             generated_at=datetime.now(),
-            checks_run=len(results),
-            checks_passed=checks_passed,
-            total_issues=total_issues,
-            critical_issues=critical_issues,
-            warning_issues=warning_issues,
             results=results,
             total_run_time_ms=total_run_time,
         )
+
+        # Log computed stats for verification
+        critical_issues = report.critical_issues
+        warning_issues = report.warning_issues
 
         logger.info(
             f"Report generated: score={report.health_score:.0f}, "

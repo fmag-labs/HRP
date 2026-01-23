@@ -374,13 +374,14 @@ class TestRetryLogic:
     @patch("hrp.agents.jobs.ingest_prices")
     @patch("hrp.agents.jobs.EmailNotifier")
     def test_retry_on_failure(self, mock_notifier, mock_ingest, mock_sleep, job_test_db):
-        """Job should retry on failure up to max_retries."""
+        """Job should retry on transient failures up to max_retries."""
         call_count = [0]
 
         def fail_then_succeed(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] < 3:
-                raise Exception("Temporary error")
+                # Use transient error (ConnectionError) to trigger retry
+                raise ConnectionError("Temporary network error")
             return {
                 "rows_fetched": 10,
                 "rows_inserted": 10,
@@ -401,8 +402,9 @@ class TestRetryLogic:
     @patch("hrp.agents.jobs.ingest_prices")
     @patch("hrp.agents.jobs.EmailNotifier")
     def test_max_retries_exceeded(self, mock_notifier, mock_ingest, mock_sleep, job_test_db):
-        """Job should fail after exceeding max_retries."""
-        mock_ingest.side_effect = Exception("Persistent error")
+        """Job should fail after exceeding max_retries for transient errors."""
+        # Use transient error (ConnectionError) to trigger retries
+        mock_ingest.side_effect = ConnectionError("Persistent network error")
         mock_notifier_instance = MagicMock()
         mock_notifier.return_value = mock_notifier_instance
 

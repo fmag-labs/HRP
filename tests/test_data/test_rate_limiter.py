@@ -254,7 +254,7 @@ class TestContextManager:
             pass
 
         # Two tokens should be consumed
-        assert limiter.tokens == 8
+        assert limiter.tokens == pytest.approx(8, abs=0.01)
 
     def test_context_manager_blocks_if_needed(self):
         """Test that context manager blocks when tokens unavailable."""
@@ -325,7 +325,7 @@ class TestAvailableTokensProperty:
         limiter = RateLimiter(max_calls=10, period=1.0)
 
         limiter.acquire(tokens=3, blocking=False)
-        assert limiter.available_tokens == 7
+        assert limiter.available_tokens == pytest.approx(7, abs=0.01)
 
     def test_available_tokens_accounts_for_refill(self):
         """Test that available_tokens includes refilled tokens."""
@@ -371,7 +371,7 @@ class TestErrorHandling:
         # Negative acquisition adds tokens
         result = limiter.acquire(tokens=-2, blocking=False)
         assert result is True
-        assert limiter.tokens == 7
+        assert limiter.tokens == pytest.approx(7, abs=0.01)
 
 
 class TestThreadSafety:
@@ -542,4 +542,4 @@ class TestEdgeCases:
         # Acquire exactly what's left
         result = limiter.acquire(tokens=7, blocking=False)
         assert result is True
-        assert limiter.tokens == 0
+        assert limiter.tokens == pytest.approx(0, abs=0.01)

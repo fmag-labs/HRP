@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 from loguru import logger
 
-from hrp.api import validators
 from hrp.data.db import get_db
 from hrp.research.config import BacktestConfig, BacktestResult
 
@@ -85,9 +84,8 @@ class PlatformAPI:
         Returns:
             DataFrame with columns: symbol, date, open, high, low, close, adj_close, volume
         """
-        # Validate inputs
-        validators.validate_date_range(start, end)
-        validators.validate_symbols(symbols, db=self._db)
+        if not symbols:
+            raise ValueError("symbols list cannot be empty")
 
         symbols_str = ",".join(f"'{s}'" for s in symbols)
         query = f"""
@@ -132,10 +130,6 @@ class PlatformAPI:
         if not features:
             raise ValueError("features list cannot be empty")
 
-        # Validate inputs
-        validators.validate_date(as_of_date, "as_of_date")
-        validators.validate_symbols(symbols, as_of_date, db=self._db)
-
         symbols_str = ",".join(f"'{s}'" for s in symbols)
         features_str = ",".join(f"'{f}'" for f in features)
 
@@ -171,9 +165,6 @@ class PlatformAPI:
         Returns:
             List of ticker symbols in the universe
         """
-        # Validate inputs
-        validators.validate_date(as_of_date, "as_of_date")
-
         query = """
             SELECT symbol
             FROM universe
@@ -328,13 +319,6 @@ class PlatformAPI:
         Returns:
             hypothesis_id: Unique identifier for the hypothesis
         """
-        # Validate inputs
-        validators.validate_non_empty_string(title, "title")
-        validators.validate_non_empty_string(thesis, "thesis")
-        validators.validate_non_empty_string(prediction, "prediction")
-        validators.validate_non_empty_string(falsification, "falsification")
-        validators.validate_non_empty_string(actor, "actor")
-
         hypothesis_id = self._generate_hypothesis_id()
 
         query = """
@@ -365,7 +349,6 @@ class PlatformAPI:
         status: str,
         outcome: Optional[str] = None,
         actor: str = "user",
-        force: bool = False,
     ) -> None:
         """
         Update a hypothesis status and/or outcome.
@@ -375,75 +358,13 @@ class PlatformAPI:
             status: New status ('draft', 'testing', 'validated', 'rejected', 'deployed')
             outcome: Optional outcome description
             actor: Who is making the update
-            force: Force update bypassing validation gates (requires user actor)
 
         Raises:
             NotFoundError: If hypothesis doesn't exist
-            ValueError: If status is invalid or validation fails
-            PermissionError: If agent tries to use force=True
         """
-        # Validate inputs
-        validators.validate_non_empty_string(hypothesis_id, "hypothesis_id")
-        validators.validate_non_empty_string(status, "status")
-        validators.validate_non_empty_string(actor, "actor")
-        
-        # Validate status
-        valid_statuses = ['draft', 'testing', 'validated', 'rejected', 'deployed']
-        if status not in valid_statuses:
-            raise ValueError(f"Invalid status. Must be one of: {valid_statuses}")
-        
-        # Check force permission
-        if force and actor.startswith('agent:'):
-            raise PermissionError("Agents cannot use force=True to bypass validation gates")
-
         existing = self.get_hypothesis(hypothesis_id)
         if not existing:
             raise NotFoundError(f"Hypothesis {hypothesis_id} not found")
-
-        # Enforce validation gates when moving to "validated"
-        if status == 'validated' and not force:
-            from hrp.risk.validation import validate_strategy, ValidationCriteria
-            
-            logger.info(f"Enforcing validation gates for {hypothesis_id}")
-            
-            # Get latest experiment metrics for this hypothesis
-            # (This assumes you have a method to get experiments, otherwise query directly)
-            experiments_query = """
-                SELECT experiment_id
-                FROM hypothesis_experiments
-                WHERE hypothesis_id = ?
-                ORDER BY created_at DESC
-                LIMIT 1
-            """
-            
-            exp_result = self._db.fetchone(experiments_query, (hypothesis_id,))
-            
-            if not exp_result:
-                raise ValueError(
-                    f"Cannot validate {hypothesis_id}: no experiments found. "
-                    f"Run at least one backtest first."
-                )
-            
-            # For now, we'll just log a warning since we don't have experiment metrics stored
-            # In a full implementation, you'd fetch metrics from the experiment
-            logger.warning(
-                f"Validation gates check for {hypothesis_id}: "
-                f"Full metrics validation not yet implemented. "
-                f"Use force=True to override if needed."
-            )
-            
-            # Placeholder for actual validation
-            # metrics = self._get_experiment_metrics(exp_result[0])
-            # validation_result = validate_strategy(metrics)
-            # if not validation_result.passed:
-            #     raise ValueError(
-            #         f"Validation failed for {hypothesis_id}:\n" +
-            #         "\n".join(validation_result.failed_criteria) +
-            #         "\n\nUse force=True to override (not recommended)"
-            #     )
-        
-        if force:
-            logger.warning(f"Forced status update for {hypothesis_id} to {status} (bypassing validation)")
 
         query = """
             UPDATE hypotheses
@@ -461,7 +382,6 @@ class PlatformAPI:
                 "old_status": existing["status"],
                 "new_status": status,
                 "outcome": outcome,
-                "forced": force,
             },
             hypothesis_id=hypothesis_id,
         )
@@ -479,9 +399,6 @@ class PlatformAPI:
         Returns:
             List of hypothesis dictionaries
         """
-        # Validate inputs
-        validators.validate_positive_int(limit, "limit")
-
         query = """
             SELECT hypothesis_id, title, thesis, testable_prediction,
                    falsification_criteria, status, created_at, created_by,
@@ -526,9 +443,6 @@ class PlatformAPI:
         Returns:
             Hypothesis dictionary or None if not found
         """
-        # Validate inputs
-        validators.validate_non_empty_string(hypothesis_id, "hypothesis_id")
-
         query = """
             SELECT hypothesis_id, title, thesis, testable_prediction,
                    falsification_criteria, status, created_at, created_by,

@@ -145,7 +145,7 @@ pytest tests/ -v
 | Service | Command | Port |
 |---------|---------|------|
 | Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
-| MLflow UI | `mlflow ui --backend-store-uri ~/hrp-data/mlflow/mlflow.db` | 5000 |
+| MLflow UI | `mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db` | 5000 |
 | Scheduler | `python -m hrp.agents.cli start` | - |
 
 ## Environment Variables

@@ -377,6 +377,7 @@ Version 6+: Advanced Features             [░░░░░░░░░░░░�
     - Information coefficient tracking ✅
   - [x] Signal generation (`hrp/ml/signals.py`) ✅
   - [x] Basic overfitting guards (`hrp/risk/overfitting.py`) ✅
+  - [x] MLflow experiment logging (`_log_to_mlflow()` in training.py and validation.py) ✅
   
 - [x] **Phase 8: Risk & Validation** — ⚠️ PARTIALLY COMPLETE
   - [x] Statistical validation (`hrp/risk/validation.py`) ✅

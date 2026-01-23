@@ -135,9 +135,17 @@ def compute_features(
             )
 
         except Exception as e:
-            logger.error(f"Failed to compute features for {symbol}: {e}")
+            error_type = type(e).__name__
+            logger.error(
+                f"Failed to compute features for {symbol}: {error_type}: {e}",
+                extra={"symbol": symbol, "error_type": error_type},
+            )
             stats["symbols_failed"] += 1
-            stats["failed_symbols"].append(symbol)
+            stats["failed_symbols"].append({
+                "symbol": symbol,
+                "error": str(e),
+                "error_type": error_type,
+            })
 
     logger.info(
         f"Feature computation complete: {stats['symbols_success']}/{stats['symbols_requested']} symbols, "

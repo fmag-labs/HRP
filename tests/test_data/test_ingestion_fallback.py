@@ -369,10 +369,11 @@ class TestPriceUpsert:
         assert rows_inserted == 2
 
         # Verify data in database
+        # Schema: symbol(0), date(1), open(2), high(3), low(4), close(5), adj_close(6), volume(7), source(8), ingested_at(9)
         result = db.execute("SELECT * FROM prices WHERE symbol = 'AAPL' ORDER BY date").fetchall()
         assert len(result) == 2
-        assert result[0][2] == date(2024, 1, 1)  # date column
-        assert result[0][6] == 103.0  # close column
+        assert result[0][1] == date(2024, 1, 1)  # date column
+        assert float(result[0][5]) == 103.0  # close column
 
     def test_upsert_prices_replaces_existing_data(self, test_db):
         """Test that upsert replaces existing price data."""
@@ -411,10 +412,11 @@ class TestPriceUpsert:
         assert rows_inserted == 1
 
         # Verify only one row exists with updated data
+        # Schema: symbol(0), date(1), open(2), high(3), low(4), close(5), adj_close(6), volume(7), source(8), ingested_at(9)
         result = db.execute("SELECT * FROM prices WHERE symbol = 'AAPL'").fetchall()
         assert len(result) == 1
-        assert result[0][6] == 104.0  # Updated close price
-        assert result[0][9] == "yfinance"  # Updated source
+        assert float(result[0][5]) == 104.0  # Updated close price
+        assert result[0][8] == "yfinance"  # Updated source
 
     def test_upsert_prices_empty_dataframe(self, test_db):
         """Test that upsert handles empty DataFrame."""
@@ -572,13 +574,14 @@ class TestCorporateActionsUpsert:
         assert rows_inserted == 2
 
         # Verify data in database
+        # Schema: symbol(0), date(1), action_type(2), factor(3), source(4), ingested_at(5)
         result = db.execute(
             "SELECT * FROM corporate_actions WHERE symbol = 'AAPL' ORDER BY date"
         ).fetchall()
         assert len(result) == 2
-        assert result[0][2] == date(2024, 1, 15)
-        assert result[0][3] == "dividend"
-        assert result[1][3] == "split"
+        assert result[0][1] == date(2024, 1, 15)
+        assert result[0][2] == "dividend"
+        assert result[1][2] == "split"
 
     def test_upsert_corporate_actions_replaces_existing_data(self, test_db):
         """Test that upsert replaces existing corporate actions data."""
@@ -609,11 +612,12 @@ class TestCorporateActionsUpsert:
         assert rows_inserted == 1
 
         # Verify only one row exists with updated data
+        # Schema: symbol(0), date(1), action_type(2), factor(3), source(4), ingested_at(5)
         result = db.execute(
             "SELECT * FROM corporate_actions WHERE symbol = 'AAPL'"
         ).fetchall()
         assert len(result) == 1
-        assert result[0][4] == 0.30  # Updated factor
+        assert float(result[0][3]) == 0.30  # Updated factor
 
     def test_upsert_corporate_actions_empty_dataframe(self, test_db):
         """Test that upsert handles empty DataFrame."""

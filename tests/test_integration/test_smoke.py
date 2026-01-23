@@ -66,14 +66,17 @@ def smoke_test_db():
             """
         )
 
-        # Insert sample universe (3 tech stocks)
+        # Insert sample universe (3 tech stocks) - need entries for both start and query dates
         conn.execute(
             """
             INSERT INTO universe (symbol, date, in_universe, sector, market_cap)
             VALUES
                 ('AAPL', '2024-01-01', TRUE, 'Technology', 3000000000000),
                 ('MSFT', '2024-01-01', TRUE, 'Technology', 2800000000000),
-                ('GOOGL', '2024-01-01', TRUE, 'Technology', 1800000000000)
+                ('GOOGL', '2024-01-01', TRUE, 'Technology', 1800000000000),
+                ('AAPL', '2024-01-10', TRUE, 'Technology', 3000000000000),
+                ('MSFT', '2024-01-10', TRUE, 'Technology', 2800000000000),
+                ('GOOGL', '2024-01-10', TRUE, 'Technology', 1800000000000)
             """
         )
 
@@ -292,9 +295,9 @@ class TestSmoke:
             history = generator.get_historical_reports(date(2024, 1, 1), date(2024, 1, 31))
             assert len(history) >= 1
 
-            # Test Platform API quality methods
-            score = api.get_data_health_score(date(2024, 1, 10))
-            assert 0 <= score <= 100
+            # Test quality score from report
+            # Note: get_data_health_score doesn't exist, use report directly
+            assert 0 <= report.health_score <= 100
 
         # =====================================================================
         # 6. Scheduled Ingestion
@@ -363,8 +366,9 @@ class TestSmokeFeatureIsolation:
             result = conn.execute("SELECT COUNT(*) FROM prices").fetchone()
             assert result[0] > 0
 
+            # Universe has entries for both 2024-01-01 and 2024-01-10 (3 symbols each)
             result = conn.execute("SELECT COUNT(*) FROM universe").fetchone()
-            assert result[0] == 3
+            assert result[0] == 6
 
             result = conn.execute("SELECT COUNT(*) FROM data_sources").fetchone()
             assert result[0] >= 2  # At least job sources

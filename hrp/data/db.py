@@ -2,9 +2,27 @@
 DuckDB connection management for HRP.
 
 Provides thread-safe connection pooling and query helpers.
-"""
 
-from __future__ import annotations
+Read-Only Support:
+    The connection manager supports read-only connections via `get_db(read_only=True)`.
+    However, DuckDB does not allow mixing read-only and read-write connections
+    to the same database file within the same process. Use read-only mode:
+    - In separate processes/scripts that only need to read data
+    - To prevent accidental writes in read-only analysis scripts
+    - Note: Read-only connections still use file-level locking and won't allow
+      concurrent access from multiple processes (DuckDB limitation)
+
+    Example:
+        # Default: read-write (for normal operations)
+        db = get_db()
+        with db.connection() as conn:
+            conn.execute("INSERT INTO prices VALUES (...)")
+
+        # Read-only (use in separate process/script)
+        db_ro = get_db(read_only=True)
+        with db_ro.connection() as conn:
+            result = conn.execute("SELECT * FROM prices").fetchall()
+"""
 
 import os
 import threading
@@ -58,9 +76,12 @@ class ConnectionPool:
 
     Manages a pool of reusable connections with configurable max size.
     Connections are created on-demand up to max_size and reused when released.
+    Supports both read-write and read-only connections.
     """
 
-    def __init__(self, db_path: Union[str, Path], max_size: int = 5, idle_timeout: int = 300):
+    def __init__(
+        self, db_path: Union[str, Path], max_size: int = 5, idle_timeout: int = 300, read_only: bool = False
+    ):
         """
         Initialize connection pool.
 
@@ -68,15 +89,18 @@ class ConnectionPool:
             db_path: Path to the DuckDB database file
             max_size: Maximum number of connections in the pool
             idle_timeout: Seconds before idle connections are closed (default: 300)
+            read_only: If True, all connections will be read-only (default: False)
         """
         self.db_path = str(db_path)
         self.max_size = max_size
         self.idle_timeout = idle_timeout
+        self.read_only = read_only
         self._pool: List[duckdb.DuckDBPyConnection] = []
         self._in_use: Set[duckdb.DuckDBPyConnection] = set()
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
-        logger.debug(f"ConnectionPool initialized: {self.db_path}, max_size={self.max_size}")
+        mode_str = "read-only" if read_only else "read-write"
+        logger.debug(f"ConnectionPool initialized: {self.db_path}, max_size={self.max_size}, mode={mode_str}")
 
     def _is_connection_valid(self, conn: duckdb.DuckDBPyConnection) -> bool:
         """
@@ -132,9 +156,13 @@ class ConnectionPool:
 
             # Create new connection if we didn't get a valid one from pool
             if conn is None:
-                conn = duckdb.connect(self.db_path)
+                if self.read_only:
+                    conn = duckdb.connect(self.db_path, read_only=True)
+                else:
+                    conn = duckdb.connect(self.db_path)
+                mode_str = "read-only" if self.read_only else "read-write"
                 logger.debug(
-                    f"Created new connection to {self.db_path} "
+                    f"Created new {mode_str} connection to {self.db_path} "
                     f"(in use: {len(self._in_use) + 1}/{self.max_size})"
                 )
 
@@ -271,41 +299,53 @@ class DatabaseManager:
     _instance = None
     _lock = threading.Lock()
 
-    def __new__(cls, db_path: Union[Path, str, None] = None, max_connections: int = 5):
+    def __new__(cls, db_path: Union[Path, str, None] = None, max_connections: int = 5, read_only: bool = False):
         """Singleton pattern for database manager."""
-        if cls._instance is None:
+        # Create separate instances for read-only vs read-write
+        instance_key = (db_path, read_only)
+        if not hasattr(cls, "_instances"):
+            cls._instances = {}
+        
+        if instance_key not in cls._instances:
             with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
+                if instance_key not in cls._instances:
+                    instance = super().__new__(cls)
+                    instance._initialized = False
+                    cls._instances[instance_key] = instance
+        return cls._instances[instance_key]
 
-    def __init__(self, db_path: Union[Path, str, None] = None, max_connections: int = 5):
+    def __init__(self, db_path: Union[Path, str, None] = None, max_connections: int = 5, read_only: bool = False):
         """
         Initialize the database manager with connection pooling.
 
         Creates a ConnectionPool with the specified configuration. Due to singleton
-        pattern, only the first call's parameters are used; subsequent calls return
-        the existing instance.
+        pattern, separate instances are created for read-only and read-write modes.
 
         Args:
             db_path: Path to DuckDB database file. Defaults to ~/hrp-data/hrp.duckdb
             max_connections: Maximum number of connections in the pool (default: 5)
+            read_only: If True, creates a read-only connection manager (default: False)
         """
         if self._initialized:
             return
 
         self.db_path = Path(db_path) if db_path else self._get_db_path()
         self.max_connections = max_connections
+        self.read_only = read_only
         self._initialized = True
 
-        # Ensure data directory exists
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure data directory exists (only for read-write)
+        if not read_only:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Initialize connection pool
-        self._pool = ConnectionPool(self.db_path, max_size=self.max_connections)
+        # Initialize connection pool (single mode: read-only OR read-write, not both)
+        self._pool = ConnectionPool(self.db_path, max_size=self.max_connections, read_only=read_only)
 
-        logger.info(f"Database manager initialized: {self.db_path} (max_connections={self.max_connections})")
+        mode_str = "read-only" if read_only else "read-write"
+        logger.info(
+            f"Database manager initialized: {self.db_path} "
+            f"(mode: {mode_str}, max_connections: {self.max_connections})"
+        )
 
     def _get_db_path(self) -> Path:
         """Get database path from environment or default."""
@@ -324,10 +364,17 @@ class DatabaseManager:
         Blocks if all connections are in use until one becomes available.
 
         Yields:
-            A DuckDB connection from the pool
+            A DuckDB connection from the pool (read-only or read-write based on manager configuration)
 
         Example:
+            # Read-write connection (for INSERT, UPDATE, DELETE)
+            db = get_db()  # Default is read-write
             with db.connection() as conn:
+                conn.execute("INSERT INTO prices VALUES (...)")
+
+            # Read-only connection (for SELECT queries)
+            db_ro = get_db(read_only=True)
+            with db_ro.connection() as conn:
                 result = conn.execute("SELECT * FROM prices").fetchall()
         """
         with self._pool.connection() as conn:
@@ -354,8 +401,9 @@ class DatabaseManager:
 
         Note:
             For better performance with large result sets, use fetchdf() instead.
+            For write operations, ensure DatabaseManager is initialized with read_only=False.
         """
-        with self._pool.connection() as conn:
+        with self.connection() as conn:
             if params:
                 result = conn.execute(query, params)
             else:
@@ -378,7 +426,7 @@ class DatabaseManager:
         Returns:
             List of tuples containing query results
         """
-        with self._pool.connection() as conn:
+        with self.connection() as conn:
             if params:
                 result = conn.execute(query, params).fetchall()
             else:
@@ -399,7 +447,7 @@ class DatabaseManager:
         Returns:
             Single tuple containing query result, or None if no results
         """
-        with self._pool.connection() as conn:
+        with self.connection() as conn:
             if params:
                 result = conn.execute(query, params).fetchone()
             else:
@@ -421,7 +469,7 @@ class DatabaseManager:
         Returns:
             pandas DataFrame containing query results
         """
-        with self._pool.connection() as conn:
+        with self.connection() as conn:
             if params:
                 result = conn.execute(query, params).df()
             else:
@@ -437,30 +485,46 @@ class DatabaseManager:
         """
         if hasattr(self, "_pool"):
             self._pool.close_all()
-            logger.debug("Closed all pooled connections")
+            mode_str = "read-only" if self.read_only else "read-write"
+            logger.debug(f"Closed all {mode_str} pooled connections")
 
     @classmethod
     def reset(cls) -> None:
-        """Reset the singleton instance (useful for testing)."""
+        """Reset all singleton instances (useful for testing)."""
         with cls._lock:
-            if cls._instance is not None:
-                cls._instance.close()
-            cls._instance = None
+            if hasattr(cls, "_instances"):
+                for instance in cls._instances.values():
+                    instance.close()
+                cls._instances.clear()
 
 
 # Convenience function for quick access
-def get_db(db_path: Union[Path, str, None] = None, max_connections: int = 5) -> DatabaseManager:
+def get_db(
+    db_path: Union[Path, str, None] = None, max_connections: int = 5, read_only: bool = False
+) -> DatabaseManager:
     """
     Get the database manager instance with connection pooling.
 
-    Returns the singleton DatabaseManager instance. If first call, initializes
-    a new instance with the specified connection pool configuration.
+    Returns a DatabaseManager instance (singleton per configuration). Separate instances
+    are created for read-only and read-write modes.
 
     Args:
         db_path: Path to DuckDB database file. Defaults to ~/hrp-data/hrp.duckdb
         max_connections: Maximum number of connections in the pool (default: 5)
+        read_only: If True, returns a read-only database manager (default: False)
 
     Returns:
         DatabaseManager instance with connection pooling enabled
+
+    Example:
+        # Read-write manager (default, for writes)
+        db = get_db()
+        with db.connection() as conn:
+            conn.execute("INSERT INTO prices VALUES (...)")
+
+        # Read-only manager (for reads, prevents accidental writes)
+        db_ro = get_db(read_only=True)
+        with db_ro.connection() as conn:
+            result = conn.execute("SELECT * FROM prices").fetchall()
     """
-    return DatabaseManager(db_path, max_connections)
+    return DatabaseManager(db_path, max_connections, read_only)

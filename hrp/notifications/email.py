@@ -72,11 +72,11 @@ class EmailNotifier:
         self._configured = self._check_configuration()
 
         if self._configured:
-            logger.debug("EmailNotifier initialized and configured")
+            logger.info("EmailNotifier initialized and configured")
         else:
-            logger.warning(
-                "EmailNotifier initialized but not configured - "
-                "set RESEND_API_KEY and NOTIFICATION_EMAIL to enable notifications"
+            logger.error(
+                "EmailNotifier NOT configured - failure alerts will NOT be sent. "
+                "Set RESEND_API_KEY and NOTIFICATION_EMAIL environment variables."
             )
 
     def _check_configuration(self) -> bool:
