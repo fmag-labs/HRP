@@ -193,6 +193,79 @@ def get_recent_data_freshness() -> dict[str, Any]:
     return {"last_date": None, "days_stale": None, "is_fresh": False}
 
 
+@st.cache_data(ttl=300)
+def get_last_successful_ingestion() -> dict[str, Any]:
+    """Get the most recent successful ingestion run."""
+    db = get_db()
+    query = """
+        SELECT
+            log_id,
+            source_id,
+            started_at,
+            completed_at,
+            records_fetched,
+            records_inserted
+        FROM ingestion_log
+        WHERE LOWER(status) = 'success'
+        ORDER BY completed_at DESC
+        LIMIT 1
+    """
+    try:
+        result = db.fetchone(query)
+        if result:
+            return {
+                "log_id": result[0],
+                "source_id": result[1],
+                "started_at": result[2],
+                "completed_at": result[3],
+                "records_fetched": result[4],
+                "records_inserted": result[5],
+            }
+    except Exception:
+        pass
+    return {}
+
+
+@st.cache_data(ttl=300)
+def get_ingestion_summary() -> dict[str, Any]:
+    """Get summary statistics for ingestion jobs."""
+    db = get_db()
+    query = """
+        SELECT
+            COUNT(*) as total_runs,
+            SUM(CASE WHEN LOWER(status) = 'success' THEN 1 ELSE 0 END) as successful_runs,
+            SUM(CASE WHEN LOWER(status) = 'failed' THEN 1 ELSE 0 END) as failed_runs,
+            SUM(records_inserted) as total_records_inserted,
+            MAX(completed_at) as last_run
+        FROM ingestion_log
+    """
+    try:
+        result = db.fetchone(query)
+        if result:
+            total = result[0] or 0
+            success = result[1] or 0
+            failed = result[2] or 0
+            success_rate = (success / total * 100) if total > 0 else 0
+            return {
+                "total_runs": total,
+                "successful_runs": success,
+                "failed_runs": failed,
+                "success_rate": success_rate,
+                "total_records_inserted": result[3] or 0,
+                "last_run": result[4],
+            }
+    except Exception:
+        pass
+    return {
+        "total_runs": 0,
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "success_rate": 0,
+        "total_records_inserted": 0,
+        "last_run": None,
+    }
+
+
 def render() -> None:
     """Render the Data Health page."""
     st.title("Data Health")
@@ -247,6 +320,88 @@ def render() -> None:
     # -------------------------------------------------------------------------
     # Ingestion Status
     # -------------------------------------------------------------------------
+    st.subheader("Ingestion Status")
+
+    # Get ingestion metrics
+    ingestion_summary = get_ingestion_summary()
+    last_successful = get_last_successful_ingestion()
+
+    # Display ingestion metrics
+    col_ing1, col_ing2, col_ing3, col_ing4 = st.columns(4)
+
+    with col_ing1:
+        st.metric(
+            label="Total Runs",
+            value=f"{ingestion_summary['total_runs']:,}",
+            delta=None
+        )
+
+    with col_ing2:
+        success_rate = ingestion_summary["success_rate"]
+        st.metric(
+            label="Success Rate",
+            value=f"{success_rate:.1f}%",
+            delta=None
+        )
+
+    with col_ing3:
+        st.metric(
+            label="Records Inserted",
+            value=f"{ingestion_summary['total_records_inserted']:,}",
+            delta=None
+        )
+
+    with col_ing4:
+        if last_successful:
+            completed_at = last_successful.get("completed_at")
+            if completed_at:
+                # Parse datetime if it's a string
+                if isinstance(completed_at, str):
+                    try:
+                        completed_dt = datetime.fromisoformat(completed_at)
+                    except ValueError:
+                        completed_dt = datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S")
+                else:
+                    completed_dt = completed_at
+
+                # Calculate time ago
+                time_diff = datetime.now() - completed_dt
+                if time_diff.days > 0:
+                    time_ago = f"{time_diff.days}d ago"
+                elif time_diff.seconds >= 3600:
+                    hours = time_diff.seconds // 3600
+                    time_ago = f"{hours}h ago"
+                elif time_diff.seconds >= 60:
+                    minutes = time_diff.seconds // 60
+                    time_ago = f"{minutes}m ago"
+                else:
+                    time_ago = "Just now"
+
+                st.metric(
+                    label="Last Success",
+                    value=time_ago,
+                    delta=None
+                )
+            else:
+                st.metric(label="Last Success", value="Unknown")
+        else:
+            st.metric(label="Last Success", value="Never")
+
+    # Display last successful run details
+    if last_successful:
+        st.markdown("**Last Successful Run:**")
+        col_det1, col_det2, col_det3 = st.columns(3)
+
+        with col_det1:
+            st.text(f"Source: {last_successful.get('source_id', 'N/A')}")
+        with col_det2:
+            st.text(f"Fetched: {last_successful.get('records_fetched', 0):,}")
+        with col_det3:
+            st.text(f"Inserted: {last_successful.get('records_inserted', 0):,}")
+
+    st.markdown("---")
+
+    # Recent ingestion jobs table
     st.subheader("Recent Ingestion Jobs")
 
     ingestion_logs = get_ingestion_logs(limit=10)
@@ -257,19 +412,19 @@ def render() -> None:
         # Format the dataframe for display
         display_df = ingestion_logs.copy()
 
-        # Add status indicator
+        # Add status indicator with emoji/color
         def format_status(status: str | None) -> str:
             if status is None:
-                return "Unknown"
+                return "❓ Unknown"
             status_lower = str(status).lower()
             if status_lower == "success":
-                return "Success"
+                return "✅ Success"
             elif status_lower == "failed":
-                return "Failed"
+                return "❌ Failed"
             elif status_lower == "running":
-                return "Running"
+                return "🔄 Running"
             elif status_lower == "partial":
-                return "Partial"
+                return "⚠️ Partial"
             return str(status)
 
         if "status" in display_df.columns:

@@ -2,6 +2,7 @@
 Comprehensive tests for the HRP Platform API.
 
 Tests cover all major functionality:
+- Input validation (symbols, dates, strings, numeric parameters)
 - Initialization
 - Health check
 - Data operations (universe, prices, features)
@@ -14,7 +15,7 @@ Tests cover all major functionality:
 import json
 import os
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -85,6 +86,9 @@ def populated_db(test_api):
             ('MSFT', '2023-01-01', TRUE, 'Technology', 2400000000000),
             ('GOOGL', '2023-01-01', TRUE, 'Technology', 1500000000000),
             ('JPM', '2023-01-01', FALSE, 'Financials', 400000000000),
+            ('AAPL', '2023-01-05', TRUE, 'Technology', 2500000000000),
+            ('MSFT', '2023-01-05', TRUE, 'Technology', 2400000000000),
+            ('GOOGL', '2023-01-05', TRUE, 'Technology', 1500000000000),
             ('AAPL', '2023-06-01', TRUE, 'Technology', 2800000000000),
             ('MSFT', '2023-06-01', TRUE, 'Technology', 2600000000000)
         """
@@ -197,6 +201,227 @@ def hypothesis_api(test_api):
 # =============================================================================
 
 
+class TestPlatformAPIValidation:
+    """Tests for input validation in Platform API methods."""
+
+    def test_get_prices_with_invalid_symbols(self, populated_db):
+        """get_prices should reject invalid symbols."""
+        with pytest.raises(ValueError, match="Invalid symbols not found in universe: INVALID"):
+            populated_db.get_prices(
+                symbols=['INVALID'],
+                start=date(2023, 1, 1),
+                end=date(2023, 1, 10)
+            )
+
+    def test_get_prices_with_future_dates(self, populated_db):
+        """get_prices should reject future dates."""
+        future_date = date.today() + timedelta(days=1)
+        with pytest.raises(ValueError, match="date cannot be in the future"):
+            populated_db.get_prices(
+                symbols=['AAPL'],
+                start=future_date,
+                end=future_date
+            )
+
+    def test_get_prices_with_invalid_date_range(self, populated_db):
+        """get_prices should reject end_date before start_date."""
+        with pytest.raises(ValueError, match="start date must be <= end date"):
+            populated_db.get_prices(
+                symbols=['AAPL'],
+                start=date(2023, 1, 10),
+                end=date(2023, 1, 1)
+            )
+
+    def test_get_features_with_invalid_symbols(self, populated_db):
+        """get_features should reject invalid symbols."""
+        with pytest.raises(ValueError, match="Invalid symbols not in universe"):
+            populated_db.get_features(
+                symbols=['INVALID'],
+                features=['momentum_20d'],
+                as_of_date=date(2023, 1, 5)
+            )
+
+    def test_get_features_with_empty_symbols(self, populated_db):
+        """get_features should reject empty symbols list."""
+        with pytest.raises(ValueError, match="symbols list cannot be empty"):
+            populated_db.get_features(
+                symbols=[],
+                features=['momentum_20d'],
+                as_of_date=date(2023, 1, 5)
+            )
+
+    def test_get_features_with_empty_features(self, populated_db):
+        """get_features should reject empty features list."""
+        with pytest.raises(ValueError, match="features list cannot be empty"):
+            populated_db.get_features(
+                symbols=['AAPL'],
+                features=[],
+                as_of_date=date(2023, 1, 5)
+            )
+
+    def test_get_features_with_future_date(self, populated_db):
+        """get_features should reject future dates."""
+        future_date = date.today() + timedelta(days=1)
+        with pytest.raises(ValueError, match="as_of_date cannot be in the future"):
+            populated_db.get_features(
+                symbols=['AAPL'],
+                features=['momentum_20d'],
+                as_of_date=future_date
+            )
+
+    def test_get_universe_with_future_date(self, populated_db):
+        """get_universe should reject future dates."""
+        future_date = date.today() + timedelta(days=1)
+        with pytest.raises(ValueError, match="as_of_date cannot be in the future"):
+            populated_db.get_universe(as_of_date=future_date)
+
+    def test_create_hypothesis_with_empty_title(self, test_api):
+        """create_hypothesis should reject empty title."""
+        with pytest.raises(ValueError, match="title cannot be empty"):
+            test_api.create_hypothesis(
+                title="",
+                thesis="Some thesis",
+                prediction="Some prediction",
+                falsification="Some falsification",
+                actor="user"
+            )
+
+    def test_create_hypothesis_with_empty_thesis(self, test_api):
+        """create_hypothesis should reject empty thesis."""
+        with pytest.raises(ValueError, match="thesis cannot be empty"):
+            test_api.create_hypothesis(
+                title="Test Title",
+                thesis="",
+                prediction="Some prediction",
+                falsification="Some falsification",
+                actor="user"
+            )
+
+    def test_create_hypothesis_with_empty_prediction(self, test_api):
+        """create_hypothesis should reject empty prediction."""
+        with pytest.raises(ValueError, match="prediction cannot be empty"):
+            test_api.create_hypothesis(
+                title="Test Title",
+                thesis="Some thesis",
+                prediction="",
+                falsification="Some falsification",
+                actor="user"
+            )
+
+    def test_create_hypothesis_with_empty_falsification(self, test_api):
+        """create_hypothesis should reject empty falsification."""
+        with pytest.raises(ValueError, match="falsification cannot be empty"):
+            test_api.create_hypothesis(
+                title="Test Title",
+                thesis="Some thesis",
+                prediction="Some prediction",
+                falsification="",
+                actor="user"
+            )
+
+    def test_create_hypothesis_with_empty_actor(self, test_api):
+        """create_hypothesis should reject empty actor."""
+        with pytest.raises(ValueError, match="actor cannot be empty"):
+            test_api.create_hypothesis(
+                title="Test Title",
+                thesis="Some thesis",
+                prediction="Some prediction",
+                falsification="Some falsification",
+                actor=""
+            )
+
+    def test_create_hypothesis_with_whitespace_only_strings(self, test_api):
+        """create_hypothesis should reject whitespace-only strings."""
+        with pytest.raises(ValueError, match="title cannot be empty"):
+            test_api.create_hypothesis(
+                title="   ",
+                thesis="Some thesis",
+                prediction="Some prediction",
+                falsification="Some falsification",
+                actor="user"
+            )
+
+    def test_update_hypothesis_with_empty_hypothesis_id(self, hypothesis_api):
+        """update_hypothesis should reject empty hypothesis_id."""
+        api, hyp_ids = hypothesis_api
+        with pytest.raises(ValueError, match="hypothesis_id cannot be empty"):
+            api.update_hypothesis(
+                hypothesis_id="",
+                status="testing",
+                actor="user"
+            )
+
+    def test_update_hypothesis_with_empty_status(self, hypothesis_api):
+        """update_hypothesis should reject empty status."""
+        api, hyp_ids = hypothesis_api
+        with pytest.raises(ValueError, match="status cannot be empty"):
+            api.update_hypothesis(
+                hypothesis_id=hyp_ids[0],
+                status="",
+                actor="user"
+            )
+
+    def test_update_hypothesis_with_empty_actor(self, hypothesis_api):
+        """update_hypothesis should reject empty actor."""
+        api, hyp_ids = hypothesis_api
+        with pytest.raises(ValueError, match="actor cannot be empty"):
+            api.update_hypothesis(
+                hypothesis_id=hyp_ids[0],
+                status="testing",
+                actor=""
+            )
+
+    def test_list_hypotheses_with_invalid_limit(self, test_api):
+        """list_hypotheses should reject non-positive limit."""
+        with pytest.raises(ValueError, match="limit must be positive"):
+            test_api.list_hypotheses(limit=0)
+
+        with pytest.raises(ValueError, match="limit must be positive"):
+            test_api.list_hypotheses(limit=-5)
+
+    def test_get_hypothesis_with_empty_id(self, test_api):
+        """get_hypothesis should reject empty hypothesis_id."""
+        with pytest.raises(ValueError, match="hypothesis_id cannot be empty"):
+            test_api.get_hypothesis("")
+
+    def test_mixed_valid_invalid_symbols(self, populated_db):
+        """Mix of valid and invalid symbols should raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid symbols not found in universe"):
+            populated_db.get_prices(
+                symbols=['AAPL', 'INVALID1', 'INVALID2'],
+                start=date(2023, 1, 1),
+                end=date(2023, 1, 10)
+            )
+
+    def test_excluded_symbol_validation(self, populated_db):
+        """Symbols explicitly excluded from universe should be rejected."""
+        # JPM has in_universe = FALSE in the test data
+        with pytest.raises(ValueError, match="Invalid symbols not found in universe: JPM"):
+            populated_db.get_prices(
+                symbols=['JPM'],
+                start=date(2023, 1, 1),
+                end=date(2023, 1, 10)
+            )
+
+    def test_symbol_not_in_universe_at_specific_date(self, populated_db):
+        """Symbols not in universe at specific date should be rejected."""
+        # Insert TSLA only for 2023-06-01
+        populated_db._db.execute(
+            """
+            INSERT INTO universe (symbol, date, in_universe, sector, market_cap)
+            VALUES ('TSLA', '2023-06-01', TRUE, 'Consumer Discretionary', 800000000000)
+            """
+        )
+
+        # TSLA should not be valid for 2023-01-05
+        with pytest.raises(ValueError, match="Invalid symbols not in universe as of 2023-01-05: TSLA"):
+            populated_db.get_features(
+                symbols=['TSLA'],
+                features=['momentum_20d'],
+                as_of_date=date(2023, 1, 5)
+            )
+
+
 class TestPlatformAPIInit:
     """Tests for PlatformAPI initialization."""
 
@@ -303,6 +528,13 @@ class TestPlatformAPIPrices:
 
     def test_get_prices_no_data(self, test_api):
         """Test getting prices when no data exists."""
+        # Add symbol to universe so validation passes
+        test_api._db.execute(
+            """
+            INSERT INTO universe (symbol, date, in_universe, sector, market_cap)
+            VALUES ('AAPL', '2023-01-01', TRUE, 'Technology', 2500000000000)
+            """
+        )
         result = test_api.get_prices(["AAPL"], date(2023, 1, 1), date(2023, 1, 10))
         assert isinstance(result, pd.DataFrame)
         assert result.empty
@@ -370,6 +602,13 @@ class TestPlatformAPIFeatures:
 
     def test_get_features_no_data(self, test_api):
         """Test getting features when no data exists."""
+        # Add symbol to universe so validation passes
+        test_api._db.execute(
+            """
+            INSERT INTO universe (symbol, date, in_universe, sector, market_cap)
+            VALUES ('AAPL', '2023-01-05', TRUE, 'Technology', 2500000000000)
+            """
+        )
         result = test_api.get_features(["AAPL"], ["momentum_20d"], date(2023, 1, 5))
         assert isinstance(result, pd.DataFrame)
         assert result.empty

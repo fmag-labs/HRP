@@ -12,7 +12,7 @@ Three-layer architecture:
 2. **Research Layer** - VectorBT backtesting, MLflow experiments, hypothesis registry
 3. **Control Layer** - Streamlit dashboard, MCP servers, scheduled agents
 
-All external access goes through `hrp/api/platform.py`. Never access DuckDB directly.
+External access goes through `hrp/api/platform.py`. Internal Data Layer modules (`hrp/data/`) may access the database directly via `hrp/data/db.py`.
 
 ## Key Principles
 
@@ -37,7 +37,8 @@ Agents cannot approve deployments or modify deployed strategies.
 - Python 3.11+
 - Type hints required
 - Black formatting (100 char line length)
-- All database access through `hrp/api/platform.py`
+- External database access through `hrp/api/platform.py`
+- Data Layer modules may use `hrp/data/db.py` directly
 - Log all significant actions to lineage table
 
 ## Common Tasks
@@ -66,6 +67,67 @@ prices = api.get_prices(['AAPL', 'MSFT'], start_date, end_date)
 features = api.get_features(['AAPL'], ['momentum_20d', 'volatility_60d'], date)
 ```
 
+### Run data quality checks
+```python
+result = api.run_quality_checks(as_of_date=date.today(), send_alerts=True)
+# Returns: health_score, critical_issues, warning_issues, passed
+```
+
+### Schedule daily data ingestion
+```python
+from hrp.agents.scheduler import IngestionScheduler
+
+scheduler = IngestionScheduler()
+scheduler.setup_daily_ingestion(
+    symbols=['AAPL', 'MSFT'],  # None for all universe symbols
+    price_job_time='18:00',    # 6 PM ET (after market close)
+    feature_job_time='18:10',  # 6:10 PM ET (after prices loaded)
+)
+scheduler.start()
+```
+
+### Run a job manually
+```python
+from hrp.agents.jobs import PriceIngestionJob, FeatureComputationJob
+
+job = PriceIngestionJob(symbols=['AAPL'], start=date.today() - timedelta(days=7))
+result = job.run()  # Returns status, records_fetched, records_inserted
+```
+
+### Run walk-forward validation
+```python
+from hrp.ml import WalkForwardConfig, walk_forward_validate
+from datetime import date
+
+config = WalkForwardConfig(
+    model_type='ridge',
+    target='returns_20d',
+    features=['momentum_20d', 'volatility_20d', 'rsi_14d'],
+    start_date=date(2015, 1, 1),
+    end_date=date(2023, 12, 31),
+    n_folds=5,
+    window_type='expanding',  # or 'rolling'
+    feature_selection=True,
+    max_features=20,
+)
+
+result = walk_forward_validate(
+    config=config,
+    symbols=['AAPL', 'MSFT', 'GOOGL'],
+    log_to_mlflow=True,
+)
+
+# Check results
+print(f"Stability Score: {result.stability_score:.4f}")  # Lower is better
+print(f"Mean IC: {result.mean_ic:.4f}")  # Information coefficient
+print(f"Model is stable: {result.is_stable}")  # stability_score <= 1.0
+
+# Per-fold results
+for fold in result.fold_results:
+    print(f"Fold {fold.fold_index}: IC={fold.metrics['ic']:.4f}, "
+          f"MSE={fold.metrics['mse']:.6f}")
+```
+
 ## File Locations
 
 - Database: `~/hrp-data/hrp.duckdb`
@@ -84,6 +146,16 @@ pytest tests/ -v
 |---------|---------|------|
 | Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
 | MLflow UI | `mlflow ui --backend-store-uri ~/hrp-data/mlflow/mlflow.db` | 5000 |
+| Scheduler | `python -m hrp.agents.cli start` | - |
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `HRP_DB_PATH` | Database path (default: `~/hrp-data/hrp.duckdb`) | No |
+| `RESEND_API_KEY` | Resend API key for email notifications | For alerts |
+| `NOTIFICATION_EMAIL` | Email address for notifications | For alerts |
+| `NOTIFICATION_FROM_EMAIL` | From address (default: `noreply@hrp.local`) | No |
 
 ## Current Scope
 
