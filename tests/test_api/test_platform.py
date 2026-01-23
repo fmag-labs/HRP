@@ -1439,3 +1439,281 @@ class TestPlatformAPICalendar:
         days = test_api.get_trading_days(date(2022, 7, 5), date(2022, 7, 5))
         assert len(days) == 1
         assert days[0].date() == date(2022, 7, 5)
+
+
+class TestPlatformAPICorporateActions:
+    """Tests for corporate actions data operations."""
+
+    def test_get_corporate_actions_empty_symbols_raises(self, test_api):
+        """get_corporate_actions should reject empty symbols list."""
+        with pytest.raises(ValueError, match="symbols list cannot be empty"):
+            test_api.get_corporate_actions([], date(2023, 1, 1), date(2023, 12, 31))
+
+    def test_get_corporate_actions_no_data(self, populated_db):
+        """get_corporate_actions returns empty DataFrame when no actions exist."""
+        result = populated_db.get_corporate_actions(
+            ["AAPL"], date(2023, 1, 1), date(2023, 1, 10)
+        )
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+
+    def test_get_corporate_actions_with_data(self, populated_db):
+        """get_corporate_actions returns data when actions exist."""
+        # Insert a corporate action
+        populated_db._db.execute(
+            """
+            INSERT INTO corporate_actions (symbol, date, action_type, factor, source)
+            VALUES ('AAPL', '2023-01-05', 'split', 2.0, 'test')
+            """
+        )
+
+        result = populated_db.get_corporate_actions(
+            ["AAPL"], date(2023, 1, 1), date(2023, 1, 10)
+        )
+        assert len(result) == 1
+        assert result.iloc[0]["symbol"] == "AAPL"
+        assert result.iloc[0]["action_type"] == "split"
+        assert result.iloc[0]["factor"] == 2.0
+
+    def test_get_corporate_actions_date_range_filter(self, populated_db):
+        """get_corporate_actions filters by date range."""
+        # Insert actions on different dates
+        populated_db._db.execute(
+            """
+            INSERT INTO corporate_actions (symbol, date, action_type, factor, source)
+            VALUES
+                ('AAPL', '2023-01-05', 'split', 2.0, 'test'),
+                ('AAPL', '2023-06-15', 'dividend', 0.23, 'test')
+            """
+        )
+
+        result = populated_db.get_corporate_actions(
+            ["AAPL"], date(2023, 1, 1), date(2023, 1, 31)
+        )
+        assert len(result) == 1
+        assert result.iloc[0]["action_type"] == "split"
+
+    def test_get_corporate_actions_returns_all_columns(self, populated_db):
+        """get_corporate_actions returns all expected columns."""
+        populated_db._db.execute(
+            """
+            INSERT INTO corporate_actions (symbol, date, action_type, factor, source)
+            VALUES ('AAPL', '2023-01-05', 'split', 2.0, 'test')
+            """
+        )
+
+        result = populated_db.get_corporate_actions(
+            ["AAPL"], date(2023, 1, 1), date(2023, 1, 10)
+        )
+        expected_columns = ["symbol", "date", "action_type", "factor", "source"]
+        for col in expected_columns:
+            assert col in result.columns
+
+
+class TestPlatformAPISplitAdjustment:
+    """Tests for price split adjustment."""
+
+    def test_adjust_empty_dataframe(self, test_api):
+        """adjust_prices_for_splits handles empty DataFrame."""
+        empty_df = pd.DataFrame(columns=["symbol", "date", "close"])
+        result = test_api.adjust_prices_for_splits(empty_df)
+        assert "split_adjusted_close" in result.columns
+
+    def test_adjust_no_splits(self, populated_db):
+        """adjust_prices_for_splits returns unadjusted when no splits."""
+        prices = populated_db.get_prices(["AAPL"], date(2023, 1, 1), date(2023, 1, 10))
+        result = populated_db.adjust_prices_for_splits(prices)
+
+        assert "split_adjusted_close" in result.columns
+        # With no splits, adjusted should equal close
+        pd.testing.assert_series_equal(
+            result["split_adjusted_close"],
+            result["close"],
+            check_names=False,
+        )
+
+    def test_adjust_single_split(self, populated_db):
+        """adjust_prices_for_splits applies single split correctly."""
+        # Insert a 2:1 split on Jan 5
+        populated_db._db.execute(
+            """
+            INSERT INTO corporate_actions (symbol, date, action_type, factor, source)
+            VALUES ('AAPL', '2023-01-05', 'split', 2.0, 'test')
+            """
+        )
+
+        prices = populated_db.get_prices(["AAPL"], date(2023, 1, 1), date(2023, 1, 10))
+        result = populated_db.adjust_prices_for_splits(prices)
+
+        # Prices before split should be multiplied by factor
+        before_split = result[result["date"] < pd.Timestamp("2023-01-05")]
+        after_split = result[result["date"] >= pd.Timestamp("2023-01-05")]
+
+        if not before_split.empty and not after_split.empty:
+            # Before split: adjusted = close * 2
+            for _, row in before_split.iterrows():
+                assert row["split_adjusted_close"] == pytest.approx(row["close"] * 2.0)
+
+            # After split: adjusted = close (unchanged)
+            for _, row in after_split.iterrows():
+                assert row["split_adjusted_close"] == pytest.approx(row["close"])
+
+    def test_adjust_multiple_splits_same_symbol(self, populated_db):
+        """adjust_prices_for_splits handles multiple splits for same symbol."""
+        # Insert two splits
+        populated_db._db.execute(
+            """
+            INSERT INTO corporate_actions (symbol, date, action_type, factor, source)
+            VALUES
+                ('AAPL', '2023-01-03', 'split', 2.0, 'test'),
+                ('AAPL', '2023-01-06', 'split', 3.0, 'test')
+            """
+        )
+
+        prices = populated_db.get_prices(["AAPL"], date(2023, 1, 1), date(2023, 1, 10))
+        result = populated_db.adjust_prices_for_splits(prices)
+
+        # Prices before first split should have both factors applied (2 * 3 = 6)
+        before_first = result[result["date"] < pd.Timestamp("2023-01-03")]
+        if not before_first.empty:
+            for _, row in before_first.iterrows():
+                assert row["split_adjusted_close"] == pytest.approx(row["close"] * 6.0)
+
+    def test_adjust_preserves_original_columns(self, populated_db):
+        """adjust_prices_for_splits preserves all original columns."""
+        prices = populated_db.get_prices(["AAPL"], date(2023, 1, 1), date(2023, 1, 10))
+        original_columns = set(prices.columns)
+
+        result = populated_db.adjust_prices_for_splits(prices)
+
+        for col in original_columns:
+            assert col in result.columns
+
+
+class TestPlatformAPIBacktest:
+    """Tests for backtest operations with mocked dependencies."""
+
+    @patch("hrp.research.mlflow_utils.log_backtest")
+    @patch("hrp.research.backtest.run_backtest")
+    @patch("hrp.research.backtest.get_price_data")
+    @patch("hrp.research.backtest.generate_momentum_signals")
+    def test_run_backtest_success(
+        self, mock_signals, mock_prices, mock_backtest, mock_log, test_api
+    ):
+        """run_backtest completes successfully with mocked dependencies."""
+        from hrp.research.config import BacktestConfig, BacktestResult
+
+        # Setup mocks
+        mock_prices.return_value = pd.DataFrame({
+            "symbol": ["AAPL"] * 10,
+            "date": pd.date_range("2023-01-01", periods=10),
+            "close": [100 + i for i in range(10)],
+        })
+        mock_signals.return_value = pd.DataFrame({
+            "AAPL": [1] * 10,
+        }, index=pd.date_range("2023-01-01", periods=10))
+        mock_backtest.return_value = BacktestResult(
+            config=BacktestConfig(symbols=["AAPL"]),
+            metrics={"sharpe_ratio": 1.5, "total_return": 0.25},
+            equity_curve=pd.Series([100, 105, 110]),
+            trades=pd.DataFrame(),
+        )
+        mock_log.return_value = "run-123"
+
+        config = BacktestConfig(
+            symbols=["AAPL"],
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 12, 31),
+        )
+
+        result = test_api.run_backtest(config)
+
+        assert result == "run-123"
+        mock_prices.assert_called_once()
+        mock_backtest.assert_called_once()
+        mock_log.assert_called_once()
+
+    @patch("hrp.research.mlflow_utils.log_backtest")
+    @patch("hrp.research.backtest.run_backtest")
+    @patch("hrp.research.backtest.get_price_data")
+    def test_run_backtest_with_custom_signals(
+        self, mock_prices, mock_backtest, mock_log, test_api
+    ):
+        """run_backtest uses provided signals instead of generating."""
+        from hrp.research.config import BacktestConfig, BacktestResult
+
+        mock_prices.return_value = pd.DataFrame({
+            "symbol": ["AAPL"] * 10,
+            "date": pd.date_range("2023-01-01", periods=10),
+            "close": [100 + i for i in range(10)],
+        })
+        mock_backtest.return_value = BacktestResult(
+            config=BacktestConfig(symbols=["AAPL"]),
+            metrics={"sharpe_ratio": 1.2},
+            equity_curve=pd.Series([100, 102]),
+            trades=pd.DataFrame(),
+        )
+        mock_log.return_value = "run-456"
+
+        config = BacktestConfig(symbols=["AAPL"], start_date=date(2023, 1, 1), end_date=date(2023, 12, 31))
+        custom_signals = pd.DataFrame({"AAPL": [0, 1, 1, 0]})
+
+        result = test_api.run_backtest(config, signals=custom_signals)
+
+        assert result == "run-456"
+
+    @patch("hrp.research.mlflow_utils.log_backtest")
+    @patch("hrp.research.backtest.run_backtest")
+    @patch("hrp.research.backtest.get_price_data")
+    @patch("hrp.research.backtest.generate_momentum_signals")
+    def test_run_backtest_links_hypothesis(
+        self, mock_signals, mock_prices, mock_backtest, mock_log, test_api
+    ):
+        """run_backtest links experiment to hypothesis when provided."""
+        from hrp.research.config import BacktestConfig, BacktestResult
+
+        mock_prices.return_value = pd.DataFrame()
+        mock_signals.return_value = pd.DataFrame()
+        mock_backtest.return_value = BacktestResult(
+            config=BacktestConfig(), metrics={}, equity_curve=pd.Series(), trades=pd.DataFrame()
+        )
+        mock_log.return_value = "run-789"
+
+        # Create a hypothesis first
+        hyp_id = test_api.create_hypothesis(
+            title="Test", thesis="Test", prediction="Test", falsification="Test", actor="user"
+        )
+
+        config = BacktestConfig(symbols=["AAPL"], start_date=date(2023, 1, 1), end_date=date(2023, 12, 31))
+        test_api.run_backtest(config, hypothesis_id=hyp_id)
+
+        # Verify experiment was linked
+        experiments = test_api.get_experiments_for_hypothesis(hyp_id)
+        assert "run-789" in experiments
+
+    @patch("hrp.research.mlflow_utils.log_backtest")
+    @patch("hrp.research.backtest.run_backtest")
+    @patch("hrp.research.backtest.get_price_data")
+    @patch("hrp.research.backtest.generate_momentum_signals")
+    def test_run_backtest_logs_lineage(
+        self, mock_signals, mock_prices, mock_backtest, mock_log, test_api
+    ):
+        """run_backtest logs event to lineage table."""
+        from hrp.research.config import BacktestConfig, BacktestResult
+
+        mock_prices.return_value = pd.DataFrame()
+        mock_signals.return_value = pd.DataFrame()
+        mock_backtest.return_value = BacktestResult(
+            config=BacktestConfig(),
+            metrics={"sharpe_ratio": 1.5, "total_return": 0.2},
+            equity_curve=pd.Series(),
+            trades=pd.DataFrame()
+        )
+        mock_log.return_value = "run-lineage-test"
+
+        config = BacktestConfig(symbols=["AAPL"], start_date=date(2023, 1, 1), end_date=date(2023, 12, 31))
+        test_api.run_backtest(config)
+
+        lineage = test_api.get_lineage(experiment_id="run-lineage-test")
+        assert len(lineage) >= 1
+        assert any(e["event_type"] == "backtest_run" for e in lineage)
