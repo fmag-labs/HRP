@@ -1268,8 +1268,8 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 
 ## Verification Checklist
 
-- [ ] All 20 validation tests pass
-- [ ] Synthetic data generators work and have tests
+- [x] All 22 validation tests pass (Task 1 - completed)
+- [x] Synthetic data generators work and have tests (Task 2 - completed)
 - [ ] Corporate actions tests pass
 - [ ] Split adjustment tests pass
 - [ ] Backtest tests pass with mocks
@@ -1277,3 +1277,9 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 - [ ] Integration test passes
 - [ ] Overall coverage >= 70%
 - [ ] No regressions in existing tests
+
+## Progress Log
+
+### 2025-01-22
+- **Task 1 completed**: Added input validation helpers and validation to `get_prices`, `get_features`, `get_universe`, `create_hypothesis`, `update_hypothesis`, `list_hypotheses`, `get_hypothesis`. Fixed test fixtures (added `symbols` table inserts). All 22 validation tests pass.
+- **Task 2 completed**: Created `tests/fixtures/` package with synthetic data generators for prices, features, corporate actions, and universe. All 12 generator tests pass.
