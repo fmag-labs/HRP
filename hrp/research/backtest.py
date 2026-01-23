@@ -26,6 +26,8 @@ def get_price_data(
     """
     Load price data from database.
 
+    Automatically filters to NYSE trading days only (excludes weekends and holidays).
+
     Args:
         symbols: List of ticker symbols
         start: Start date (inclusive)
@@ -35,6 +37,22 @@ def get_price_data(
     Returns:
         DataFrame with MultiIndex columns (symbol, field)
     """
+    from hrp.utils.calendar import get_trading_days
+
+    # Filter date range to trading days only
+    trading_days = get_trading_days(start, end)
+    if len(trading_days) == 0:
+        raise ValueError(f"No trading days found between {start} and {end}")
+
+    # Update start/end to first and last trading days
+    filtered_start = trading_days[0].date()
+    filtered_end = trading_days[-1].date()
+
+    logger.debug(
+        f"Filtered date range to {len(trading_days)} trading days: "
+        f"{filtered_start} to {filtered_end}"
+    )
+
     db = get_db()
 
     symbols_str = ",".join(f"'{s}'" for s in symbols)
@@ -47,7 +65,7 @@ def get_price_data(
         ORDER BY date, symbol
     """
 
-    df = db.fetchdf(query, (start, end))
+    df = db.fetchdf(query, (filtered_start, filtered_end))
 
     if df.empty:
         raise ValueError(f"No price data found for {symbols} from {start} to {end}")
@@ -150,6 +168,112 @@ def run_backtest(
         trades=trades if isinstance(trades, pd.DataFrame) else pd.DataFrame(),
         benchmark_metrics=benchmark_metrics,
     )
+
+
+def get_fundamentals_for_backtest(
+    symbols: list[str],
+    metrics: list[str],
+    dates: pd.DatetimeIndex,
+    db_path: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Load point-in-time fundamentals for backtest.
+
+    For each date in the backtest, gets fundamentals as they would
+    have been known on that date. This ensures no look-ahead bias
+    in backtests using fundamental data.
+
+    Args:
+        symbols: List of ticker symbols
+        metrics: List of fundamental metric names (e.g., 'revenue', 'eps')
+        dates: DatetimeIndex of backtest dates
+        db_path: Optional path to database (uses default if not provided)
+
+    Returns:
+        DataFrame with MultiIndex (date, symbol) and metric columns.
+        Each row contains the most recent fundamental values available
+        as of that date.
+
+    Example:
+        # Load fundamentals for a backtest
+        prices = get_price_data(['AAPL', 'MSFT'], start, end)
+        fundamentals = get_fundamentals_for_backtest(
+            symbols=['AAPL', 'MSFT'],
+            metrics=['revenue', 'eps', 'book_value'],
+            dates=prices.index
+        )
+
+        # Access fundamentals for a specific date
+        date_fundamentals = fundamentals.loc['2023-01-15']
+    """
+    db = get_db(db_path)
+    all_data = []
+
+    # Build query parts
+    symbols_str = ",".join(f"'{s}'" for s in symbols)
+    metrics_str = ",".join(f"'{m}'" for m in metrics)
+
+    for trade_date in dates:
+        # Convert to date if it's a Timestamp
+        as_of = trade_date.date() if hasattr(trade_date, 'date') else trade_date
+
+        # Use window function to get the most recent report for each symbol/metric
+        # where report_date <= as_of_date
+        query = f"""
+            WITH ranked_fundamentals AS (
+                SELECT
+                    symbol,
+                    metric,
+                    value,
+                    report_date,
+                    period_end,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY symbol, metric
+                        ORDER BY report_date DESC
+                    ) as rn
+                FROM fundamentals
+                WHERE symbol IN ({symbols_str})
+                  AND metric IN ({metrics_str})
+                  AND report_date <= ?
+            )
+            SELECT symbol, metric, value, report_date, period_end
+            FROM ranked_fundamentals
+            WHERE rn = 1
+            ORDER BY symbol, metric
+        """
+
+        df = db.fetchdf(query, (as_of,))
+
+        if not df.empty:
+            # Pivot to get metrics as columns
+            pivoted = df.pivot(index='symbol', columns='metric', values='value')
+            pivoted['trade_date'] = trade_date
+            all_data.append(pivoted.reset_index())
+
+    if not all_data:
+        # Return empty DataFrame with expected structure
+        logger.warning(f"No fundamentals found for {symbols} with metrics {metrics}")
+        return pd.DataFrame(
+            index=pd.MultiIndex.from_tuples([], names=['date', 'symbol']),
+            columns=metrics
+        )
+
+    # Combine all data
+    combined = pd.concat(all_data, ignore_index=True)
+
+    # Set MultiIndex (date, symbol)
+    combined = combined.set_index(['trade_date', 'symbol'])
+    combined.index = combined.index.set_names(['date', 'symbol'])
+
+    # Sort by date and symbol
+    combined = combined.sort_index()
+
+    logger.debug(
+        f"Loaded fundamentals for {len(dates)} dates, "
+        f"{len(combined.index.get_level_values('symbol').unique())} symbols"
+    )
+
+    return combined
 
 
 def generate_momentum_signals(

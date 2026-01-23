@@ -217,6 +217,87 @@ class PlatformAPI:
         logger.debug(f"Retrieved features for {len(pivoted)} symbols")
         return pivoted
 
+    def get_fundamentals_as_of(
+        self,
+        symbols: List[str],
+        metrics: List[str],
+        as_of_date: date,
+    ) -> pd.DataFrame:
+        """
+        Get fundamental metrics for symbols as of a specific date (point-in-time).
+
+        Only returns fundamentals where report_date <= as_of_date to prevent
+        look-ahead bias in backtests. For each symbol/metric combination, returns
+        the most recent fundamental available by the as_of_date.
+
+        Args:
+            symbols: List of ticker symbols
+            metrics: List of fundamental metric names (e.g., 'revenue', 'eps')
+            as_of_date: Date to get fundamentals for (only data available by this date)
+
+        Returns:
+            DataFrame with columns: symbol, metric, value, report_date, period_end
+            Returns empty DataFrame if no data is available (not an error).
+
+        Example:
+            # Get fundamentals as they would have been known on 2023-01-15
+            df = api.get_fundamentals_as_of(
+                symbols=['AAPL', 'MSFT'],
+                metrics=['revenue', 'eps', 'book_value'],
+                as_of_date=date(2023, 1, 15)
+            )
+        """
+        # Validate inputs
+        if not symbols:
+            raise ValueError("symbols list cannot be empty")
+        if not metrics:
+            raise ValueError("metrics list cannot be empty")
+        self._validate_not_future(as_of_date, "as_of_date")
+
+        # Build query with parameterized values for symbols and metrics
+        symbols_str = ",".join(f"'{s}'" for s in symbols)
+        metrics_str = ",".join(f"'{m}'" for m in metrics)
+
+        # Use window function to get the most recent report for each symbol/metric
+        # where report_date <= as_of_date
+        query = f"""
+            WITH ranked_fundamentals AS (
+                SELECT
+                    symbol,
+                    metric,
+                    value,
+                    report_date,
+                    period_end,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY symbol, metric
+                        ORDER BY report_date DESC
+                    ) as rn
+                FROM fundamentals
+                WHERE symbol IN ({symbols_str})
+                  AND metric IN ({metrics_str})
+                  AND report_date <= ?
+            )
+            SELECT symbol, metric, value, report_date, period_end
+            FROM ranked_fundamentals
+            WHERE rn = 1
+            ORDER BY symbol, metric
+        """
+
+        df = self._db.fetchdf(query, (as_of_date,))
+
+        if df.empty:
+            logger.debug(
+                f"No fundamentals found for {symbols} with metrics {metrics} "
+                f"as of {as_of_date}"
+            )
+        else:
+            logger.debug(
+                f"Retrieved {len(df)} fundamental records for {len(df['symbol'].unique())} "
+                f"symbols as of {as_of_date}"
+            )
+
+        return df
+
     def get_universe(self, as_of_date: date) -> List[str]:
         """
         Get the trading universe as of a specific date.
