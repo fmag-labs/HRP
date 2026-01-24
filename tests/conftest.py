@@ -114,6 +114,14 @@ def populated_db(test_db: str, sample_prices: pd.DataFrame) -> Generator[str, No
 
     db = get_db(test_db)
 
+    # First insert symbols to satisfy FK constraints
+    unique_symbols = sample_prices["symbol"].unique()
+    for symbol in unique_symbols:
+        db.execute(
+            "INSERT INTO symbols (symbol) VALUES (?) ON CONFLICT DO NOTHING",
+            (symbol,),
+        )
+
     # Insert sample prices
     for _, row in sample_prices.iterrows():
         db.execute(
@@ -168,6 +176,7 @@ def test_db_with_sources(test_db: str) -> Generator[str, None, None]:
             VALUES
                 ('price_ingestion', 'scheduled_job', 'active'),
                 ('feature_computation', 'scheduled_job', 'active'),
+                ('daily_backup', 'scheduled_job', 'active'),
                 ('yfinance', 'api', 'active'),
                 ('polygon', 'api', 'active'),
                 ('test', 'test', 'active')
@@ -185,6 +194,14 @@ def populated_db_with_sources(
     from hrp.data.db import get_db
 
     db = get_db(test_db_with_sources)
+
+    # First insert symbols to satisfy FK constraints
+    unique_symbols = sample_prices["symbol"].unique()
+    for symbol in unique_symbols:
+        db.execute(
+            "INSERT INTO symbols (symbol) VALUES (?) ON CONFLICT DO NOTHING",
+            (symbol,),
+        )
 
     # Insert sample prices
     for _, row in sample_prices.iterrows():

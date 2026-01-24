@@ -261,6 +261,43 @@ class IngestionScheduler:
             "Daily ingestion pipeline configured: prices → features (dependency enforced)"
         )
 
+    def setup_daily_backup(
+        self,
+        backup_time: str = "02:00",
+        keep_days: int = 30,
+        include_mlflow: bool = True,
+    ) -> None:
+        """
+        Configure daily backup job.
+
+        Schedules a backup job to run at the specified time (default 2 AM ET).
+        The backup includes the DuckDB database and optionally MLflow artifacts.
+
+        Args:
+            backup_time: Time to run backup (HH:MM format, default: 02:00)
+            keep_days: Number of days of backups to retain (default: 30)
+            include_mlflow: Whether to include MLflow artifacts (default: True)
+        """
+        from hrp.data.backup import BackupJob
+
+        # Parse and validate time
+        hour, minute = _parse_time(backup_time, "backup_time")
+
+        # Create backup job
+        backup_job = BackupJob(
+            include_mlflow=include_mlflow,
+            keep_days=keep_days,
+        )
+
+        # Schedule backup job
+        self.add_job(
+            func=backup_job.run,
+            job_id="daily_backup",
+            trigger=CronTrigger(hour=hour, minute=minute, timezone=ET_TIMEZONE),
+            name="Daily Backup",
+        )
+        logger.info(f"Scheduled daily backup at {backup_time} ET (keep {keep_days} days)")
+
     def __repr__(self) -> str:
         """String representation of the scheduler."""
         status = "running" if self.running else "stopped"
