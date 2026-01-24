@@ -59,9 +59,9 @@ HRP has progressed significantly beyond the MVP stage, with **~17,344 lines of p
 
 ### 🚧 What's In Progress
 
-**v1 Completion (2% remaining):**
+**v1 Completion:** ✅ **100% COMPLETE**
 - ~~Point-in-time fundamentals query helper (`get_fundamentals_as_of()`)~~ ✅ COMPLETE
-- Dividend adjustment in backtests (splits are 100% done)
+- ~~Dividend adjustment in backtests~~ ✅ COMPLETE
 
 **v3 Validation Enhancement:**
 - PyFolio/Empyrical integration for industry-standard metrics
@@ -95,7 +95,7 @@ HRP has progressed significantly beyond the MVP stage, with **~17,344 lines of p
 ### Progress Overview
 
 ```
-Version 1: MVP Research Platform          [████████████████████░] 98%
+Version 1: MVP Research Platform          [████████████████████] 100%
 ├─ Database & Schema                      [████████████████████] 100%
 ├─ Platform API                           [████████████████████] 100%
 ├─ Research Loop (Backtest/MLflow)        [████████████████████] 100%
@@ -105,7 +105,7 @@ Version 1: MVP Research Platform          [████████████�
 ├─ Trading Calendar (NYSE)                [████████████████████] 100%  ← NEW
 ├─ Split Adjustment in Backtests          [████████████████████] 100%  ← NEW
 ├─ Benchmark Comparison (SPY)             [████████████████████] 100%  ← NEW
-└─ Financial Accuracy (Dividends only)    [██████████████░░░░░░]  70%
+└─ Financial Accuracy (Splits + Dividends) [████████████████████] 100%
 
 Version 2: Production Data Pipeline       [█████████████████░░░] 85%
 ├─ Universe Management                    [████████████████████] 100%
@@ -174,10 +174,11 @@ Version 6+: Advanced Features             [░░░░░░░░░░░░�
   - Apply splits to historical prices in backtests ✅
   - Store adjustment factors in `corporate_actions` table ✅
   - 65+ unit tests for split handling ✅
-- [ ] **Dividend Adjustment** — In progress
-  - TODO: Adjust for dividends (ex-dividend date)
-  - TODO: Total return calculation option
-  - TODO: Dividend reinvestment simulation
+- [x] **Dividend Adjustment** — ✅ COMPLETE
+  - `adjust_prices_for_dividends()` method in Platform API ✅
+  - Total return calculation with `total_return` flag in BacktestConfig ✅
+  - Dividend reinvestment via `adjust_dividends` parameter in `get_price_data()` ✅
+  - 23 comprehensive tests covering all cases ✅
 - [x] **Point-in-Time Fundamentals** — ✅ COMPLETE
   - `get_fundamentals_as_of(symbols, metrics, as_of_date)` in Platform API ✅
   - `get_fundamentals_for_backtest()` helper in backtest module ✅
@@ -750,7 +751,7 @@ The QSAT Framework defines a 6-stage workflow. Below are capabilities HRP has im
 
 | Version | Focus | Critical Fixes | Timeline | Status |
 |---------|-------|----------------|----------|--------|
-| **v1** | MVP Research Platform | Database integrity, concurrency, financial accuracy | 2-3 months | 🟢 **NEARLY COMPLETE** (98%) |
+| **v1** | MVP Research Platform | Database integrity, concurrency, financial accuracy | 2-3 months | ✅ **COMPLETE** (100%) |
 | **v2** | Production Data Pipeline | Ingestion orchestration, backups, monitoring | 1-2 months | 🟢 **SUBSTANTIALLY COMPLETE** (85%) |
 | **v3** | Validation & ML Framework | Statistical rigor, ML pipeline, risk management | 2-3 months | 🟡 **IN PROGRESS** (70%) |
 | **v4** | Agent Integration | MCP servers, scheduled agents, safety | 1-2 months | 🟡 **PARTIALLY COMPLETE** (60%) |
@@ -783,9 +784,9 @@ The QSAT Framework defines a 6-stage workflow. Below are capabilities HRP has im
 - ✅ Split adjustment in backtests (100% complete)
 - ✅ Benchmark comparison visualization (SPY equity curve)
 
-**Remaining for v1 (2%):**
+**Remaining for v1:** ✅ **COMPLETE**
 - ~~Point-in-time fundamentals query helper~~ ✅ COMPLETE
-- Dividend adjustment in backtests
+- ~~Dividend adjustment in backtests~~ ✅ COMPLETE
 
 **Remaining for v2 (15%):**
 - Automated backup script

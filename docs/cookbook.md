@@ -364,7 +364,41 @@ experiment_id = api.run_backtest(
 print(f"Experiment logged: {experiment_id}")
 ```
 
-### 4.2 Backtest with Custom Signals
+### 4.2 Total Return Backtest (with Dividend Reinvestment)
+
+```python
+from hrp.api.platform import PlatformAPI
+from hrp.research.config import BacktestConfig
+from hrp.research.backtest import get_price_data
+from datetime import date
+
+api = PlatformAPI()
+
+# Configure backtest with total return (includes dividend reinvestment)
+config = BacktestConfig(
+    symbols=['AAPL', 'MSFT', 'JNJ'],  # Dividend-paying stocks
+    start_date=date(2020, 1, 1),
+    end_date=date(2023, 12, 31),
+    total_return=True,  # Enable dividend reinvestment
+    name='total_return_test'
+)
+
+# Get price data with dividend adjustment
+prices = get_price_data(
+    symbols=config.symbols,
+    start=config.start_date,
+    end=config.end_date,
+    adjust_splits=True,
+    adjust_dividends=True  # Apply dividend adjustment
+)
+
+# The 'dividend_adjusted_close' column reflects total return
+print(prices.head())
+```
+
+**Note:** The dividend adjustment uses the standard formula: for each dividend, prior prices are adjusted by factor `1 - (dividend / price_on_ex_date)`. This compounds correctly for multiple dividends and provides accurate total return calculations.
+
+### 4.4 Backtest with Custom Signals
 
 ```python
 import pandas as pd
@@ -417,7 +451,7 @@ experiment_id = api.run_backtest(
 )
 ```
 
-### 4.3 View Experiment Results
+### 4.5 View Experiment Results
 
 ```python
 # Get experiment details
@@ -446,7 +480,7 @@ Metrics:
   win_rate: 0.5423
 ```
 
-### 4.4 Compare Multiple Experiments
+### 4.6 Compare Multiple Experiments
 
 ```python
 # Compare experiments side-by-side
@@ -883,7 +917,7 @@ streamlit run hrp/dashboard/app.py
 
 ```bash
 # Start MLflow UI for detailed experiment tracking
-mlflow ui --backend-store-uri ~/hrp-data/mlflow/mlflow.db
+mlflow ui --backend-store-uri sqlite:///$HOME/hrp-data/mlflow/mlflow.db
 
 # Access at http://localhost:5000
 ```
@@ -1159,6 +1193,7 @@ print(f"\nTotal backtest runs: {len(runs)}")
 | `api.run_quality_checks(date)` | Run data quality checks |
 | `api.health_check()` | System health status |
 | `api.get_fundamentals_as_of(symbols, metrics, as_of_date)` | Get point-in-time fundamentals |
+| `api.adjust_prices_for_dividends(prices, reinvest)` | Adjust prices for dividend reinvestment |
 
 ### CLI Commands
 
@@ -1171,7 +1206,7 @@ python -m hrp.agents.cli job-status
 
 # Services
 streamlit run hrp/dashboard/app.py          # Dashboard (port 8501)
-mlflow ui --backend-store-uri ~/hrp-data/mlflow/mlflow.db  # MLflow (port 5000)
+mlflow ui --backend-store-uri sqlite:///$HOME/hrp-data/mlflow/mlflow.db  # MLflow (port 5000)
 
 # Testing
 pytest tests/ -v

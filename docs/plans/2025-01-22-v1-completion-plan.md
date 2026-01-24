@@ -149,9 +149,9 @@ Update:
 
 ## Task 2: Corporate Action Dividend Handling
 
-**Priority:** Medium  
-**Effort:** Small (1-2 days)  
-**Status:** Partially Complete (splits done, dividends pending)
+**Priority:** Medium
+**Effort:** Small (1-2 days)
+**Status:** ✅ COMPLETE
 
 ### Current Status
 
@@ -278,13 +278,15 @@ Update:
 
 ### Acceptance Criteria
 
-- [ ] `adjust_prices_for_dividends()` method added
-- [ ] Total return option in BacktestConfig
-- [ ] Backward compatible (default: price return only)
-- [ ] 85%+ test coverage for dividend logic
-- [ ] Integration tests with backtest
-- [ ] Documentation updated
-- [ ] All tests passing
+- [x] `adjust_prices_for_dividends()` method added ✅
+- [x] Total return option in BacktestConfig ✅
+- [x] Backward compatible (default: price return only) ✅
+- [x] 85%+ test coverage for dividend logic (23 tests) ✅
+- [x] Integration tests with backtest ✅
+- [x] Documentation updated ✅
+- [x] All tests passing ✅
+
+**Status: ✅ COMPLETE** (January 24, 2026)
 
 ---
 
