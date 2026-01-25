@@ -68,6 +68,20 @@ prices = api.get_prices(['AAPL', 'MSFT'], start_date, end_date)
 features = api.get_features(['AAPL'], ['momentum_20d', 'volatility_60d'], date)
 ```
 
+### Available Features (32 total)
+
+| Category | Features |
+|----------|----------|
+| **Returns** | `returns_1d`, `returns_5d`, `returns_20d`, `returns_60d`, `returns_252d` |
+| **Momentum** | `momentum_20d`, `momentum_60d`, `momentum_252d` |
+| **Volatility** | `volatility_20d`, `volatility_60d` |
+| **Volume** | `volume_20d`, `volume_ratio`, `obv` |
+| **Oscillators** | `rsi_14d`, `cci_20d`, `roc_10d`, `stoch_k_14d`, `stoch_d_14d` |
+| **Trend** | `atr_14d`, `adx_14d`, `macd_line`, `macd_signal`, `macd_histogram`, `trend` |
+| **Moving Averages** | `sma_20d`, `sma_50d`, `sma_200d` |
+| **Price Ratios** | `price_to_sma_20d`, `price_to_sma_50d`, `price_to_sma_200d` |
+| **Bollinger Bands** | `bb_upper_20d`, `bb_lower_20d`, `bb_width_20d` |
+
 ### Run data quality checks
 ```python
 result = api.run_quality_checks(as_of_date=date.today(), send_alerts=True)
@@ -260,7 +274,7 @@ if not result.passed:
 
 ```bash
 pytest tests/ -v
-# Pass rate: 100% (1,256 passed, 1 skipped)
+# Pass rate: 100% (1,279 passed, 1 skipped)
 ```
 
 ## Services
