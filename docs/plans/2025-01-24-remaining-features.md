@@ -1,73 +1,91 @@
 # Remaining Technical Indicator Features Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status:** ✅ **COMPLETED** (as of 2025-01-25) - All planned features implemented except `efi_13d`. Platform now has 44 total features.
 
-**Goal:** Add comprehensive technical indicator features including RSI, SMA, MACD, ADX, Bollinger Bands, Stochastic, and other standard indicators for systematic trading research.
+**Original Goal:** Add comprehensive technical indicator features including RSI, SMA, MACD, ADX, Bollinger Bands, Stochastic, and other standard indicators for systematic trading research.
 
-**Architecture:** Features are computed in two locations: `hrp/data/ingestion/features.py` (for batch ingestion) and `hrp/data/features/computation.py` (for on-demand computation). Both must be updated to maintain consistency.
+**Architecture:** Features are computed in two locations: `hrp/data/ingestion/features.py` (for batch ingestion) and `hrp/data/features/computation.py` (for on-demand computation).
 
 **Tech Stack:** pandas, numpy, DuckDB, pytest
 
+> **Note:** This plan document is preserved for historical reference. The implementation is complete. See `CLAUDE.md` for the current feature list.
+
 ---
 
-## Summary of Features to Implement
+## Summary of Features (Implementation Status)
 
 ### Group 1: Basic Returns & Momentum
 | Feature | Formula | Status |
 |---------|---------|--------|
-| `returns_60d` | pct_change(60) | **Missing** |
-| `returns_252d` | pct_change(252) | **Missing** |
-| `momentum_252d` | pct_change(252) | **Missing** |
-| `volume_ratio` | volume / volume_avg_20d | **Missing** |
-| `roc_10d` | (close - close_10d_ago) / close_10d_ago * 100 | **Missing** |
+| `returns_60d` | pct_change(60) | ✅ **Done** |
+| `returns_252d` | pct_change(252) | ✅ **Done** |
+| `momentum_252d` | pct_change(252) | ✅ **Done** |
+| `volume_ratio` | volume / volume_avg_20d | ✅ **Done** |
+| `roc_10d` | (close - close_10d_ago) / close_10d_ago * 100 | ✅ **Done** |
 
 ### Group 2: Moving Averages & Trend
 | Feature | Formula | Status |
 |---------|---------|--------|
-| `sma_20d` | close.rolling(20).mean() | **Missing** |
-| `sma_50d` | close.rolling(50).mean() | **Missing** |
-| `sma_200d` | close.rolling(200).mean() | **Missing** |
-| `price_to_sma_20d` | close / sma_20d | **Missing** |
-| `price_to_sma_50d` | close / sma_50d | **Missing** |
-| `price_to_sma_200d` | close / sma_200d | **Missing** |
-| `trend` | +1 if close > sma_200d, -1 otherwise | **Missing** |
+| `sma_20d` | close.rolling(20).mean() | ✅ **Done** |
+| `sma_50d` | close.rolling(50).mean() | ✅ **Done** |
+| `sma_200d` | close.rolling(200).mean() | ✅ **Done** |
+| `price_to_sma_20d` | close / sma_20d | ✅ **Done** |
+| `price_to_sma_50d` | close / sma_50d | ✅ **Done** |
+| `price_to_sma_200d` | close / sma_200d | ✅ **Done** |
+| `trend` | +1 if close > sma_200d, -1 otherwise | ✅ **Done** |
 
 ### Group 3: Oscillators
 | Feature | Formula | Status |
 |---------|---------|--------|
-| `rsi_14d` | RSI(14) | **Missing** |
-| `cci_20d` | (TP - SMA(TP)) / (0.015 * Mean Deviation) | **Missing** |
-| `wr_14d` | Williams %R (14-day) | **Missing** |
-| `stoch_k_14d` | Stochastic %K (14-day) | **Missing** |
-| `stoch_d_14d` | Stochastic %D (3-day SMA of %K) | **Missing** |
+| `rsi_14d` | RSI(14) | ✅ **Done** |
+| `cci_20d` | (TP - SMA(TP)) / (0.015 * Mean Deviation) | ✅ **Done** |
+| `williams_r_14d` | Williams %R (14-day) | ✅ **Done** |
+| `stoch_k_14d` | Stochastic %K (14-day) | ✅ **Done** |
+| `stoch_d_14d` | Stochastic %D (3-day SMA of %K) | ✅ **Done** |
 
 ### Group 4: MACD
 | Feature | Formula | Status |
 |---------|---------|--------|
-| `macd_line` | EMA(12) - EMA(26) | **Missing** |
-| `macd_signal` | EMA(9) of MACD line | **Missing** |
-| `macd_histogram` | MACD line - Signal line | **Missing** |
+| `macd_line` | EMA(12) - EMA(26) | ✅ **Done** |
+| `macd_signal` | EMA(9) of MACD line | ✅ **Done** |
+| `macd_histogram` | MACD line - Signal line | ✅ **Done** |
 
 ### Group 5: Volatility & Volume
 | Feature | Formula | Status |
 |---------|---------|--------|
-| `atr_14d` | Average True Range (14-day) | **Missing** |
-| `bb_upper_20d` | SMA(20) + 2*std(20) | **Missing** |
-| `bb_lower_20d` | SMA(20) - 2*std(20) | **Missing** |
-| `bb_width_20d` | (upper - lower) / middle | **Missing** |
-| `obv` | On-Balance Volume (cumulative) | **Missing** |
-| `efi_13d` | Elder's Force Index (13-day EMA smoothed) | **Missing** |
+| `atr_14d` | Average True Range (14-day) | ✅ **Done** |
+| `bb_upper_20d` | SMA(20) + 2*std(20) | ✅ **Done** |
+| `bb_lower_20d` | SMA(20) - 2*std(20) | ✅ **Done** |
+| `bb_width_20d` | (upper - lower) / middle | ✅ **Done** |
+| `obv` | On-Balance Volume (cumulative) | ✅ **Done** |
+| `efi_13d` | Elder's Force Index (13-day EMA smoothed) | ❌ **Not Implemented** |
 
 ### Group 6: Trend Strength
 | Feature | Formula | Status |
 |---------|---------|--------|
-| `adx_14d` | Average Directional Index (14-day) | **Missing** |
+| `adx_14d` | Average Directional Index (14-day) | ✅ **Done** |
 
-**Total: 27 new features**
+**Original Plan: 27 features** → **26 implemented, 1 remaining (`efi_13d`)**
+
+### Additional Features Implemented (Beyond Original Plan)
+| Feature | Description | Status |
+|---------|-------------|--------|
+| `ema_12d` | 12-day EMA | ✅ **Done** |
+| `ema_26d` | 26-day EMA | ✅ **Done** |
+| `ema_crossover` | EMA-12 vs EMA-26 signal | ✅ **Done** |
+| `mfi_14d` | Money Flow Index | ✅ **Done** |
+| `vwap_20d` | 20-day rolling VWAP approximation | ✅ **Done** |
+| `market_cap` | Market capitalization (fundamental) | ✅ **Done** |
+| `pe_ratio` | P/E ratio (fundamental) | ✅ **Done** |
+| `pb_ratio` | P/B ratio (fundamental) | ✅ **Done** |
+| `dividend_yield` | Dividend yield (fundamental) | ✅ **Done** |
+| `ev_ebitda` | EV/EBITDA (fundamental) | ✅ **Done** |
+
+**Total Features Available: 44**
 
 ---
 
-## Task 1: Add RSI Computation Function
+## Task 1: Add RSI Computation Function ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -194,7 +212,7 @@ EOF
 
 ---
 
-## Task 2: Add SMA Computation Functions
+## Task 2: Add SMA Computation Functions ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -344,7 +362,7 @@ EOF
 
 ---
 
-## Task 3: Add Price-to-SMA Ratio Functions
+## Task 3: Add Price-to-SMA Ratio Functions ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -496,7 +514,7 @@ EOF
 
 ---
 
-## Task 4: Add Volume Ratio and Additional Returns/Momentum
+## Task 4: Add Volume Ratio and Additional Returns/Momentum ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -683,7 +701,7 @@ EOF
 
 ---
 
-## Task 5: Update Ingestion Pipeline with New Features
+## Task 5: Update Ingestion Pipeline with New Features ✅ COMPLETED
 
 **Files:**
 - Modify: `hrp/data/ingestion/features.py:191-262`
@@ -826,7 +844,7 @@ EOF
 
 ---
 
-## Task 6: Register New Features in Default Registration
+## Task 6: Register New Features in Default Registration ✅ COMPLETED
 
 **Files:**
 - Modify: `hrp/data/features/computation.py:559-610`
@@ -974,7 +992,7 @@ EOF
 
 ---
 
-## Task 7: Update CLAUDE.md Documentation
+## Task 7: Update CLAUDE.md Documentation ✅ COMPLETED
 
 **Files:**
 - Modify: `CLAUDE.md`
@@ -1026,7 +1044,7 @@ EOF
 
 ---
 
-## Task 8: Final Verification
+## Task 8: Final Verification ✅ COMPLETED
 
 **Step 1: Run full test suite**
 
@@ -1058,16 +1076,33 @@ Expected: Should show 19 unique features
 
 ---
 
-## Summary
+## Summary ✅ COMPLETED
 
-This plan adds 11 new technical indicators to complete the HRP spec requirements:
+This plan added technical indicators to complete the HRP spec requirements. **All planned features are now implemented** except `efi_13d` (Elder's Force Index).
 
+**Implemented:**
 1. **RSI** (`rsi_14d`) - Momentum oscillator
 2. **SMA** (`sma_20d`, `sma_50d`, `sma_200d`) - Trend indicators
 3. **Price-to-SMA** (`price_to_sma_20d`, `price_to_sma_50d`, `price_to_sma_200d`) - Mean reversion signals
 4. **Volume Ratio** (`volume_ratio`) - Liquidity/interest indicator
 5. **Extended Returns** (`returns_60d`, `returns_252d`) - Longer-term returns
 6. **Extended Momentum** (`momentum_252d`) - Annual momentum
+7. **OBV** (`obv`) - On-Balance Volume
+8. **ATR** (`atr_14d`) - Volatility measure
+9. **ADX** (`adx_14d`) - Trend strength
+10. **MACD** (`macd_line`, `macd_signal`, `macd_histogram`) - Momentum
+11. **CCI** (`cci_20d`) - Overbought/oversold
+12. **Williams %R** (`williams_r_14d`) - Momentum oscillator
+13. **ROC** (`roc_10d`) - Rate of change
+14. **Trend** (`trend`) - Binary trend indicator
+15. **Bollinger Bands** (`bb_upper_20d`, `bb_lower_20d`, `bb_width_20d`) - Volatility
+16. **Stochastic** (`stoch_k_14d`, `stoch_d_14d`) - Momentum oscillator
+
+**Additional features implemented beyond original plan:**
+- `ema_12d`, `ema_26d`, `ema_crossover` - EMA signals
+- `mfi_14d` - Money Flow Index
+- `vwap_20d` - VWAP approximation
+- Fundamental features: `market_cap`, `pe_ratio`, `pb_ratio`, `dividend_yield`, `ev_ebitda`
 
 All features are implemented in both:
 - `hrp/data/features/computation.py` (on-demand computation with FEATURE_FUNCTIONS registry)
@@ -1075,7 +1110,7 @@ All features are implemented in both:
 
 ---
 
-## Task 9: Add OBV (On-Balance Volume)
+## Task 9: Add OBV (On-Balance Volume) ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1155,7 +1190,7 @@ EOF
 
 ---
 
-## Task 10: Add ATR (Average True Range)
+## Task 10: Add ATR (Average True Range) ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1248,7 +1283,7 @@ EOF
 
 ---
 
-## Task 11: Add ADX (Average Directional Index)
+## Task 11: Add ADX (Average Directional Index) ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1358,7 +1393,7 @@ EOF
 
 ---
 
-## Task 12: Add MACD (Moving Average Convergence Divergence)
+## Task 12: Add MACD (Moving Average Convergence Divergence) ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1474,7 +1509,7 @@ EOF
 
 ---
 
-## Task 13: Add CCI (Commodity Channel Index)
+## Task 13: Add CCI (Commodity Channel Index) ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1562,7 +1597,7 @@ EOF
 
 ---
 
-## Task 14: Add Williams %R
+## Task 14: Add Williams %R ✅ COMPLETED (as `williams_r_14d`)
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1647,7 +1682,7 @@ EOF
 
 ---
 
-## Task 15: Add ROC (Rate of Change)
+## Task 15: Add ROC (Rate of Change) ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1716,7 +1751,7 @@ EOF
 
 ---
 
-## Task 16: Add Trend Indicator
+## Task 16: Add Trend Indicator ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1795,7 +1830,7 @@ EOF
 
 ---
 
-## Task 17: Add EFI (Elder's Force Index)
+## Task 17: Add EFI (Elder's Force Index) ❌ NOT IMPLEMENTED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1876,7 +1911,7 @@ EOF
 
 ---
 
-## Task 18: Add Bollinger Bands
+## Task 18: Add Bollinger Bands ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -1996,7 +2031,7 @@ EOF
 
 ---
 
-## Task 19: Add Stochastic Oscillator
+## Task 19: Add Stochastic Oscillator ✅ COMPLETED
 
 **Files:**
 - Test: `tests/test_data/test_features.py`
@@ -2109,7 +2144,7 @@ EOF
 
 ---
 
-## Task 20: Update Ingestion Pipeline with All New Features
+## Task 20: Update Ingestion Pipeline with All New Features ✅ COMPLETED
 
 **Files:**
 - Modify: `hrp/data/ingestion/features.py`
@@ -2137,7 +2172,7 @@ EOF
 
 ---
 
-## Task 21: Final Verification and Documentation Update
+## Task 21: Final Verification and Documentation Update ✅ COMPLETED
 
 **Step 1: Run full test suite**
 
@@ -2198,20 +2233,25 @@ EOF
 
 ---
 
-## Complete Feature Summary (38 Total)
+## Complete Feature Summary (44 Total - Current Implementation)
 
 | Category | Features |
 |----------|----------|
-| **Returns** | returns_1d, returns_5d, returns_20d, returns_60d, returns_252d |
-| **Momentum** | momentum_20d, momentum_60d, momentum_252d, roc_10d |
-| **Volatility** | volatility_20d, volatility_60d, atr_14d |
-| **Volume** | volume_20d, volume_ratio, obv, efi_13d |
-| **Moving Averages** | sma_20d, sma_50d, sma_200d |
-| **Price Ratios** | price_to_sma_20d, price_to_sma_50d, price_to_sma_200d |
-| **Trend** | trend, adx_14d |
-| **Oscillators** | rsi_14d, cci_20d, wr_14d, stoch_k_14d, stoch_d_14d |
-| **MACD** | macd_line, macd_signal, macd_histogram |
-| **Bollinger** | bb_upper_20d, bb_lower_20d, bb_width_20d |
+| **Returns** | `returns_1d`, `returns_5d`, `returns_20d`, `returns_60d`, `returns_252d` |
+| **Momentum** | `momentum_20d`, `momentum_60d`, `momentum_252d`, `roc_10d` |
+| **Volatility** | `volatility_20d`, `volatility_60d`, `atr_14d` |
+| **Volume** | `volume_20d`, `volume_ratio`, `obv` |
+| **Moving Averages** | `sma_20d`, `sma_50d`, `sma_200d`, `ema_12d`, `ema_26d` |
+| **EMA Signals** | `ema_crossover` |
+| **Price Ratios** | `price_to_sma_20d`, `price_to_sma_50d`, `price_to_sma_200d` |
+| **Trend** | `trend`, `adx_14d` |
+| **Oscillators** | `rsi_14d`, `cci_20d`, `williams_r_14d`, `stoch_k_14d`, `stoch_d_14d`, `mfi_14d` |
+| **MACD** | `macd_line`, `macd_signal`, `macd_histogram` |
+| **Bollinger** | `bb_upper_20d`, `bb_lower_20d`, `bb_width_20d` |
+| **VWAP** | `vwap_20d` |
+| **Fundamental** | `market_cap`, `pe_ratio`, `pb_ratio`, `dividend_yield`, `ev_ebitda` |
+
+**Not Implemented:** `efi_13d` (Elder's Force Index)
 
 **Sources:**
 - [QuantInsti: Best Trend Indicators](https://blog.quantinsti.com/indicators-build-trend-following-strategy/)

@@ -347,9 +347,11 @@ Complete feature tracking with spec links.
 
 **Last Updated:** January 25, 2026
 
-**Changes (January 25, 2026 - Fundamentals Job Bugfix):**
+**Changes (January 25, 2026 - Schema & Fundamentals Fixes):**
 - Fixed `FundamentalsIngestionJob` and `SnapshotFundamentalsJob` calling non-existent `get_current_members()` method
 - Now uses `get_universe_at_date(date.today())` for universe symbol retrieval
+- Expanded `features.value` from `DECIMAL(18,6)` to `DECIMAL(24,6)` for trillion-dollar market caps
+- Ran initial fundamentals load: 396 symbols, 11,872 quarterly records + 1,862 snapshot records
 - Updated corresponding test mocks
 
 **Changes (January 25, 2026 - Weekly Fundamentals Ingestion):**

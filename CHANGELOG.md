@@ -3,6 +3,7 @@
 ### Fixed
 - **FundamentalsIngestionJob**: Fixed `AttributeError` when running with `symbols=None` - was calling non-existent `get_current_members()` method on `UniverseManager`, now correctly uses `get_universe_at_date(date.today())`
 - **SnapshotFundamentalsJob**: Same fix applied
+- **Schema precision**: Expanded `features.value` column from `DECIMAL(18,6)` to `DECIMAL(24,6)` to support trillion-dollar market caps (Apple's $3.6T was overflowing)
 
 ## [1.4.0] - 2026-01-25
 
