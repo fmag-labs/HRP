@@ -1,3 +1,21 @@
+## [1.3.2] - 2026-01-25
+
+### Testing
+- **Test Coverage Improvement**: Added 119 new tests targeting low-coverage modules:
+  - `hrp/utils/timing.py`: 23 tests (51% → 100%)
+  - `hrp/notifications/templates.py`: 17 tests (0% → 100%)
+  - `hrp/research/benchmark.py`: 20 tests (57% → 100%)
+  - `hrp/research/mlflow_utils.py`: 17 tests (14% → 74%)
+  - `hrp/ml/training.py`: 19 tests added (52% → 90%)
+  - `hrp/data/ingestion/features.py`: 23 tests (18% → 65%)
+- **New Test Files**:
+  - `tests/test_utils/test_timing.py`
+  - `tests/test_notifications/test_templates.py`
+  - `tests/test_research/test_benchmark.py`
+  - `tests/test_research/test_mlflow_utils.py`
+  - `tests/test_data/test_ingestion_features.py`
+- 1,401 tests passing (100% pass rate)
+
 ## [1.3.1] - 2026-01-25
 
 ### Added
