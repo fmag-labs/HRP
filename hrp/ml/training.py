@@ -309,6 +309,27 @@ def train_model(
         X_val = X_val[selected_features]
         X_test = X_test[selected_features]
 
+    # Validate feature count (overfitting guard)
+    from hrp.risk.overfitting import FeatureCountValidator, TargetLeakageValidator, OverfittingError
+
+    feature_validator = FeatureCountValidator()
+    feature_result = feature_validator.check(
+        feature_count=len(selected_features),
+        sample_count=len(X_train),
+    )
+    if not feature_result.passed:
+        raise OverfittingError(feature_result.message)
+    if feature_result.warning:
+        logger.warning(f"Feature count warning: {feature_result.message}")
+
+    # Check for target leakage (overfitting guard)
+    leakage_validator = TargetLeakageValidator()
+    leakage_result = leakage_validator.check(X_train, y_train)
+    if not leakage_result.passed:
+        raise OverfittingError(f"Target leakage detected: {leakage_result.message}")
+    if leakage_result.warning:
+        logger.warning(f"Potential leakage warning: {leakage_result.message}")
+
     # Instantiate and train model
     model = get_model(config.model_type, config.hyperparameters)
 

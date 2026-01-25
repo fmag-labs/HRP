@@ -210,6 +210,43 @@ experiments = {
 
 robustness = check_parameter_sensitivity(experiments, baseline_key="baseline")
 print(f"Parameter stability: {'✅ PASS' if robustness.passed else '❌ FAIL'}")
+
+# Sharpe decay monitoring (detect train/test overfitting)
+from hrp.risk.overfitting import SharpeDecayMonitor
+
+monitor = SharpeDecayMonitor(max_decay_ratio=0.5)
+result = monitor.check(train_sharpe=1.5, test_sharpe=1.0)
+if not result.passed:
+    print(f"Sharpe decay warning: {result.message}")
+
+# Hyperparameter trial tracking (limit HP search)
+from hrp.risk.overfitting import HyperparameterTrialCounter
+
+counter = HyperparameterTrialCounter(hypothesis_id='HYP-2025-001', max_trials=50)
+counter.log_trial(
+    model_type='ridge',
+    hyperparameters={'alpha': 1.0},
+    metric_name='val_r2',
+    metric_value=0.85,
+)
+print(f"HP trials remaining: {counter.remaining_trials}")
+best = counter.get_best_trial()
+
+# Feature count validation (prevent overfitting from too many features)
+from hrp.risk.overfitting import FeatureCountValidator
+
+validator = FeatureCountValidator(warn_threshold=30, max_threshold=50)
+result = validator.check(feature_count=25, sample_count=1000)
+if not result.passed:
+    raise OverfittingError(result.message)
+
+# Target leakage detection (catch data leakage before training)
+from hrp.risk.overfitting import TargetLeakageValidator
+
+leakage_validator = TargetLeakageValidator(correlation_threshold=0.95)
+result = leakage_validator.check(features_df, target_series)
+if not result.passed:
+    print(f"Leakage detected: {result.suspicious_features}")
 ```
 
 ## File Locations
@@ -222,8 +259,7 @@ print(f"Parameter stability: {'✅ PASS' if robustness.passed else '❌ FAIL'}")
 
 ```bash
 pytest tests/ -v
-# Pass rate: ~97.6% (1,204 passed, 29 failed)
-# Remaining: FK constraint test expectations, singleton pattern tests
+# Pass rate: 100% (1,256 passed, 1 skipped)
 ```
 
 ## Services

@@ -323,3 +323,104 @@ class TestHyperparameterTrialCounter:
         counter2 = HyperparameterTrialCounter(hypothesis_id=hypothesis_id, max_trials=50)
 
         assert counter2.trial_count == 1
+
+
+class TestTargetLeakageValidator:
+    """Tests for target leakage detection."""
+
+    def test_no_leakage_passes(self):
+        """Test that uncorrelated features pass."""
+        import numpy as np
+        import pandas as pd
+        from hrp.risk.overfitting import TargetLeakageValidator
+
+        np.random.seed(42)
+        features = pd.DataFrame({
+            'momentum': np.random.randn(100),
+            'volatility': np.random.randn(100),
+        })
+        target = pd.Series(np.random.randn(100))
+
+        validator = TargetLeakageValidator(correlation_threshold=0.95)
+        result = validator.check(features, target)
+
+        assert result.passed is True
+        assert len(result.suspicious_features) == 0
+
+    def test_high_correlation_detected(self):
+        """Test that highly correlated features are flagged."""
+        import numpy as np
+        import pandas as pd
+        from hrp.risk.overfitting import TargetLeakageValidator
+
+        np.random.seed(42)
+        target = pd.Series(np.random.randn(100))
+        features = pd.DataFrame({
+            'clean_feature': np.random.randn(100),
+            'leaky_feature': target * 1.01 + np.random.randn(100) * 0.01,  # ~99% correlated
+        })
+
+        validator = TargetLeakageValidator(correlation_threshold=0.95)
+        result = validator.check(features, target)
+
+        assert result.passed is False
+        assert 'leaky_feature' in result.suspicious_features
+
+    def test_perfect_correlation_fails(self):
+        """Test that perfect correlation definitely fails."""
+        import pandas as pd
+        from hrp.risk.overfitting import TargetLeakageValidator
+
+        target = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
+        features = pd.DataFrame({
+            'exact_copy': target.values,
+        })
+
+        validator = TargetLeakageValidator(correlation_threshold=0.95)
+        result = validator.check(features, target)
+
+        assert result.passed is False
+        assert 'exact_copy' in result.suspicious_features
+        assert result.correlations['exact_copy'] > 0.99
+
+    def test_future_date_features_flagged(self):
+        """Test that features with future-looking names are flagged."""
+        import numpy as np
+        import pandas as pd
+        from hrp.risk.overfitting import TargetLeakageValidator
+
+        np.random.seed(42)
+        features = pd.DataFrame({
+            'momentum_20d': np.random.randn(100),
+            'returns_future_5d': np.random.randn(100),  # Suspicious name
+            'next_day_volume': np.random.randn(100),    # Suspicious name
+        })
+        target = pd.Series(np.random.randn(100))
+
+        validator = TargetLeakageValidator(correlation_threshold=0.95)
+        result = validator.check(features, target)
+
+        assert result.warning is True
+        assert any('future' in f.lower() or 'next' in f.lower() for f in result.name_warnings)
+
+    def test_custom_threshold(self):
+        """Test custom correlation threshold."""
+        import numpy as np
+        import pandas as pd
+        from hrp.risk.overfitting import TargetLeakageValidator
+
+        np.random.seed(42)
+        target = pd.Series(np.random.randn(100))
+        features = pd.DataFrame({
+            'moderate_corr': target * 0.8 + np.random.randn(100) * 0.6,  # ~80% correlated
+        })
+
+        # With 0.95 threshold, should pass
+        validator_high = TargetLeakageValidator(correlation_threshold=0.95)
+        result_high = validator_high.check(features, target)
+        assert result_high.passed is True
+
+        # With 0.7 threshold, should fail
+        validator_low = TargetLeakageValidator(correlation_threshold=0.7)
+        result_low = validator_low.check(features, target)
+        assert result_low.passed is False
