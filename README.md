@@ -62,11 +62,12 @@ mlflow ui --backend-store-uri sqlite:///$HOME/hrp-data/mlflow/mlflow.db
 ### Running the Scheduler
 
 ```bash
-# Run automated daily ingestion (prices, features, backups)
+# Foreground (testing)
 python run_scheduler.py
 
-# Customize schedule times
-python run_scheduler.py --price-time 18:00 --feature-time 18:10 --backup-time 02:00
+# Background service (production - macOS)
+# See docs/cookbook.md section 7.2 for full launchd setup
+launchctl load ~/Library/LaunchAgents/com.hrp.scheduler.plist
 ```
 
 ## Architecture

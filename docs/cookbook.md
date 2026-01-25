@@ -913,7 +913,87 @@ python -m hrp.agents.cli run-now --job prices --symbols AAPL MSFT GOOGL
 
 ### 7.2 Set Up Daily Ingestion
 
-**Using the scheduler runner (recommended):**
+#### Option A: Background Service (Production - macOS)
+
+**Step 1: Create launchd service file**
+
+Create `~/Library/LaunchAgents/com.hrp.scheduler.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hrp.scheduler</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/your/.venv/bin/python</string>
+        <string>/path/to/your/HRP/run_scheduler.py</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/path/to/your/HRP</string>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/your-username/hrp-data/logs/scheduler.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/your-username/hrp-data/logs/scheduler.error.log</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HRP_DB_PATH</key>
+        <string>/Users/your-username/hrp-data/hrp.duckdb</string>
+    </dict>
+</dict>
+</plist>
+```
+
+**Step 2: Load and start the service**
+
+```bash
+# Load the service (starts automatically)
+launchctl load ~/Library/LaunchAgents/com.hrp.scheduler.plist
+
+# Check status
+launchctl list | grep hrp
+
+# View logs
+tail -f ~/hrp-data/logs/scheduler.error.log
+```
+
+**Management commands:**
+
+```bash
+# Stop service
+launchctl unload ~/Library/LaunchAgents/com.hrp.scheduler.plist
+
+# Start service
+launchctl load ~/Library/LaunchAgents/com.hrp.scheduler.plist
+
+# View logs
+tail -f ~/hrp-data/logs/scheduler.error.log
+
+# Check job history
+python -m hrp.agents.cli job-status
+```
+
+**Benefits:**
+- ✅ Auto-starts on login
+- ✅ Auto-restarts if crashed
+- ✅ Runs in background
+- ✅ Survives terminal closure
+- ✅ Survives reboots
+
+#### Option B: Foreground (Testing/Development)
 
 ```bash
 # Run with default settings (prices @ 6PM, features @ 6:10PM, backup @ 2AM)
@@ -929,7 +1009,61 @@ python run_scheduler.py --no-backup
 python run_scheduler.py --backup-keep-days 60
 ```
 
-**Programmatically:**
+#### Option C: Terminal Session (Alternative Background)
+
+**Using nohup:**
+
+```bash
+cd /path/to/HRP
+nohup python run_scheduler.py > ~/hrp-data/logs/scheduler.log 2>&1 &
+
+# Get process ID
+echo $!
+
+# Check if running
+ps aux | grep run_scheduler
+
+# Kill it
+kill <PID>
+```
+
+**Using screen:**
+
+```bash
+# Start screen session
+screen -S hrp-scheduler
+
+# Run scheduler
+python run_scheduler.py
+
+# Detach: Ctrl+A then D
+
+# Reattach later
+screen -r hrp-scheduler
+
+# Kill session
+screen -X -S hrp-scheduler quit
+```
+
+**Using tmux:**
+
+```bash
+# Start tmux session
+tmux new -s hrp-scheduler
+
+# Run scheduler
+python run_scheduler.py
+
+# Detach: Ctrl+B then D
+
+# Reattach later
+tmux attach -t hrp-scheduler
+
+# Kill session
+tmux kill-session -t hrp-scheduler
+```
+
+#### Option D: Programmatic (Custom Script)
 
 ```python
 from hrp.agents.scheduler import IngestionScheduler

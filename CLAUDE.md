@@ -191,7 +191,7 @@ pytest tests/ -v
 |---------|---------|------|
 | Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
 | MLflow UI | `mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db` | 5000 |
-| Scheduler | `python run_scheduler.py` | - |
+| Scheduler | `python run_scheduler.py` (or use launchd - see cookbook) | - |
 
 ## Environment Variables
 

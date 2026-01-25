@@ -57,6 +57,23 @@ Daily backups run automatically at **2:00 AM** local time (configurable).
 
 ### Enable Automated Backups
 
+#### Option A: Background Service (Production - macOS)
+
+The scheduler automatically includes daily backups when run as a launchd service (see cookbook section 7.2 for full setup).
+
+```bash
+# Service includes backup by default
+launchctl load ~/Library/LaunchAgents/com.hrp.scheduler.plist
+
+# Check it's running
+launchctl list | grep hrp
+
+# View logs
+tail -f ~/hrp-data/logs/scheduler.error.log
+```
+
+#### Option B: Foreground/Testing
+
 **Using the scheduler runner (recommended):**
 
 ```bash
