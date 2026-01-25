@@ -63,10 +63,113 @@ def compute_volatility_60d(prices: pd.DataFrame) -> pd.DataFrame:
     return result.to_frame(name="volatility_60d")
 
 
+def compute_returns_1d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 1-day return.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with 1-day return values
+    """
+    close = prices["close"].unstack(level="symbol")
+    returns = close.pct_change(1)
+    result = returns.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="returns_1d")
+
+
+def compute_returns_5d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 5-day return.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with 5-day return values
+    """
+    close = prices["close"].unstack(level="symbol")
+    returns = close.pct_change(5)
+    result = returns.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="returns_5d")
+
+
+def compute_returns_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day return.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with 20-day return values
+    """
+    close = prices["close"].unstack(level="symbol")
+    returns = close.pct_change(20)
+    result = returns.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="returns_20d")
+
+
+def compute_momentum_60d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 60-day momentum (trailing return).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with 60-day momentum values
+    """
+    close = prices["close"].unstack(level="symbol")
+    momentum = close.pct_change(60)
+    result = momentum.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="momentum_60d")
+
+
+def compute_volatility_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day volatility (annualized standard deviation of returns).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with 20-day volatility values
+    """
+    close = prices["close"].unstack(level="symbol")
+    returns = close.pct_change()
+    volatility = returns.rolling(window=20).std() * (252**0.5)
+    result = volatility.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="volatility_20d")
+
+
+def compute_volume_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day average volume.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'volume' column
+
+    Returns:
+        DataFrame with 20-day average volume values
+    """
+    volume = prices["volume"].unstack(level="symbol")
+    avg_volume = volume.rolling(window=20).mean()
+    result = avg_volume.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="volume_20d")
+
+
 # Registry of feature computation functions
 FEATURE_FUNCTIONS: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     "momentum_20d": compute_momentum_20d,
     "volatility_60d": compute_volatility_60d,
+    "returns_1d": compute_returns_1d,
+    "returns_5d": compute_returns_5d,
+    "returns_20d": compute_returns_20d,
+    "momentum_60d": compute_momentum_60d,
+    "volatility_20d": compute_volatility_20d,
+    "volume_20d": compute_volume_20d,
 }
 
 
@@ -379,9 +482,9 @@ class FeatureComputer:
 
     def _upsert_features(self, df: pd.DataFrame, feature_versions: dict[str, str]) -> int:
         """
-        Upsert feature data into the database.
+        Upsert feature data into the database using efficient batch operations.
 
-        Uses INSERT OR REPLACE to handle duplicates.
+        Uses DuckDB's DataFrame registration for bulk insert instead of row-by-row.
 
         Args:
             df: DataFrame with MultiIndex (date, symbol) and feature columns
@@ -393,77 +496,51 @@ class FeatureComputer:
         if df.empty:
             return 0
 
-        # Prepare data for insertion
-        records = []
+        # Prepare data in long format for efficient bulk insert
         df_reset = df.reset_index()
+        records_list = []
 
-        for _, row in df_reset.iterrows():
-            symbol = row["symbol"]
-            date_val = row["date"]
+        for feature_name in df.columns:
+            if feature_name in ["symbol", "date"]:
+                continue
 
-            # Handle date conversion
-            if isinstance(date_val, pd.Timestamp):
-                date_val = date_val.date()
+            # Extract just this feature's data
+            feature_df = df_reset[["date", "symbol", feature_name]].copy()
+            feature_df = feature_df.dropna(subset=[feature_name])
 
-            # Insert each feature as a separate row
-            for feature_name in df.columns:
-                if feature_name in ["symbol", "date"]:
-                    continue
+            if feature_df.empty:
+                continue
 
-                value = row[feature_name]
+            feature_df["feature_name"] = feature_name
+            feature_df["value"] = feature_df[feature_name].astype(float)
+            feature_df["version"] = feature_versions.get(feature_name, "v1")
 
-                # Skip NaN values
-                if pd.isna(value):
-                    continue
+            records_list.append(feature_df[["symbol", "date", "feature_name", "value", "version"]])
 
-                records.append({
-                    "symbol": symbol,
-                    "date": date_val,
-                    "feature_name": feature_name,
-                    "value": float(value),
-                    "version": feature_versions.get(feature_name, "v1"),
-                })
-
-        if not records:
+        if not records_list:
             logger.warning("No valid feature values to store (all NaN)")
             return 0
 
+        # Combine all records into single DataFrame
+        all_records = pd.concat(records_list, ignore_index=True)
+
+        # Convert date to proper format
+        all_records["date"] = pd.to_datetime(all_records["date"]).dt.date
+
         with self.db.connection() as conn:
-            # Create temporary table for bulk insert
-            conn.execute(
-                "CREATE TEMP TABLE IF NOT EXISTS temp_features AS SELECT * FROM features LIMIT 0"
-            )
-            conn.execute("DELETE FROM temp_features")
+            # Register DataFrame with DuckDB for efficient bulk operations
+            conn.register("features_to_insert", all_records)
 
-            # Insert into temp table
-            for record in records:
-                conn.execute(
-                    """
-                    INSERT INTO temp_features (symbol, date, feature_name, value, version)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        record["symbol"],
-                        record["date"],
-                        record["feature_name"],
-                        record["value"],
-                        record["version"],
-                    ),
-                )
-
-            # Upsert from temp to main table
-            conn.execute(
-                """
+            # Bulk upsert using DuckDB's efficient DataFrame access
+            conn.execute("""
                 INSERT OR REPLACE INTO features (symbol, date, feature_name, value, version, computed_at)
                 SELECT symbol, date, feature_name, value, version, CURRENT_TIMESTAMP
-                FROM temp_features
-                """
-            )
+                FROM features_to_insert
+            """)
 
-            # Cleanup
-            conn.execute("DROP TABLE temp_features")
+            conn.unregister("features_to_insert")
 
-        return len(records)
+        return len(all_records)
 
     def get_stored_features(
         self,

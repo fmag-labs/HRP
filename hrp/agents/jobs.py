@@ -506,18 +506,20 @@ class FeatureComputationJob(IngestionJob):
 
     def execute(self) -> dict[str, Any]:
         """
-        Execute feature computation.
+        Execute feature computation using vectorized batch method.
 
         Returns:
             Dictionary with job execution stats
         """
         logger.info(
-            f"Computing features from {self.start} to {self.end} "
+            f"Computing features (vectorized batch) from {self.start} to {self.end} "
             f"(lookback: {self.lookback_days} days)"
         )
 
-        # Call the underlying compute_features function
-        result = compute_features(
+        # Use the optimized batch computation function
+        from hrp.data.ingestion.features import compute_features_batch
+
+        result = compute_features_batch(
             symbols=self.symbols,
             start=self.start,
             end=self.end,

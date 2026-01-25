@@ -7,10 +7,14 @@ and detect overfitting across multiple time periods.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+import time
+
+import joblib
 import numpy as np
 import pandas as pd
 from loguru import logger
@@ -19,6 +23,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from hrp.ml.models import SUPPORTED_MODELS, get_model
 from hrp.ml.training import _fetch_features, select_features
+from hrp.utils.timing import TimingMetrics, timed_section
 
 
 @dataclass
@@ -51,6 +56,7 @@ class WalkForwardConfig:
     hyperparameters: dict[str, Any] = field(default_factory=dict)
     feature_selection: bool = True
     max_features: int = 20
+    n_jobs: int = 1  # Number of parallel jobs (-1 = use all cores)
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -72,6 +78,49 @@ class WalkForwardConfig:
             f"WalkForwardConfig created: {self.model_type}, "
             f"{self.n_folds} folds, {self.window_type} window"
         )
+
+
+@dataclass
+class FeatureSelectionCache:
+    """
+    Cache for feature selection results across walk-forward folds.
+
+    For expanding windows, feature selection on earlier folds can inform
+    later folds since the training data is a subset. This cache avoids
+    redundant computation of mutual information scores.
+    """
+
+    _cache: dict[str, list[str]] = field(default_factory=dict)
+
+    def get(self, cache_key: str) -> list[str] | None:
+        """Get cached feature selection result, or None if not cached."""
+        return self._cache.get(cache_key)
+
+    def set(self, cache_key: str, selected_features: list[str]) -> None:
+        """Cache a feature selection result."""
+        self._cache[cache_key] = selected_features
+
+    def get_or_compute(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        max_features: int,
+        cache_key: str,
+    ) -> list[str]:
+        """Get cached features or compute and cache them."""
+        cached = self.get(cache_key)
+        if cached is not None:
+            logger.debug(f"Feature selection cache hit for {cache_key}")
+            return cached
+
+        selected = select_features(X, y, max_features)
+        self.set(cache_key, selected)
+        logger.debug(f"Feature selection cache miss for {cache_key}, computed {len(selected)} features")
+        return selected
+
+    def clear(self) -> None:
+        """Clear all cached results."""
+        self._cache.clear()
 
 
 @dataclass
@@ -318,7 +367,12 @@ def walk_forward_validate(
         f"{config.n_folds} folds, {config.window_type} window"
     )
 
+    # Track timing
+    timing = TimingMetrics(name="walk_forward_validate")
+    total_start = time.perf_counter()
+
     # Fetch all data once
+    fetch_start = time.perf_counter()
     all_data = _fetch_features(
         symbols=symbols,
         features=config.features,
@@ -326,6 +380,7 @@ def walk_forward_validate(
         end_date=config.end_date,
         target=config.target,
     )
+    timing.sub_timings["data_fetch"] = time.perf_counter() - fetch_start
 
     if all_data.empty:
         raise ValueError(f"No data found for symbols {symbols}")
@@ -340,14 +395,40 @@ def walk_forward_validate(
     # Generate fold date ranges
     folds = generate_folds(config, available_dates)
 
-    # Process each fold
+    # Create feature selection cache (only used in sequential mode)
+    feature_cache = FeatureSelectionCache() if config.feature_selection else None
+
+    # Process each fold (sequential or parallel based on n_jobs)
+    fold_start = time.perf_counter()
     fold_results = []
 
-    for fold_idx, (train_start, train_end, test_start, test_end) in enumerate(folds):
-        logger.info(f"Processing fold {fold_idx + 1}/{len(folds)}")
+    if config.n_jobs == 1:
+        # Sequential processing with feature cache
+        for fold_idx, (train_start, train_end, test_start, test_end) in enumerate(folds):
+            logger.info(f"Processing fold {fold_idx + 1}/{len(folds)}")
 
-        try:
-            fold_result = _process_fold(
+            try:
+                fold_result = _process_fold(
+                    fold_idx=fold_idx,
+                    train_start=train_start,
+                    train_end=train_end,
+                    test_start=test_start,
+                    test_end=test_end,
+                    config=config,
+                    all_data=all_data,
+                    feature_cache=feature_cache,
+                )
+                fold_results.append(fold_result)
+            except Exception as e:
+                logger.warning(f"Fold {fold_idx} failed: {e}")
+                continue
+    else:
+        # Parallel processing with joblib (cache not shared across processes)
+        n_jobs = config.n_jobs if config.n_jobs != -1 else os.cpu_count() or 1
+        logger.info(f"Processing {len(folds)} folds in parallel (n_jobs={n_jobs})")
+
+        results = joblib.Parallel(n_jobs=n_jobs, prefer="processes")(
+            joblib.delayed(_process_fold_safe)(
                 fold_idx=fold_idx,
                 train_start=train_start,
                 train_end=train_end,
@@ -355,11 +436,15 @@ def walk_forward_validate(
                 test_end=test_end,
                 config=config,
                 all_data=all_data,
+                feature_cache=None,  # Cache not shared in parallel mode
             )
-            fold_results.append(fold_result)
-        except Exception as e:
-            logger.warning(f"Fold {fold_idx} failed: {e}")
-            continue
+            for fold_idx, (train_start, train_end, test_start, test_end) in enumerate(folds)
+        )
+
+        # Filter out None results (failed folds)
+        fold_results = [r for r in results if r is not None]
+
+    timing.sub_timings["fold_processing"] = time.perf_counter() - fold_start
 
     if not fold_results:
         raise ValueError("All folds failed, cannot compute results")
@@ -368,6 +453,9 @@ def walk_forward_validate(
     fold_metrics = [fr.metrics for fr in fold_results]
     aggregate_metrics, stability_score = aggregate_fold_metrics(fold_metrics)
 
+    # Finalize timing
+    timing.elapsed_seconds = time.perf_counter() - total_start
+
     result = WalkForwardResult(
         config=config,
         fold_results=fold_results,
@@ -375,6 +463,9 @@ def walk_forward_validate(
         stability_score=stability_score,
         symbols=symbols,
     )
+
+    # Log timing metrics
+    timing.log()
 
     logger.info(
         f"Walk-forward complete: {len(fold_results)} folds, "
@@ -388,6 +479,38 @@ def walk_forward_validate(
     return result
 
 
+def _process_fold_safe(
+    fold_idx: int,
+    train_start: date,
+    train_end: date,
+    test_start: date,
+    test_end: date,
+    config: WalkForwardConfig,
+    all_data: pd.DataFrame,
+    feature_cache: FeatureSelectionCache | None = None,
+) -> FoldResult | None:
+    """
+    Wrapper for _process_fold that catches exceptions for parallel execution.
+
+    Returns None if the fold fails, matching sequential behavior where
+    failed folds are skipped.
+    """
+    try:
+        return _process_fold(
+            fold_idx=fold_idx,
+            train_start=train_start,
+            train_end=train_end,
+            test_start=test_start,
+            test_end=test_end,
+            config=config,
+            all_data=all_data,
+            feature_cache=feature_cache,
+        )
+    except Exception as e:
+        logger.warning(f"Fold {fold_idx} failed: {e}")
+        return None
+
+
 def _process_fold(
     fold_idx: int,
     train_start: date,
@@ -396,6 +519,7 @@ def _process_fold(
     test_end: date,
     config: WalkForwardConfig,
     all_data: pd.DataFrame,
+    feature_cache: FeatureSelectionCache | None = None,
 ) -> FoldResult:
     """
     Process a single walk-forward fold.
@@ -406,6 +530,7 @@ def _process_fold(
         test_start, test_end: Test period
         config: Walk-forward configuration
         all_data: Full dataset
+        feature_cache: Optional cache for feature selection results
 
     Returns:
         FoldResult with trained model and metrics
@@ -433,7 +558,14 @@ def _process_fold(
     # Feature selection (on training data only)
     selected_features = list(config.features)
     if config.feature_selection and len(config.features) > config.max_features:
-        selected_features = select_features(X_train, y_train, config.max_features)
+        if feature_cache is not None:
+            # Use cache for feature selection
+            cache_key = f"fold_{fold_idx}_{config.window_type}"
+            selected_features = feature_cache.get_or_compute(
+                X_train, y_train, config.max_features, cache_key
+            )
+        else:
+            selected_features = select_features(X_train, y_train, config.max_features)
         X_train = X_train[selected_features]
         X_test = X_test[selected_features]
 

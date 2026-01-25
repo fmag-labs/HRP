@@ -157,6 +157,112 @@ def compute_features(
     return stats
 
 
+def compute_features_batch(
+    symbols: Optional[list[str]] = None,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    version: str = "v1",
+) -> dict[str, Any]:
+    """
+    Compute features for all symbols in a single vectorized pass.
+
+    This is the optimized version that processes all symbols at once using
+    the FeatureComputer's vectorized operations instead of symbol-by-symbol loops.
+
+    Args:
+        symbols: List of stock tickers (None = all symbols in price data)
+        start: Start date for feature computation (None = 30 days ago)
+        end: End date (None = today)
+        lookback_days: Days of price history needed for computation
+        version: Feature version identifier
+
+    Returns:
+        Dictionary with computation stats
+    """
+    from hrp.data.features.computation import FeatureComputer
+
+    db = get_db()
+
+    # Set date defaults
+    if end is None:
+        end = date.today()
+    if start is None:
+        start = end - timedelta(days=30)
+
+    # Calculate price data start (need extra history for rolling windows)
+    price_start = start - timedelta(days=lookback_days)
+
+    logger.info(f"Computing features (vectorized batch) from {start} to {end}")
+
+    # Get symbols from database if not specified
+    if symbols is None:
+        with db.connection() as conn:
+            result = conn.execute("""
+                SELECT DISTINCT symbol
+                FROM prices
+                WHERE date >= ? AND date <= ?
+                ORDER BY symbol
+            """, (price_start, end)).fetchall()
+            symbols = [row[0] for row in result]
+        logger.info(f"Found {len(symbols)} symbols in database")
+
+    if not symbols:
+        logger.warning("No symbols to process")
+        return {
+            "symbols_requested": 0,
+            "symbols_success": 0,
+            "symbols_failed": 0,
+            "features_computed": 0,
+            "rows_inserted": 0,
+            "failed_symbols": [],
+        }
+
+    # Generate date range for feature computation
+    dates = pd.date_range(start, end, freq="B").date.tolist()
+
+    # Feature names to compute (all 8 standard features)
+    feature_names = [
+        "returns_1d", "returns_5d", "returns_20d",
+        "momentum_20d", "momentum_60d",
+        "volatility_20d", "volatility_60d",
+        "volume_20d",
+    ]
+
+    try:
+        # Use FeatureComputer for vectorized computation
+        computer = FeatureComputer()
+
+        # Compute and store all features at once
+        result = computer.compute_and_store_features(
+            symbols=symbols,
+            dates=dates,
+            feature_names=feature_names,
+            version=version,
+        )
+
+        return {
+            "symbols_requested": len(symbols),
+            "symbols_success": len(symbols),
+            "symbols_failed": 0,
+            "features_computed": result["features_computed"],
+            "rows_inserted": result["rows_stored"],
+            "failed_symbols": [],
+        }
+
+    except Exception as e:
+        logger.error(f"Batch feature computation failed: {e}")
+        # Fall back to per-symbol computation
+        logger.info("Falling back to per-symbol computation")
+        return compute_features(
+            symbols=symbols,
+            start=start,
+            end=end,
+            lookback_days=lookback_days,
+            version=version,
+        )
+
+
 def _fetch_prices(db, symbol: str, start: date, end: date) -> pd.DataFrame:
     """
     Fetch price data for a symbol.
