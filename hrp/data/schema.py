@@ -74,6 +74,19 @@ TABLES = {
             metadata JSON
         )
     """,
+    "hyperparameter_trials": """
+        CREATE TABLE IF NOT EXISTS hyperparameter_trials (
+            trial_id INTEGER PRIMARY KEY,
+            hypothesis_id VARCHAR NOT NULL,
+            model_type VARCHAR NOT NULL,
+            hyperparameters JSON NOT NULL,
+            metric_name VARCHAR NOT NULL,
+            metric_value DECIMAL(10,6),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            fold_index INTEGER,
+            notes VARCHAR
+        )
+    """,
     # === Tables that depend on symbols ===
     "universe": """
         CREATE TABLE IF NOT EXISTS universe (
@@ -214,6 +227,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_lineage_timestamp_hypothesis ON lineage(timestamp, hypothesis_id)",
     "CREATE INDEX IF NOT EXISTS idx_hypotheses_status ON hypotheses(status)",
     "CREATE INDEX IF NOT EXISTS idx_symbols_exchange ON symbols(exchange)",
+    "CREATE INDEX IF NOT EXISTS idx_hp_trials_hypothesis ON hyperparameter_trials(hypothesis_id)",
 ]
 
 

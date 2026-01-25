@@ -875,6 +875,53 @@ class TestSchemaIntegration:
 
         DatabaseManager.reset()
 
+    def test_hyperparameter_trials_table_exists(self, temp_db):
+        """Test that hyperparameter_trials table is created."""
+        from hrp.data.db import DatabaseManager
+        from hrp.data.schema import create_tables
+
+        DatabaseManager.reset()
+        create_tables(temp_db)
+
+        db = DatabaseManager(temp_db)
+        with db.connection() as conn:
+            result = conn.execute("""
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_name = 'hyperparameter_trials'
+            """).fetchone()
+
+        assert result[0] == 1, "hyperparameter_trials table should exist"
+
+        DatabaseManager.reset()
+
+    def test_hyperparameter_trials_schema(self, temp_db):
+        """Test hyperparameter_trials table has correct columns."""
+        from hrp.data.db import DatabaseManager
+        from hrp.data.schema import create_tables
+
+        DatabaseManager.reset()
+        create_tables(temp_db)
+
+        db = DatabaseManager(temp_db)
+        with db.connection() as conn:
+            # Insert a test record to verify schema
+            conn.execute("""
+                INSERT INTO hyperparameter_trials
+                (trial_id, hypothesis_id, model_type, hyperparameters, metric_value, metric_name)
+                VALUES (1, 'HYP-TEST-001', 'ridge', '{"alpha": 1.0}', 0.85, 'val_r2')
+            """)
+
+            result = conn.execute("""
+                SELECT trial_id, hypothesis_id, model_type, hyperparameters, metric_value
+                FROM hyperparameter_trials WHERE trial_id = 1
+            """).fetchone()
+
+        assert result[0] == 1
+        assert result[1] == 'HYP-TEST-001'
+        assert result[2] == 'ridge'
+
+        DatabaseManager.reset()
+
 
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
