@@ -1748,7 +1748,7 @@ print(f"\nTotal backtest runs: {len(runs)}")
 
 **FK Constraint Violations in Test Fixtures**
 
-The test suite currently has ~86% pass rate (902/1,048 tests) due to FK constraint violations during test cleanup. This is a test infrastructure issue, not a production code bug.
+The test suite currently has ~97.6% pass rate (1,204/1,234 tests). The remaining 29 failures are tests that expect FK constraints which were intentionally removed from the schema due to DuckDB 1.4.3 limitations. This is a test expectation issue, not a production code bug.
 
 **Symptoms:**
 ```

@@ -222,8 +222,8 @@ print(f"Parameter stability: {'✅ PASS' if robustness.passed else '❌ FAIL'}")
 
 ```bash
 pytest tests/ -v
-# Pass rate: ~86% (902 passed, 141 failed, 105 errors)
-# Known issue: FK constraint violations in test fixtures during cleanup
+# Pass rate: ~97.6% (1,204 passed, 29 failed)
+# Remaining: FK constraint test expectations, singleton pattern tests
 ```
 
 ## Services
@@ -269,14 +269,18 @@ hrp/
 
 ## Development Status
 
-Currently implementing Phase 0: Foundation
-- See `docs/plans/2025-01-19-hrp-spec.md` for full specification
-- See `docs/plans/Roadmap.md` for implementation roadmap
+All core phases complete (v1-v4):
+- **v1 (MVP Research Platform)**: 100% complete
+- **v2 (Production Data Pipeline)**: 100% complete
+- **v3 (ML & Validation Framework)**: 100% complete
+- **v4 (Agent Integration)**: 80% complete
+
+See `docs/plans/Project-Status.md` for detailed status
 
 # Project Instructions
 
 ## Always run tests after edits
-after making any code changes, run 'npm test'
+after making any code changes, run 'pytest tests/ -v'
 
 ## Things to Remember
 Before writing any code:

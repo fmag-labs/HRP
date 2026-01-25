@@ -16,7 +16,7 @@ Version 2 of the HRP platform has been completed. All critical production data p
 
 Comprehensive codebase analysis covering:
 - 80+ production modules (~17,344 LOC)
-- 39 test files (1,048 tests)
+- 40+ test files (1,234 tests)
 - All v2 requirements from Project-Status.md
 
 ### Key Findings
@@ -79,7 +79,7 @@ Comprehensive codebase analysis covering:
 
 1. ❌ **OpenBB Integration** - Not present
    - No OpenBB SDK code found
-   - Currently using YFinance (primary) and Polygon.io (optional)
+   - Currently using Polygon.io (primary) and YFinance (fallback)
    - Would provide unified API for multiple data providers
    - Marked as optional enhancement
 
@@ -187,7 +187,7 @@ Version 2 (Production Data Pipeline) is **100% complete** for all critical requi
 - Comprehensive data quality framework with 5 checks
 - Production-grade backup and recovery system
 - Full error monitoring and alerting
-- Multi-source data ingestion (YFinance + Polygon.io)
+- Multi-source data ingestion (Polygon.io primary, YFinance fallback)
 - Historical backfill capability with resumability
 - Feature versioning for reproducibility
 
