@@ -128,7 +128,7 @@ TABLES = {
             symbol VARCHAR NOT NULL,
             date DATE NOT NULL,
             feature_name VARCHAR NOT NULL,
-            value DECIMAL(18,6),
+            value DECIMAL(24,6),  -- Supports market caps up to ~$999 quadrillion
             version VARCHAR DEFAULT 'v1',
             computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, date, feature_name, version),
