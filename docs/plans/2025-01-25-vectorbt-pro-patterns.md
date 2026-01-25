@@ -89,7 +89,25 @@ def cross_validated_optimize(
 
 ## Phase 2: Parallel Parameter Sweeps with Constraints
 
-**Objective**: Add efficient parallel parameter sweeps with constraint validation for multi-factor strategies.
+**Objective**: Add efficient parallel parameter sweeps with constraint validation for multi-factor strategies, including **Sharpe decay analysis** to identify parameter combinations that generalize well.
+
+### Key Insight from PyQuantNews Thread
+
+The thread demonstrates computing `sharpe_ratio_diff = test_sharpe - train_sharpe` and visualizing as a heatmap:
+- **Blue regions** = positive diff (test > train) = good generalization
+- **Red regions** = negative diff (test < train) = overfitting
+- Use **median** across folds for robustness
+
+```python
+# From PyQuantNews thread
+sharpe_ratio_diff = test_sharpe_ratio - train_sharpe_ratio
+sharpe_ratio_diff_median = sharpe_ratio_diff.groupby(
+    ["fast_period", "slow_period"]
+).median()
+sharpe_ratio_diff_median.vbt.heatmap(
+    trace_kwargs=dict(colorscale="RdBu")
+).show_png()
+```
 
 ### New Module: `hrp/research/parameter_sweep.py`
 
@@ -98,9 +116,11 @@ def cross_validated_optimize(
 @dataclass
 class SweepConstraint:
     """Constraint on parameter combinations."""
-    constraint_type: str  # "sum_equals", "max_total", "ratio_bound"
+    constraint_type: str  # "sum_equals", "max_total", "ratio_bound", "difference_min"
     params: list[str]
     value: float
+    # Example: SweepConstraint("difference_min", ["slow_period", "fast_period"], 5)
+    # Enforces: slow_period - fast_period >= 5
 
 @dataclass
 class SweepConfig:
@@ -111,18 +131,29 @@ class SweepConfig:
     symbols: list[str]
     start_date: date
     end_date: date
+    n_folds: int = 5  # Number of CV folds
     n_jobs: int = -1
     scoring: str = "sharpe_ratio"
     min_samples: int = 100
+    aggregation: str = "median"  # median or mean across folds
 
 @dataclass
 class SweepResult:
-    """Result of parameter sweep."""
-    results_df: pd.DataFrame
+    """Result of parameter sweep with train/test analysis."""
+    results_df: pd.DataFrame  # All param combos with per-fold metrics
     best_params: dict[str, Any]
     best_metrics: dict[str, float]
+
+    # Sharpe decay analysis (key addition from PyQuantNews)
+    train_sharpe_matrix: pd.DataFrame  # Params as index, folds as columns
+    test_sharpe_matrix: pd.DataFrame
+    sharpe_diff_matrix: pd.DataFrame  # test - train
+    sharpe_diff_median: pd.Series  # Aggregated across folds
+
+    # Metadata
     constraint_violations: int
     execution_time_seconds: float
+    generalization_score: float  # % of params where test >= train
 
 def parallel_parameter_sweep(
     config: SweepConfig,
@@ -135,6 +166,20 @@ def validate_constraints(
     constraints: list[SweepConstraint],
 ) -> bool:
     """Check if parameter combination satisfies all constraints."""
+
+def compute_sharpe_diff_analysis(
+    results_df: pd.DataFrame,
+    param_columns: list[str],
+    aggregation: str = "median",
+) -> tuple[pd.DataFrame, pd.Series, float]:
+    """
+    Compute Sharpe ratio diff analysis across parameter combinations.
+
+    Returns:
+        - sharpe_diff_matrix: Full matrix of test-train diffs per fold
+        - sharpe_diff_agg: Aggregated (median/mean) diff per param combo
+        - generalization_score: % of combos where agg_diff >= 0
+    """
 ```
 
 **Constraint Types**:
@@ -142,13 +187,17 @@ def validate_constraints(
 - `max_total`: Maximum number of active parameters
 - `ratio_bound`: Ratio between parameters must be within bounds
 - `exclusion`: Mutually exclusive parameters
+- `difference_min`: Minimum difference between two params (e.g., slow > fast + 5)
 
 **Tests**: `tests/test_research/test_parameter_sweep.py`
 - `test_sum_equals_constraint`
 - `test_max_total_constraint`
+- `test_difference_min_constraint`
 - `test_parallel_execution`
 - `test_constraint_validation`
 - `test_integrates_with_overfitting_guard`
+- `test_sharpe_diff_analysis`
+- `test_generalization_score_calculation`
 
 ---
 
@@ -217,9 +266,17 @@ def calculate_stop_statistics(
 
 ---
 
-## Phase 4: Walk-Forward Split Visualization
+## Phase 4: Walk-Forward Split & Parameter Heatmap Visualization
 
-**Objective**: Add interactive visualization of walk-forward splits to the dashboard.
+**Objective**: Add interactive visualizations for walk-forward splits AND **Sharpe decay heatmaps** to identify robust parameter regions.
+
+### Key Visualization from PyQuantNews Thread
+
+The heatmap shows Sharpe ratio differences (test - train) across parameter combinations:
+- X-axis: `fast_period` (10-50)
+- Y-axis: `slow_period` (15-50)
+- Color: `RdBu` scale (Blue = good generalization, Red = overfitting)
+- Triangular shape due to constraint `slow > fast`
 
 ### New Component: `hrp/dashboard/components/walkforward_viz.py`
 
@@ -248,15 +305,106 @@ def render_fold_comparison_chart(
     """Render bar chart comparing fold performance."""
 ```
 
+### New Component: `hrp/dashboard/components/sharpe_decay_viz.py`
+
+```python
+def render_sharpe_decay_heatmap(
+    sweep_result: SweepResult,
+    param_x: str,
+    param_y: str,
+    colorscale: str = "RdBu",
+) -> None:
+    """
+    Render Sharpe ratio decay heatmap (VectorBT PRO style).
+
+    Shows test_sharpe - train_sharpe across parameter combinations.
+    Blue = positive (good), Red = negative (overfitting).
+
+    Args:
+        sweep_result: Result from parallel_parameter_sweep
+        param_x: Parameter for X-axis (e.g., "fast_period")
+        param_y: Parameter for Y-axis (e.g., "slow_period")
+        colorscale: Plotly colorscale (RdBu recommended)
+    """
+    import plotly.express as px
+
+    # Pivot sharpe_diff_median to 2D matrix
+    heatmap_data = sweep_result.sharpe_diff_median.unstack(param_x)
+
+    fig = px.imshow(
+        heatmap_data,
+        x=heatmap_data.columns,
+        y=heatmap_data.index,
+        color_continuous_scale=colorscale,
+        color_continuous_midpoint=0,  # Center at zero
+        labels={"x": param_x, "y": param_y, "color": "Sharpe Diff"},
+        title="Sharpe Ratio Decay: Test - Train (Blue = Good Generalization)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+def render_generalization_summary(
+    sweep_result: SweepResult,
+) -> None:
+    """
+    Render summary metrics for parameter generalization.
+
+    Shows:
+    - % of parameter combos that generalize (test >= train)
+    - Best generalizing parameters
+    - Worst overfitting parameters
+    """
+    col1, col2, col3 = st.columns(3)
+    col1.metric(
+        "Generalization Score",
+        f"{sweep_result.generalization_score:.1%}",
+        help="% of param combos where test Sharpe >= train Sharpe"
+    )
+    col2.metric(
+        "Best Params",
+        str(sweep_result.best_params),
+    )
+    col3.metric(
+        "Param Combos Tested",
+        len(sweep_result.results_df),
+    )
+
+def render_parameter_sensitivity_chart(
+    sweep_result: SweepResult,
+    param_name: str,
+) -> None:
+    """
+    Render sensitivity analysis for a single parameter.
+
+    Shows how Sharpe diff varies as one parameter changes,
+    holding others at their median values.
+    """
+```
+
 ### Modify: `hrp/dashboard/pages/experiments.py`
 
-Add new tab for walk-forward visualization with:
+Add new tabs:
+
+**Tab 1: Walk-Forward Splits**
 - Configuration form for model/features/date range
 - Interactive Plotly timeline visualization
 - Stability score metrics display
 - Per-fold performance comparison
 
+**Tab 2: Parameter Optimization** (NEW)
+- Parameter sweep configuration
+- **Sharpe decay heatmap** (key visualization)
+- Generalization score summary
+- Best/worst parameter regions highlighted
+
 **Tests**: `tests/test_dashboard/test_walkforward_viz.py`
+- `test_render_splits_with_valid_data`
+- `test_render_handles_empty_folds`
+
+**Tests**: `tests/test_dashboard/test_sharpe_decay_viz.py`
+- `test_render_sharpe_decay_heatmap`
+- `test_heatmap_centers_at_zero`
+- `test_generalization_summary_metrics`
+- `test_handles_triangular_constraint_data`
 
 ---
 
@@ -327,6 +475,19 @@ def check_regime_stability_hmm(
 
 ---
 
+## Key Takeaway from PyQuantNews Thread
+
+> "Although you might have developed a promising strategy on paper, cross-validating it is essential to confirm its consistent performance over time and to ensure it's not merely a result of random fluctuations."
+
+The **Sharpe decay heatmap** is the critical diagnostic tool:
+- Visualizes which parameter regions generalize vs overfit
+- Blue = test > train = robust parameters
+- Red = test < train = overfitting
+- Use median across folds for robustness
+- Triangular heatmaps naturally show parameter constraints
+
+---
+
 ## Files Summary
 
 ### New Files
@@ -334,14 +495,16 @@ def check_regime_stability_hmm(
 | File | Phase | Description |
 |------|-------|-------------|
 | `hrp/ml/optimization.py` | 1 | Cross-validated optimization |
-| `hrp/research/parameter_sweep.py` | 2 | Parallel parameter sweeps |
+| `hrp/research/parameter_sweep.py` | 2 | Parallel parameter sweeps + Sharpe decay analysis |
 | `hrp/research/stops.py` | 3 | Trailing stop implementation |
 | `hrp/dashboard/components/walkforward_viz.py` | 4 | Split visualization |
+| `hrp/dashboard/components/sharpe_decay_viz.py` | 4 | **Sharpe decay heatmap** (key viz) |
 | `hrp/ml/regime.py` | 5 | HMM regime detection |
 | `tests/test_ml/test_optimization.py` | 1 | Optimization tests |
-| `tests/test_research/test_parameter_sweep.py` | 2 | Sweep tests |
+| `tests/test_research/test_parameter_sweep.py` | 2 | Sweep tests + Sharpe diff tests |
 | `tests/test_research/test_stops.py` | 3 | Stop tests |
 | `tests/test_dashboard/test_walkforward_viz.py` | 4 | Viz tests |
+| `tests/test_dashboard/test_sharpe_decay_viz.py` | 4 | Heatmap viz tests |
 | `tests/test_ml/test_regime.py` | 5 | Regime tests |
 
 ### Modified Files
