@@ -50,10 +50,9 @@ def get_data_sources() -> pd.DataFrame:
         SELECT
             source_id,
             source_type,
-            provider,
-            is_active,
-            last_fetch_date,
-            created_at
+            api_name,
+            status,
+            last_fetch
         FROM data_sources
         ORDER BY source_id
     """
@@ -62,8 +61,8 @@ def get_data_sources() -> pd.DataFrame:
         return df
     except Exception:
         return pd.DataFrame(columns=[
-            "source_id", "source_type", "provider", "is_active",
-            "last_fetch_date", "created_at"
+            "source_id", "source_type", "api_name", "status",
+            "last_fetch"
         ])
 
 
@@ -231,10 +230,9 @@ def render() -> None:
             column_config={
                 "source_id": st.column_config.TextColumn("Source ID", width="medium"),
                 "source_type": st.column_config.TextColumn("Type", width="small"),
-                "provider": st.column_config.TextColumn("Provider", width="medium"),
-                "is_active": st.column_config.CheckboxColumn("Active", width="small"),
-                "last_fetch_date": st.column_config.DateColumn("Last Fetch", width="medium"),
-                "created_at": st.column_config.DatetimeColumn("Created", width="medium"),
+                "api_name": st.column_config.TextColumn("API Name", width="medium"),
+                "status": st.column_config.TextColumn("Status", width="small"),
+                "last_fetch": st.column_config.DatetimeColumn("Last Fetch", width="medium"),
             }
         )
 
