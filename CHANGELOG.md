@@ -1,4 +1,4 @@
-## [1.2.0] - 2026-01-24
+## [1.1.2] - 2026-01-24
 
 ### Added
 - **FeatureCountValidator**: New validator in `hrp/risk/overfitting.py` to prevent overfitting by limiting feature count in ML models:
