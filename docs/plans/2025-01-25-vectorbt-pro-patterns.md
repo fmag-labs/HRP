@@ -591,7 +591,7 @@ Phase 5: HMM Regime Detection (independent, can run parallel)
 2. Each feature integrates with existing overfitting guards
 3. MLflow logging for all optimization runs
 4. Dashboard visualizations render correctly
-5. Documentation updated in CLAUDE.md
+5. Documentation updated in CLAUDE.md, Project-Status.md, Changelog.md
 
 ---
 

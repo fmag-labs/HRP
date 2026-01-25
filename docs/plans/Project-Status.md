@@ -347,6 +347,13 @@ Complete feature tracking with spec links.
 
 **Last Updated:** January 25, 2026
 
+**Changes (January 25, 2026 - Research Agents Design):**
+- Created design brainstorm for multi-agent quant research team (`docs/plans/2025-01-25-research-agents-design.md`)
+- Researched real hedge fund structures (DE Shaw, Two Sigma, Citadel, Renaissance)
+- Proposed 3 options: 8, 10, or 12 agents with consolidated roles
+- Key design decisions: autonomous with shared workspace, scheduled + on-demand execution
+- Recommended Option A (8 agents): Alpha Researcher, Signal Scientist, ML Scientist, ML Quality Sentinel, Quant Developer, Risk Manager, Validation Analyst, Report Generator
+
 **Changes (January 25, 2026 - Plan Status Review):**
 - Reviewed `docs/plans/2025-01-24-remaining-features.md` against actual implementation
 - All 27 planned features implemented except `efi_13d` (Elder's Force Index)

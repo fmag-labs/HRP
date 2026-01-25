@@ -1,3 +1,13 @@
+## [Unreleased]
+
+### Added
+- **Research Agents Design**: Comprehensive design brainstorm for multi-agent quant research team
+  - Researched real hedge fund structures (DE Shaw, Two Sigma, Citadel, Renaissance)
+  - Proposed 3 architecture options: 8, 10, or 12 specialized AI agents
+  - Key design: autonomous agents with shared workspace (hypotheses, MLflow, lineage)
+  - Recommended 8-agent structure: Alpha Researcher, Signal Scientist, ML Scientist, ML Quality Sentinel, Quant Developer, Risk Manager, Validation Analyst, Report Generator
+  - Design document: `docs/plans/2025-01-25-research-agents-design.md`
+
 ## [1.4.1] - 2026-01-25
 
 ### Fixed
