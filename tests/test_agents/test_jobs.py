@@ -244,9 +244,9 @@ class TestFeatureComputationJob:
         job = FeatureComputationJob(dependencies=["custom_job"])
         assert job.dependencies == ["custom_job"]
 
-    @patch("hrp.agents.jobs.compute_features")
+    @patch("hrp.data.ingestion.features.compute_features_batch")
     def test_execute_calls_compute_features(self, mock_compute, job_test_db):
-        """execute() should call compute_features with correct args."""
+        """execute() should call compute_features_batch with correct args."""
         mock_compute.return_value = {
             "features_computed": 500,
             "rows_inserted": 500,
@@ -280,7 +280,7 @@ class TestFeatureComputationJob:
         assert "Dependencies not met" in result["error"]
         mock_compute.assert_not_called()
 
-    @patch("hrp.agents.jobs.compute_features")
+    @patch("hrp.data.ingestion.features.compute_features_batch")
     @patch("hrp.agents.jobs.EmailNotifier")
     def test_run_with_met_dependency(self, mock_notifier, mock_compute, job_test_db):
         """run() should execute when dependencies are met."""

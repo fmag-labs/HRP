@@ -54,6 +54,9 @@ tmp/
 temp/
 *.tmp
 
+# External tooling databases
+features.db*
+
 # Auto Claude data directory
 .auto-claude/
 

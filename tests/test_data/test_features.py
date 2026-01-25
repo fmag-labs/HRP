@@ -583,6 +583,370 @@ class TestFeatureComputation:
 
         # Volatility should be NaN for first 60 periods
 
+    def test_compute_rsi_14d(self):
+        """Test rsi_14d computation function."""
+        from hrp.data.features.computation import compute_rsi_14d
+
+        # Create sample price data with known movement pattern
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+
+        data = []
+        base_price = 100.0
+        for i, d in enumerate(dates):
+            # Alternate between gains and losses for predictable RSI
+            if i % 2 == 0:
+                price = base_price * (1 + 0.01 * (i // 2))
+            else:
+                price = base_price * (1 + 0.005 * (i // 2))
+            data.append({"date": d, "symbol": "AAPL", "close": price})
+
+        df = pd.DataFrame(data)
+        df = df.set_index(["date", "symbol"])
+
+        # Compute RSI
+        result = compute_rsi_14d(df)
+
+        # Check result structure
+        assert isinstance(result, pd.DataFrame)
+        assert "rsi_14d" in result.columns
+        assert len(result) > 0
+
+        # RSI should be between 0 and 100
+        valid_values = result["rsi_14d"].dropna()
+        assert (valid_values >= 0).all()
+        assert (valid_values <= 100).all()
+
+    def test_compute_sma_20d(self):
+        """Test sma_20d computation function."""
+        from hrp.data.features.computation import compute_sma_20d
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = []
+        for i, d in enumerate(dates):
+            data.append({"date": d, "symbol": "AAPL", "close": 100.0 + i})
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_sma_20d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "sma_20d" in result.columns
+
+        # First 19 values should be NaN
+        valid_values = result["sma_20d"].dropna()
+        assert len(valid_values) > 0
+
+    def test_compute_sma_50d(self):
+        """Test sma_50d computation function."""
+        from hrp.data.features.computation import compute_sma_50d
+
+        dates = pd.date_range("2023-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i} for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_sma_50d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "sma_50d" in result.columns
+
+    def test_compute_sma_200d(self):
+        """Test sma_200d computation function."""
+        from hrp.data.features.computation import compute_sma_200d
+
+        dates = pd.date_range("2022-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i * 0.1} for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_sma_200d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "sma_200d" in result.columns
+
+    def test_compute_price_to_sma_20d(self):
+        """Test price_to_sma_20d computation function."""
+        from hrp.data.features.computation import compute_price_to_sma_20d
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i} for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_price_to_sma_20d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "price_to_sma_20d" in result.columns
+
+        # Values should be around 1.0 (price close to SMA)
+        valid_values = result["price_to_sma_20d"].dropna()
+        assert (valid_values > 0).all()
+
+    def test_compute_price_to_sma_50d(self):
+        """Test price_to_sma_50d computation function."""
+        from hrp.data.features.computation import compute_price_to_sma_50d
+
+        dates = pd.date_range("2023-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i} for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_price_to_sma_50d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "price_to_sma_50d" in result.columns
+
+    def test_compute_price_to_sma_200d(self):
+        """Test price_to_sma_200d computation function."""
+        from hrp.data.features.computation import compute_price_to_sma_200d
+
+        dates = pd.date_range("2022-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i * 0.1} for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_price_to_sma_200d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "price_to_sma_200d" in result.columns
+
+    def test_compute_volume_ratio(self):
+        """Test volume_ratio computation function."""
+        from hrp.data.features.computation import compute_volume_ratio
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0, "volume": 1000000 + i * 10000}
+                for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_volume_ratio(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "volume_ratio" in result.columns
+
+        # Volume ratio should be positive
+        valid_values = result["volume_ratio"].dropna()
+        assert (valid_values > 0).all()
+
+    def test_compute_returns_60d(self):
+        """Test returns_60d computation function."""
+        from hrp.data.features.computation import compute_returns_60d
+
+        dates = pd.date_range("2023-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 * (1 + 0.001 * i)}
+                for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_returns_60d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "returns_60d" in result.columns
+
+    def test_compute_returns_252d(self):
+        """Test returns_252d computation function."""
+        from hrp.data.features.computation import compute_returns_252d
+
+        dates = pd.date_range("2022-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 * (1 + 0.0005 * i)}
+                for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_returns_252d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "returns_252d" in result.columns
+
+    def test_compute_momentum_252d(self):
+        """Test momentum_252d computation function."""
+        from hrp.data.features.computation import compute_momentum_252d
+
+        dates = pd.date_range("2022-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 * (1 + 0.0005 * i)}
+                for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_momentum_252d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "momentum_252d" in result.columns
+
+    def test_compute_obv(self):
+        """Test OBV (On-Balance Volume) computation function."""
+        from hrp.data.features.computation import compute_obv
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = []
+        for i, d in enumerate(dates):
+            # Alternating up/down days
+            close = 100.0 + (1 if i % 2 == 0 else -0.5)
+            data.append({"date": d, "symbol": "AAPL", "close": close, "volume": 1000000})
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_obv(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "obv" in result.columns
+
+    def test_compute_atr_14d(self):
+        """Test ATR-14 computation function."""
+        from hrp.data.features.computation import compute_atr_14d
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = []
+        for i, d in enumerate(dates):
+            base = 100.0 + i * 0.1
+            data.append({
+                "date": d, "symbol": "AAPL",
+                "high": base + 2, "low": base - 2, "close": base
+            })
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_atr_14d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "atr_14d" in result.columns
+
+        # ATR should be positive
+        valid_values = result["atr_14d"].dropna()
+        assert (valid_values > 0).all()
+
+    def test_compute_adx_14d(self):
+        """Test ADX-14 computation function."""
+        import numpy as np
+        from hrp.data.features.computation import compute_adx_14d
+
+        dates = pd.date_range("2023-01-01", "2023-06-30", freq="B")
+        data = []
+        for i, d in enumerate(dates):
+            # Add some oscillation to create both up and down moves
+            base = 100.0 + i * 0.1 + np.sin(i / 5) * 2
+            data.append({
+                "date": d, "symbol": "AAPL",
+                "high": base + 1.5, "low": base - 1.5, "close": base
+            })
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_adx_14d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "adx_14d" in result.columns
+
+        # ADX should be between 0 and 100 (inclusive)
+        valid_values = result["adx_14d"].dropna()
+        assert len(valid_values) > 0
+        assert (valid_values >= 0).all()
+        assert (valid_values <= 100.01).all()  # Small tolerance for floating point
+
+    def test_compute_macd(self):
+        """Test MACD computation functions."""
+        from hrp.data.features.computation import (
+            compute_macd_line, compute_macd_signal, compute_macd_histogram
+        )
+
+        dates = pd.date_range("2023-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i * 0.1}
+                for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+
+        macd_line = compute_macd_line(df)
+        macd_signal = compute_macd_signal(df)
+        macd_hist = compute_macd_histogram(df)
+
+        assert "macd_line" in macd_line.columns
+        assert "macd_signal" in macd_signal.columns
+        assert "macd_histogram" in macd_hist.columns
+
+    def test_compute_cci_20d(self):
+        """Test CCI-20 computation function."""
+        from hrp.data.features.computation import compute_cci_20d
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = []
+        for i, d in enumerate(dates):
+            base = 100.0 + i * 0.1
+            data.append({
+                "date": d, "symbol": "AAPL",
+                "high": base + 1, "low": base - 1, "close": base
+            })
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_cci_20d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "cci_20d" in result.columns
+
+    def test_compute_roc_10d(self):
+        """Test ROC-10 computation function."""
+        from hrp.data.features.computation import compute_roc_10d
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 * (1 + 0.01 * i)}
+                for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_roc_10d(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "roc_10d" in result.columns
+
+    def test_compute_trend(self):
+        """Test trend computation function."""
+        from hrp.data.features.computation import compute_trend
+
+        dates = pd.date_range("2022-01-01", "2023-06-30", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i * 0.1}
+                for i, d in enumerate(dates)]
+
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+        result = compute_trend(df)
+
+        assert isinstance(result, pd.DataFrame)
+        assert "trend" in result.columns
+
+        # Trend should be +1 or -1
+        valid_values = result["trend"].dropna()
+        assert set(valid_values.unique()).issubset({-1, 1})
+
+    def test_compute_bollinger_bands(self):
+        """Test Bollinger Bands computation functions."""
+        from hrp.data.features.computation import (
+            compute_bb_upper_20d, compute_bb_lower_20d, compute_bb_width_20d
+        )
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = [{"date": d, "symbol": "AAPL", "close": 100.0 + i * 0.1}
+                for i, d in enumerate(dates)]
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+
+        upper = compute_bb_upper_20d(df)
+        lower = compute_bb_lower_20d(df)
+        width = compute_bb_width_20d(df)
+
+        assert "bb_upper_20d" in upper.columns
+        assert "bb_lower_20d" in lower.columns
+        assert "bb_width_20d" in width.columns
+
+        # Upper should be > lower
+        u = upper["bb_upper_20d"].dropna()
+        l = lower["bb_lower_20d"].dropna()
+        assert (u.values > l.values).all()
+
+    def test_compute_stochastic(self):
+        """Test Stochastic Oscillator computation functions."""
+        from hrp.data.features.computation import compute_stoch_k_14d, compute_stoch_d_14d
+
+        dates = pd.date_range("2023-01-01", "2023-03-31", freq="B")
+        data = []
+        for i, d in enumerate(dates):
+            base = 100.0 + i * 0.1
+            data.append({"date": d, "symbol": "AAPL", "high": base + 1, "low": base - 1, "close": base})
+        df = pd.DataFrame(data).set_index(["date", "symbol"])
+
+        stoch_k = compute_stoch_k_14d(df)
+        stoch_d = compute_stoch_d_14d(df)
+
+        assert "stoch_k_14d" in stoch_k.columns
+        assert "stoch_d_14d" in stoch_d.columns
+
+        # Values should be between 0 and 100
+        k_vals = stoch_k["stoch_k_14d"].dropna()
+        assert (k_vals >= 0).all() and (k_vals <= 100).all()
+
 
 class TestFeatureComputerIntegration:
     """Integration tests for FeatureComputer with database."""

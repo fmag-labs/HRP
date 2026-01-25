@@ -10,7 +10,7 @@
 | **Trading** | Live Execution | 0% | 🔮 Future |
 
 **Codebase:** ~18,000 lines of production code across 80+ modules
-**Test Suite:** 1,259 tests (100% pass rate)
+**Test Suite:** 1,279 tests (100% pass rate)
 
 ## Current Progress
 
@@ -60,7 +60,7 @@ Everything needed for a working research platform with reliable data.
 | Universe management | ✅ | S&P 500 from Wikipedia, exclusion rules (financials, REITs, penny stocks) |
 | Auto universe updates | ✅ | Daily at 6:05 PM ET via `UniverseUpdateJob` |
 | Multi-source ingestion | ✅ | Polygon.io (primary) + Yahoo Finance (fallback) |
-| Feature store | ✅ | 14+ technical indicators with versioning (`hrp/data/features/`) |
+| Feature store | ✅ | 32 technical indicators with versioning (`hrp/data/features/`) |
 | Scheduled jobs | ✅ | APScheduler: Prices (18:00) → Universe (18:05) → Features (18:10) |
 | Data quality | ✅ | 5 check types: anomaly, completeness, gaps, stale, volume |
 | Backup system | ✅ | Automated daily, SHA-256 verification, 30-day retention |
@@ -163,6 +163,8 @@ ML capabilities, statistical rigor, and agent integration.
 | `mom_10d` | Needs clarification | 10-day momentum - unclear if % change (same as ROC) or absolute price diff |
 | `fibonacci_retracements` | Different pattern | Requires pivot point detection, not a rolling indicator - needs architectural design |
 | `trend_strength` | Deferred | Combined ADX * sign(price-SMA) for signed strength; existing `adx_14d` + `trend` sufficient for now |
+| `wr_14d` | Low priority | Williams %R oscillator - similar to Stochastic %K, redundant with existing oscillators |
+| `efi_13d` | Low priority | Elder's Force Index - combines price change with volume; OBV provides similar insight |
 
 ---
 
@@ -279,6 +281,8 @@ Complete feature tracking with spec links.
 | F-035 | MOM10 Indicator | 2 | 🅿️ parked | — |
 | F-036 | Fibonacci Retracements | 2 | 🅿️ parked | — |
 | F-037 | Combined Trend Strength | 2 | 🅿️ parked | — |
+| F-038 | Williams %R (wr_14d) | 2 | 🅿️ parked | — |
+| F-039 | Elder's Force Index (efi_13d) | 2 | 🅿️ parked | — |
 
 ---
 

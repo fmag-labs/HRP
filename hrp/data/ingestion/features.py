@@ -29,14 +29,16 @@ def compute_features(
     """
     Compute technical features for given symbols.
 
-    Computes:
-    - returns_1d: 1-day return
-    - returns_5d: 5-day return
-    - returns_20d: 20-day return (monthly)
-    - momentum_20d: 20-day momentum
-    - momentum_60d: 60-day momentum (quarterly)
-    - volatility_20d: 20-day rolling volatility
-    - volatility_60d: 60-day rolling volatility
+    Computes 32 technical indicators:
+    - Returns: returns_1d, returns_5d, returns_20d, returns_60d, returns_252d
+    - Momentum: momentum_20d, momentum_60d, momentum_252d
+    - Volatility: volatility_20d, volatility_60d
+    - Volume: volume_20d, volume_ratio, obv
+    - Oscillators: rsi_14d, cci_20d, roc_10d, stoch_k_14d, stoch_d_14d
+    - Trend: atr_14d, adx_14d, macd_line, macd_signal, macd_histogram, trend
+    - Moving Averages: sma_20d, sma_50d, sma_200d
+    - Price Ratios: price_to_sma_20d, price_to_sma_50d, price_to_sma_200d
+    - Bollinger: bb_upper_20d, bb_lower_20d, bb_width_20d
 
     Args:
         symbols: List of stock tickers (None = all symbols in price data)
@@ -221,12 +223,19 @@ def compute_features_batch(
     # Generate date range for feature computation
     dates = pd.date_range(start, end, freq="B").date.tolist()
 
-    # Feature names to compute (all 8 standard features)
+    # Feature names to compute (all 32 standard features)
     feature_names = [
-        "returns_1d", "returns_5d", "returns_20d",
-        "momentum_20d", "momentum_60d",
+        "returns_1d", "returns_5d", "returns_20d", "returns_60d", "returns_252d",
+        "momentum_20d", "momentum_60d", "momentum_252d",
         "volatility_20d", "volatility_60d",
-        "volume_20d",
+        "volume_20d", "volume_ratio", "obv",
+        "rsi_14d", "atr_14d", "adx_14d", "cci_20d", "roc_10d",
+        "macd_line", "macd_signal", "macd_histogram",
+        "sma_20d", "sma_50d", "sma_200d",
+        "price_to_sma_20d", "price_to_sma_50d", "price_to_sma_200d",
+        "trend",
+        "bb_upper_20d", "bb_lower_20d", "bb_width_20d",
+        "stoch_k_14d", "stoch_d_14d",
     ]
 
     try:
@@ -283,7 +292,7 @@ def _fetch_prices(db, symbol: str, start: date, end: date) -> pd.DataFrame:
 
     with db.connection() as conn:
         df = conn.execute("""
-            SELECT date, close, adj_close, volume
+            SELECT date, high, low, close, adj_close, volume
             FROM prices
             WHERE symbol = ?
             AND date >= ?
@@ -310,42 +319,115 @@ def _compute_all_features(df: pd.DataFrame, symbol: str, version: str) -> pd.Dat
     features = []
 
     # === RETURNS ===
-    # 1-day return
     df['returns_1d'] = df['price'].pct_change(1)
-
-    # 5-day return
     df['returns_5d'] = df['price'].pct_change(5)
-
-    # 20-day return (monthly)
     df['returns_20d'] = df['price'].pct_change(20)
+    df['returns_60d'] = df['price'].pct_change(60)
+    df['returns_252d'] = df['price'].pct_change(252)
 
     # === MOMENTUM ===
-    # 20-day momentum (20-day return)
     df['momentum_20d'] = df['price'].pct_change(20)
-
-    # 60-day momentum (quarterly)
     df['momentum_60d'] = df['price'].pct_change(60)
+    df['momentum_252d'] = df['price'].pct_change(252)
 
     # === VOLATILITY ===
-    # Calculate log returns for volatility
     df['log_return'] = np.log(df['price'] / df['price'].shift(1))
-
-    # 20-day rolling volatility (annualized)
     df['volatility_20d'] = df['log_return'].rolling(window=20).std() * np.sqrt(252)
-
-    # 60-day rolling volatility (annualized)
     df['volatility_60d'] = df['log_return'].rolling(window=60).std() * np.sqrt(252)
 
     # === VOLUME ===
-    # 20-day average volume
     df['volume_20d'] = df['volume'].rolling(window=20).mean()
+    df['volume_ratio'] = df['volume'] / df['volume_20d']
+
+    # === RSI ===
+    delta = df['price'].diff()
+    gains = delta.where(delta > 0, 0.0)
+    losses = (-delta).where(delta < 0, 0.0)
+    avg_gain = gains.ewm(span=14, adjust=False).mean()
+    avg_loss = losses.ewm(span=14, adjust=False).mean()
+    rs = avg_gain / avg_loss
+    df['rsi_14d'] = 100 - (100 / (1 + rs))
+    df['rsi_14d'] = df['rsi_14d'].replace([np.inf, -np.inf], np.nan)
+
+    # === OBV ===
+    direction = np.sign(df['price'].diff())
+    df['obv'] = (direction * df['volume']).cumsum()
+
+    # === ATR ===
+    prev_close = df['price'].shift(1)
+    tr1 = df['high'] - df['low']
+    tr2 = (df['high'] - prev_close).abs()
+    tr3 = (df['low'] - prev_close).abs()
+    true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    df['atr_14d'] = true_range.ewm(span=14, adjust=False).mean()
+
+    # === ADX ===
+    up_move = df['high'] - df['high'].shift(1)
+    down_move = df['low'].shift(1) - df['low']
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+    smooth_plus_dm = plus_dm.ewm(span=14, adjust=False).mean()
+    smooth_minus_dm = minus_dm.ewm(span=14, adjust=False).mean()
+    plus_di = 100 * smooth_plus_dm / df['atr_14d']
+    minus_di = 100 * smooth_minus_dm / df['atr_14d']
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    df['adx_14d'] = dx.ewm(span=14, adjust=False).mean()
+    df['adx_14d'] = df['adx_14d'].replace([np.inf, -np.inf], np.nan)
+
+    # === MACD ===
+    ema_12 = df['price'].ewm(span=12, adjust=False).mean()
+    ema_26 = df['price'].ewm(span=26, adjust=False).mean()
+    df['macd_line'] = ema_12 - ema_26
+    df['macd_signal'] = df['macd_line'].ewm(span=9, adjust=False).mean()
+    df['macd_histogram'] = df['macd_line'] - df['macd_signal']
+
+    # === CCI ===
+    tp = (df['high'] + df['low'] + df['price']) / 3
+    tp_sma = tp.rolling(window=20).mean()
+    mean_dev = tp.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean())
+    df['cci_20d'] = (tp - tp_sma) / (0.015 * mean_dev)
+
+    # === ROC ===
+    df['roc_10d'] = df['price'].pct_change(10) * 100
+
+    # === SMA ===
+    df['sma_20d'] = df['price'].rolling(window=20).mean()
+    df['sma_50d'] = df['price'].rolling(window=50).mean()
+    df['sma_200d'] = df['price'].rolling(window=200).mean()
+
+    # === PRICE TO SMA ===
+    df['price_to_sma_20d'] = df['price'] / df['sma_20d']
+    df['price_to_sma_50d'] = df['price'] / df['sma_50d']
+    df['price_to_sma_200d'] = df['price'] / df['sma_200d']
+
+    # === TREND ===
+    df['trend'] = np.sign(df['price'] - df['sma_200d'])
+
+    # === BOLLINGER BANDS ===
+    bb_std = df['price'].rolling(window=20).std()
+    df['bb_upper_20d'] = df['sma_20d'] + 2 * bb_std
+    df['bb_lower_20d'] = df['sma_20d'] - 2 * bb_std
+    df['bb_width_20d'] = (4 * bb_std) / df['sma_20d']
+
+    # === STOCHASTIC ===
+    lowest_low = df['low'].rolling(window=14).min()
+    highest_high = df['high'].rolling(window=14).max()
+    df['stoch_k_14d'] = 100 * (df['price'] - lowest_low) / (highest_high - lowest_low)
+    df['stoch_d_14d'] = df['stoch_k_14d'].rolling(window=3).mean()
 
     # Convert wide format to long format
     feature_columns = [
-        'returns_1d', 'returns_5d', 'returns_20d',
-        'momentum_20d', 'momentum_60d',
+        'returns_1d', 'returns_5d', 'returns_20d', 'returns_60d', 'returns_252d',
+        'momentum_20d', 'momentum_60d', 'momentum_252d',
         'volatility_20d', 'volatility_60d',
-        'volume_20d',
+        'volume_20d', 'volume_ratio', 'obv',
+        'rsi_14d', 'atr_14d', 'adx_14d', 'cci_20d', 'roc_10d',
+        'macd_line', 'macd_signal', 'macd_histogram',
+        'sma_20d', 'sma_50d', 'sma_200d',
+        'price_to_sma_20d', 'price_to_sma_50d', 'price_to_sma_200d',
+        'trend',
+        'bb_upper_20d', 'bb_lower_20d', 'bb_width_20d',
+        'stoch_k_14d', 'stoch_d_14d',
     ]
 
     for feature_name in feature_columns:

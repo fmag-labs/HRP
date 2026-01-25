@@ -8,6 +8,7 @@ import json
 from datetime import date
 from typing import Any, Callable
 
+import numpy as np
 import pandas as pd
 from loguru import logger
 
@@ -160,16 +161,606 @@ def compute_volume_20d(prices: pd.DataFrame) -> pd.DataFrame:
     return result.to_frame(name="volume_20d")
 
 
+def compute_rsi_14d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 14-day Relative Strength Index (RSI).
+
+    RSI = 100 - (100 / (1 + RS))
+    where RS = Average Gain / Average Loss over 14 periods
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with RSI values (0-100 scale)
+    """
+    close = prices["close"].unstack(level="symbol")
+
+    # Calculate price changes
+    delta = close.diff()
+
+    # Separate gains and losses
+    gains = delta.where(delta > 0, 0.0)
+    losses = (-delta).where(delta < 0, 0.0)
+
+    # Calculate average gain and loss using exponential moving average
+    avg_gain = gains.ewm(span=14, adjust=False).mean()
+    avg_loss = losses.ewm(span=14, adjust=False).mean()
+
+    # Calculate RS and RSI
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+
+    # Handle edge cases (no losses = RSI of 100, no gains = RSI of 0)
+    rsi = rsi.replace([np.inf, -np.inf], np.nan)
+
+    result = rsi.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="rsi_14d")
+
+
+def compute_sma_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day Simple Moving Average.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with SMA values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=20).mean()
+    result = sma.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="sma_20d")
+
+
+def compute_sma_50d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 50-day Simple Moving Average.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with SMA values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=50).mean()
+    result = sma.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="sma_50d")
+
+
+def compute_sma_200d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 200-day Simple Moving Average.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with SMA values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=200).mean()
+    result = sma.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="sma_200d")
+
+
+def compute_price_to_sma_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate price-to-SMA-20 ratio (close / sma_20d).
+
+    Values > 1 indicate price above SMA (bullish), < 1 indicates below (bearish).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with price-to-SMA ratio values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=20).mean()
+    ratio = close / sma
+    result = ratio.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="price_to_sma_20d")
+
+
+def compute_price_to_sma_50d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate price-to-SMA-50 ratio (close / sma_50d).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with price-to-SMA ratio values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=50).mean()
+    ratio = close / sma
+    result = ratio.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="price_to_sma_50d")
+
+
+def compute_price_to_sma_200d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate price-to-SMA-200 ratio (close / sma_200d).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with price-to-SMA ratio values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=200).mean()
+    ratio = close / sma
+    result = ratio.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="price_to_sma_200d")
+
+
+def compute_volume_ratio(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate volume ratio (current volume / 20-day average volume).
+
+    Values > 1 indicate higher than average volume (increased interest).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'volume' column
+
+    Returns:
+        DataFrame with volume ratio values
+    """
+    volume = prices["volume"].unstack(level="symbol")
+    avg_volume = volume.rolling(window=20).mean()
+    ratio = volume / avg_volume
+    result = ratio.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="volume_ratio")
+
+
+def compute_returns_60d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 60-day return (quarterly).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with return values
+    """
+    close = prices["close"].unstack(level="symbol")
+    returns = close.pct_change(60)
+    result = returns.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="returns_60d")
+
+
+def compute_returns_252d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 252-day return (annual).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with return values
+    """
+    close = prices["close"].unstack(level="symbol")
+    returns = close.pct_change(252)
+    result = returns.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="returns_252d")
+
+
+def compute_momentum_252d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 252-day momentum (annual trailing return).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with momentum values
+    """
+    close = prices["close"].unstack(level="symbol")
+    momentum = close.pct_change(252)
+    result = momentum.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="momentum_252d")
+
+
+def compute_obv(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate On-Balance Volume (OBV).
+
+    OBV is a cumulative indicator that adds volume on up days
+    and subtracts volume on down days.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close', 'volume' columns
+
+    Returns:
+        DataFrame with OBV values
+    """
+    close = prices["close"].unstack(level="symbol")
+    volume = prices["volume"].unstack(level="symbol")
+
+    # Calculate price direction: +1 for up, -1 for down, 0 for unchanged
+    direction = np.sign(close.diff())
+
+    # OBV = cumulative sum of signed volume
+    obv = (direction * volume).cumsum()
+
+    result = obv.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="obv")
+
+
+def compute_atr_14d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 14-day Average True Range (ATR).
+
+    True Range = max(high-low, |high-prev_close|, |low-prev_close|)
+    ATR = 14-day EMA of True Range
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'high', 'low', 'close' columns
+
+    Returns:
+        DataFrame with ATR values
+    """
+    high = prices["high"].unstack(level="symbol")
+    low = prices["low"].unstack(level="symbol")
+    close = prices["close"].unstack(level="symbol")
+
+    prev_close = close.shift(1)
+
+    # True Range components
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+
+    # True Range = max of the three components
+    true_range = pd.concat([tr1, tr2, tr3], keys=['tr1', 'tr2', 'tr3']).groupby(level=1).max()
+
+    # ATR = 14-day EMA of True Range
+    atr = true_range.ewm(span=14, adjust=False).mean()
+
+    result = atr.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="atr_14d")
+
+
+def compute_adx_14d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 14-day Average Directional Index (ADX).
+
+    ADX measures trend strength (0-100) regardless of direction.
+    Values > 25 indicate strong trend, < 20 indicate weak/no trend.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'high', 'low', 'close' columns
+
+    Returns:
+        DataFrame with ADX values (0-100 scale)
+    """
+    high = prices["high"].unstack(level="symbol")
+    low = prices["low"].unstack(level="symbol")
+    close = prices["close"].unstack(level="symbol")
+
+    # Calculate True Range
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    true_range = pd.concat([tr1, tr2, tr3], keys=['tr1', 'tr2', 'tr3']).groupby(level=1).max()
+
+    # Calculate Directional Movement
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+
+    # +DM and -DM
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    # Smoothed TR, +DM, -DM (14-period EMA)
+    atr = true_range.ewm(span=14, adjust=False).mean()
+    smooth_plus_dm = plus_dm.ewm(span=14, adjust=False).mean()
+    smooth_minus_dm = minus_dm.ewm(span=14, adjust=False).mean()
+
+    # +DI and -DI
+    plus_di = 100 * smooth_plus_dm / atr
+    minus_di = 100 * smooth_minus_dm / atr
+
+    # DX and ADX
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    adx = dx.ewm(span=14, adjust=False).mean()
+
+    # Handle edge cases
+    adx = adx.replace([np.inf, -np.inf], np.nan)
+
+    result = adx.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="adx_14d")
+
+
+def compute_macd_line(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate MACD Line (EMA-12 minus EMA-26).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with MACD line values
+    """
+    close = prices["close"].unstack(level="symbol")
+    ema_12 = close.ewm(span=12, adjust=False).mean()
+    ema_26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema_12 - ema_26
+
+    result = macd_line.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="macd_line")
+
+
+def compute_macd_signal(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate MACD Signal Line (9-day EMA of MACD line).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with MACD signal values
+    """
+    close = prices["close"].unstack(level="symbol")
+    ema_12 = close.ewm(span=12, adjust=False).mean()
+    ema_26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema_12 - ema_26
+    signal = macd_line.ewm(span=9, adjust=False).mean()
+
+    result = signal.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="macd_signal")
+
+
+def compute_macd_histogram(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate MACD Histogram (MACD line minus Signal line).
+
+    Positive histogram = bullish momentum, Negative = bearish.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with MACD histogram values
+    """
+    close = prices["close"].unstack(level="symbol")
+    ema_12 = close.ewm(span=12, adjust=False).mean()
+    ema_26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema_12 - ema_26
+    signal = macd_line.ewm(span=9, adjust=False).mean()
+    histogram = macd_line - signal
+
+    result = histogram.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="macd_histogram")
+
+
+def compute_cci_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day Commodity Channel Index (CCI).
+
+    CCI = (Typical Price - SMA of TP) / (0.015 * Mean Deviation)
+    where Typical Price = (High + Low + Close) / 3
+
+    Values > +100 indicate overbought, < -100 indicate oversold.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'high', 'low', 'close' columns
+
+    Returns:
+        DataFrame with CCI values
+    """
+    high = prices["high"].unstack(level="symbol")
+    low = prices["low"].unstack(level="symbol")
+    close = prices["close"].unstack(level="symbol")
+
+    # Typical Price
+    tp = (high + low + close) / 3
+
+    # SMA of Typical Price
+    tp_sma = tp.rolling(window=20).mean()
+
+    # Mean Deviation
+    mean_dev = tp.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean())
+
+    # CCI
+    cci = (tp - tp_sma) / (0.015 * mean_dev)
+
+    result = cci.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="cci_20d")
+
+
+def compute_roc_10d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 10-day Rate of Change (ROC).
+
+    ROC = ((close - close_n_periods_ago) / close_n_periods_ago) * 100
+
+    Expressed as percentage change.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with ROC values (percentage)
+    """
+    close = prices["close"].unstack(level="symbol")
+    roc = close.pct_change(10) * 100
+
+    result = roc.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="roc_10d")
+
+
+def compute_trend(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate trend direction based on price vs 200-day SMA.
+
+    Returns +1 if price > SMA-200 (uptrend), -1 if price < SMA-200 (downtrend).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with trend values (+1 or -1)
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma_200 = close.rolling(window=200).mean()
+
+    # +1 for uptrend (price above SMA), -1 for downtrend
+    trend = np.sign(close - sma_200)
+
+    result = trend.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="trend")
+
+
+def compute_bb_upper_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day Bollinger Band upper band (SMA + 2*std).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with upper band values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=20).mean()
+    std = close.rolling(window=20).std()
+    upper = sma + 2 * std
+
+    result = upper.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="bb_upper_20d")
+
+
+def compute_bb_lower_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day Bollinger Band lower band (SMA - 2*std).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with lower band values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=20).mean()
+    std = close.rolling(window=20).std()
+    lower = sma - 2 * std
+
+    result = lower.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="bb_lower_20d")
+
+
+def compute_bb_width_20d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 20-day Bollinger Band width ((upper - lower) / middle).
+
+    Measures volatility - higher width = higher volatility.
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'close' column
+
+    Returns:
+        DataFrame with band width values
+    """
+    close = prices["close"].unstack(level="symbol")
+    sma = close.rolling(window=20).mean()
+    std = close.rolling(window=20).std()
+    width = (4 * std) / sma  # (upper - lower) / middle = 4*std / sma
+
+    result = width.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="bb_width_20d")
+
+
+def compute_stoch_k_14d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 14-day Stochastic %K.
+
+    %K = 100 * (close - lowest_low) / (highest_high - lowest_low)
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'high', 'low', 'close' columns
+
+    Returns:
+        DataFrame with %K values (0-100)
+    """
+    high = prices["high"].unstack(level="symbol")
+    low = prices["low"].unstack(level="symbol")
+    close = prices["close"].unstack(level="symbol")
+
+    lowest_low = low.rolling(window=14).min()
+    highest_high = high.rolling(window=14).max()
+
+    stoch_k = 100 * (close - lowest_low) / (highest_high - lowest_low)
+
+    result = stoch_k.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="stoch_k_14d")
+
+
+def compute_stoch_d_14d(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate 14-day Stochastic %D (3-day SMA of %K).
+
+    Args:
+        prices: Price DataFrame with MultiIndex (date, symbol) and 'high', 'low', 'close' columns
+
+    Returns:
+        DataFrame with %D values (0-100)
+    """
+    high = prices["high"].unstack(level="symbol")
+    low = prices["low"].unstack(level="symbol")
+    close = prices["close"].unstack(level="symbol")
+
+    lowest_low = low.rolling(window=14).min()
+    highest_high = high.rolling(window=14).max()
+
+    stoch_k = 100 * (close - lowest_low) / (highest_high - lowest_low)
+    stoch_d = stoch_k.rolling(window=3).mean()
+
+    result = stoch_d.stack(level="symbol", future_stack=True)
+    return result.to_frame(name="stoch_d_14d")
+
+
 # Registry of feature computation functions
 FEATURE_FUNCTIONS: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     "momentum_20d": compute_momentum_20d,
+    "momentum_60d": compute_momentum_60d,
+    "momentum_252d": compute_momentum_252d,
+    "volatility_20d": compute_volatility_20d,
     "volatility_60d": compute_volatility_60d,
     "returns_1d": compute_returns_1d,
     "returns_5d": compute_returns_5d,
     "returns_20d": compute_returns_20d,
-    "momentum_60d": compute_momentum_60d,
-    "volatility_20d": compute_volatility_20d,
+    "returns_60d": compute_returns_60d,
+    "returns_252d": compute_returns_252d,
     "volume_20d": compute_volume_20d,
+    "volume_ratio": compute_volume_ratio,
+    "obv": compute_obv,
+    "atr_14d": compute_atr_14d,
+    "adx_14d": compute_adx_14d,
+    "macd_line": compute_macd_line,
+    "macd_signal": compute_macd_signal,
+    "macd_histogram": compute_macd_histogram,
+    "cci_20d": compute_cci_20d,
+    "roc_10d": compute_roc_10d,
+    "trend": compute_trend,
+    "bb_upper_20d": compute_bb_upper_20d,
+    "bb_lower_20d": compute_bb_lower_20d,
+    "bb_width_20d": compute_bb_width_20d,
+    "stoch_k_14d": compute_stoch_k_14d,
+    "stoch_d_14d": compute_stoch_d_14d,
+    "rsi_14d": compute_rsi_14d,
+    "sma_20d": compute_sma_20d,
+    "sma_50d": compute_sma_50d,
+    "sma_200d": compute_sma_200d,
+    "price_to_sma_20d": compute_price_to_sma_20d,
+    "price_to_sma_50d": compute_price_to_sma_50d,
+    "price_to_sma_200d": compute_price_to_sma_200d,
 }
 
 
@@ -635,9 +1226,9 @@ class FeatureComputer:
 
 def register_default_features(db_path: str | None = None) -> None:
     """
-    Register default example features in the registry.
+    Register default features in the registry.
 
-    This registers momentum_20d and volatility_60d features.
+    Registers all standard technical indicators for reproducibility.
 
     Args:
         db_path: Optional path to database (defaults to standard location)
@@ -655,10 +1246,112 @@ def register_default_features(db_path: str | None = None) -> None:
             "description": "20-day momentum (trailing return). Calculated as pct_change(20).",
         },
         {
+            "feature_name": "momentum_60d",
+            "version": "v1",
+            "computation_fn": compute_momentum_60d,
+            "description": "60-day momentum (trailing return).",
+        },
+        {
+            "feature_name": "momentum_252d",
+            "version": "v1",
+            "computation_fn": compute_momentum_252d,
+            "description": "252-day momentum (annual trailing return).",
+        },
+        {
+            "feature_name": "volatility_20d",
+            "version": "v1",
+            "computation_fn": compute_volatility_20d,
+            "description": "20-day annualized volatility. Rolling std of returns * sqrt(252).",
+        },
+        {
             "feature_name": "volatility_60d",
             "version": "v1",
             "computation_fn": compute_volatility_60d,
             "description": "60-day annualized volatility. Rolling std of returns * sqrt(252).",
+        },
+        {
+            "feature_name": "returns_1d",
+            "version": "v1",
+            "computation_fn": compute_returns_1d,
+            "description": "1-day return.",
+        },
+        {
+            "feature_name": "returns_5d",
+            "version": "v1",
+            "computation_fn": compute_returns_5d,
+            "description": "5-day return.",
+        },
+        {
+            "feature_name": "returns_20d",
+            "version": "v1",
+            "computation_fn": compute_returns_20d,
+            "description": "20-day return (monthly).",
+        },
+        {
+            "feature_name": "returns_60d",
+            "version": "v1",
+            "computation_fn": compute_returns_60d,
+            "description": "60-day return (quarterly).",
+        },
+        {
+            "feature_name": "returns_252d",
+            "version": "v1",
+            "computation_fn": compute_returns_252d,
+            "description": "252-day return (annual).",
+        },
+        {
+            "feature_name": "volume_20d",
+            "version": "v1",
+            "computation_fn": compute_volume_20d,
+            "description": "20-day average volume.",
+        },
+        {
+            "feature_name": "volume_ratio",
+            "version": "v1",
+            "computation_fn": compute_volume_ratio,
+            "description": "Volume ratio (volume / 20-day avg volume). >1 = above average.",
+        },
+        {
+            "feature_name": "rsi_14d",
+            "version": "v1",
+            "computation_fn": compute_rsi_14d,
+            "description": "14-day Relative Strength Index (0-100 scale).",
+        },
+        {
+            "feature_name": "sma_20d",
+            "version": "v1",
+            "computation_fn": compute_sma_20d,
+            "description": "20-day Simple Moving Average.",
+        },
+        {
+            "feature_name": "sma_50d",
+            "version": "v1",
+            "computation_fn": compute_sma_50d,
+            "description": "50-day Simple Moving Average.",
+        },
+        {
+            "feature_name": "sma_200d",
+            "version": "v1",
+            "computation_fn": compute_sma_200d,
+            "description": "200-day Simple Moving Average.",
+        },
+        {
+            "feature_name": "price_to_sma_20d",
+            "version": "v1",
+            "computation_fn": compute_price_to_sma_20d,
+            "description": "Price to 20-day SMA ratio. >1 = above SMA, <1 = below.",
+        },
+        {
+            "feature_name": "price_to_sma_50d",
+            "version": "v1",
+            "computation_fn": compute_price_to_sma_50d,
+            "description": "Price to 50-day SMA ratio. >1 = above SMA, <1 = below.",
+        },
+        {
+            "feature_name": "price_to_sma_200d",
+            "version": "v1",
+            "computation_fn": compute_price_to_sma_200d,
+            "description": "Price to 200-day SMA ratio. >1 = above SMA, <1 = below.",
         },
     ]
 
