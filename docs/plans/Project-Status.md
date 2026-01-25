@@ -60,7 +60,7 @@ Everything needed for a working research platform with reliable data.
 | Universe management | ✅ | S&P 500 from Wikipedia, exclusion rules (financials, REITs, penny stocks) |
 | Auto universe updates | ✅ | Daily at 6:05 PM ET via `UniverseUpdateJob` |
 | Multi-source ingestion | ✅ | Polygon.io (primary) + Yahoo Finance (fallback) |
-| Feature store | ✅ | 32 technical indicators with versioning (`hrp/data/features/`) |
+| Feature store | ✅ | 44 technical indicators with versioning (`hrp/data/features/`) |
 | Scheduled jobs | ✅ | APScheduler: Prices (18:00) → Universe (18:05) → Features (18:10) |
 | **Weekly fundamentals** | ✅ | Saturday 10 AM ET via `FundamentalsIngestionJob` (SimFin + YFinance fallback) |
 | Data quality | ✅ | 5 check types: anomaly, completeness, gaps, stale, volume |
@@ -287,7 +287,7 @@ Complete feature tracking with spec links.
 | F-035 | MOM10 Indicator | 2 | 🅿️ parked | — |
 | F-036 | Fibonacci Retracements | 2 | 🅿️ parked | — |
 | F-037 | Combined Trend Strength | 2 | 🅿️ parked | — |
-| F-038 | Williams %R (wr_14d) | 2 | 🅿️ parked | — |
+| F-038 | Williams %R (williams_r_14d) | 2 | ✅ done | — |
 | F-039 | Elder's Force Index (efi_13d) | 2 | 🅿️ parked | — |
 | F-040 | GARP Strategy | 2 | 🅿️ parked | — |
 | F-041 | Sector Rotation | 2 | 🅿️ parked | — |
@@ -346,6 +346,13 @@ Complete feature tracking with spec links.
 ## Document History
 
 **Last Updated:** January 25, 2026
+
+**Changes (January 25, 2026 - Plan Status Review):**
+- Reviewed `docs/plans/2025-01-24-remaining-features.md` against actual implementation
+- All 27 planned features implemented except `efi_13d` (Elder's Force Index)
+- Additional features beyond plan: EMA (12d, 26d, crossover), MFI, VWAP, fundamentals
+- Total feature count: 44 technical + fundamental indicators
+- Updated williams_r_14d from parked to done (F-038)
 
 **Changes (January 25, 2026 - Schema & Fundamentals Fixes):**
 - Fixed `FundamentalsIngestionJob` and `SnapshotFundamentalsJob` calling non-existent `get_current_members()` method
