@@ -163,3 +163,163 @@ class TestSharpeDecayMonitor:
 
         # 40% decay exceeds 30% threshold
         assert result.passed is False
+
+
+class TestFeatureCountValidator:
+    """Tests for feature count validation."""
+
+    def test_under_threshold_passes(self):
+        """Test that feature count under threshold passes."""
+        from hrp.risk.overfitting import FeatureCountValidator
+
+        validator = FeatureCountValidator(warn_threshold=30, max_threshold=50)
+        result = validator.check(feature_count=20, sample_count=1000)
+
+        assert result.passed is True
+        assert result.warning is False
+
+    def test_warning_threshold(self):
+        """Test warning when feature count exceeds warn threshold."""
+        from hrp.risk.overfitting import FeatureCountValidator
+
+        validator = FeatureCountValidator(warn_threshold=30, max_threshold=50)
+        result = validator.check(feature_count=35, sample_count=1000)
+
+        assert result.passed is True
+        assert result.warning is True
+        assert "warning" in result.message.lower()
+
+    def test_max_threshold_fails(self):
+        """Test failure when feature count exceeds max threshold."""
+        from hrp.risk.overfitting import FeatureCountValidator
+
+        validator = FeatureCountValidator(warn_threshold=30, max_threshold=50)
+        result = validator.check(feature_count=55, sample_count=1000)
+
+        assert result.passed is False
+
+    def test_features_per_sample_ratio(self):
+        """Test that high features-per-sample ratio triggers warning."""
+        from hrp.risk.overfitting import FeatureCountValidator
+
+        validator = FeatureCountValidator(warn_threshold=30, max_threshold=50)
+        # 25 features with only 100 samples = 0.25 ratio (too high)
+        result = validator.check(feature_count=25, sample_count=100)
+
+        assert result.warning is True
+        assert "ratio" in result.message.lower() or "sample" in result.message.lower()
+
+    def test_adequate_samples_no_warning(self):
+        """Test no warning with adequate samples per feature."""
+        from hrp.risk.overfitting import FeatureCountValidator
+
+        validator = FeatureCountValidator(warn_threshold=30, max_threshold=50)
+        # 20 features with 2000 samples = 100 samples per feature (good)
+        result = validator.check(feature_count=20, sample_count=2000)
+
+        assert result.passed is True
+        assert result.warning is False
+
+
+class TestHyperparameterTrialCounter:
+    """Tests for hyperparameter trial tracking."""
+
+    @pytest.fixture(autouse=True)
+    def clean_hp_trials(self, test_db):
+        """Clean hyperparameter_trials table before each test."""
+        db = get_db(test_db)
+        with db.connection() as conn:
+            conn.execute("DELETE FROM hyperparameter_trials WHERE hypothesis_id LIKE 'HYP-TEST-%'")
+        yield
+
+    def test_first_trial_allowed(self):
+        """Test first hyperparameter trial is allowed."""
+        from hrp.risk.overfitting import HyperparameterTrialCounter
+
+        counter = HyperparameterTrialCounter(hypothesis_id="HYP-TEST-HP-001", max_trials=50)
+
+        assert counter.can_try() is True
+        assert counter.trial_count == 0
+
+    def test_log_trial_increments_count(self):
+        """Test logging a trial increments the count."""
+        from hrp.risk.overfitting import HyperparameterTrialCounter
+
+        counter = HyperparameterTrialCounter(hypothesis_id="HYP-TEST-HP-002", max_trials=50)
+
+        counter.log_trial(
+            model_type="ridge",
+            hyperparameters={"alpha": 1.0},
+            metric_name="val_r2",
+            metric_value=0.85,
+        )
+
+        assert counter.trial_count == 1
+
+    def test_max_trials_blocks_new_trials(self):
+        """Test that exceeding max_trials blocks new trials."""
+        from hrp.risk.overfitting import HyperparameterTrialCounter, OverfittingError
+
+        counter = HyperparameterTrialCounter(hypothesis_id="HYP-TEST-HP-003", max_trials=3)
+
+        # Log 3 trials
+        for i in range(3):
+            counter.log_trial(
+                model_type="ridge",
+                hyperparameters={"alpha": float(i)},
+                metric_name="val_r2",
+                metric_value=0.8 + i * 0.01,
+            )
+
+        assert counter.can_try() is False
+
+        with pytest.raises(OverfittingError, match="trial limit"):
+            counter.log_trial(
+                model_type="ridge",
+                hyperparameters={"alpha": 99.0},
+                metric_name="val_r2",
+                metric_value=0.9,
+            )
+
+    def test_remaining_trials(self):
+        """Test remaining_trials property."""
+        from hrp.risk.overfitting import HyperparameterTrialCounter
+
+        counter = HyperparameterTrialCounter(hypothesis_id="HYP-TEST-HP-004", max_trials=10)
+
+        assert counter.remaining_trials == 10
+
+        counter.log_trial("ridge", {"alpha": 1.0}, "val_r2", 0.8)
+
+        assert counter.remaining_trials == 9
+
+    def test_get_best_trial(self):
+        """Test retrieving best trial by metric."""
+        from hrp.risk.overfitting import HyperparameterTrialCounter
+
+        counter = HyperparameterTrialCounter(hypothesis_id="HYP-TEST-HP-005", max_trials=50)
+
+        counter.log_trial("ridge", {"alpha": 0.1}, "val_r2", 0.75)
+        counter.log_trial("ridge", {"alpha": 1.0}, "val_r2", 0.85)
+        counter.log_trial("ridge", {"alpha": 10.0}, "val_r2", 0.80)
+
+        best = counter.get_best_trial()
+
+        assert best is not None
+        assert best["metric_value"] == 0.85
+        assert best["hyperparameters"]["alpha"] == 1.0
+
+    def test_persists_across_instances(self):
+        """Test trial count persists in database across instances."""
+        from hrp.risk.overfitting import HyperparameterTrialCounter
+
+        hypothesis_id = "HYP-TEST-HP-006"
+
+        # First instance logs a trial
+        counter1 = HyperparameterTrialCounter(hypothesis_id=hypothesis_id, max_trials=50)
+        counter1.log_trial("ridge", {"alpha": 1.0}, "val_r2", 0.85)
+
+        # Second instance should see the existing trial
+        counter2 = HyperparameterTrialCounter(hypothesis_id=hypothesis_id, max_trials=50)
+
+        assert counter2.trial_count == 1

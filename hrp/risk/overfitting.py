@@ -103,6 +103,108 @@ class SharpeDecayMonitor:
         )
 
 
+@dataclass
+class FeatureCountResult:
+    """Result of feature count validation."""
+    passed: bool
+    warning: bool
+    feature_count: int
+    sample_count: int
+    features_per_sample: float
+    message: str
+
+
+class FeatureCountValidator:
+    """
+    Validator for number of features used in ML models.
+
+    Prevents overfitting by limiting feature count and checking
+    features-per-sample ratio.
+
+    Rules:
+    - Warn if features > warn_threshold (default 30)
+    - Fail if features > max_threshold (default 50)
+    - Warn if features/samples > 0.1 (need at least 10 samples per feature)
+
+    Usage:
+        validator = FeatureCountValidator(warn_threshold=30)
+        result = validator.check(feature_count=25, sample_count=1000)
+    """
+
+    def __init__(
+        self,
+        warn_threshold: int = 30,
+        max_threshold: int = 50,
+        min_samples_per_feature: int = 10,
+    ):
+        """
+        Initialize feature count validator.
+
+        Args:
+            warn_threshold: Feature count that triggers warning
+            max_threshold: Feature count that triggers failure
+            min_samples_per_feature: Minimum samples per feature ratio
+        """
+        if warn_threshold >= max_threshold:
+            raise ValueError("warn_threshold must be less than max_threshold")
+
+        self.warn_threshold = warn_threshold
+        self.max_threshold = max_threshold
+        self.min_samples_per_feature = min_samples_per_feature
+
+    def check(self, feature_count: int, sample_count: int) -> FeatureCountResult:
+        """
+        Validate feature count.
+
+        Args:
+            feature_count: Number of features
+            sample_count: Number of training samples
+
+        Returns:
+            FeatureCountResult with pass/fail/warning status
+        """
+        features_per_sample = feature_count / sample_count if sample_count > 0 else float('inf')
+        samples_per_feature = sample_count / feature_count if feature_count > 0 else float('inf')
+
+        messages = []
+        warning = False
+        passed = True
+
+        # Check absolute feature count
+        if feature_count > self.max_threshold:
+            passed = False
+            messages.append(
+                f"Feature count ({feature_count}) exceeds maximum ({self.max_threshold})"
+            )
+        elif feature_count > self.warn_threshold:
+            warning = True
+            messages.append(
+                f"Warning: Feature count ({feature_count}) exceeds threshold ({self.warn_threshold})"
+            )
+
+        # Check samples-per-feature ratio
+        if samples_per_feature < self.min_samples_per_feature:
+            warning = True
+            messages.append(
+                f"Warning: Only {samples_per_feature:.1f} samples per feature "
+                f"(recommended: {self.min_samples_per_feature}+)"
+            )
+
+        if not messages:
+            messages.append(
+                f"Feature count ({feature_count}) OK with {samples_per_feature:.0f} samples/feature"
+            )
+
+        return FeatureCountResult(
+            passed=passed,
+            warning=warning,
+            feature_count=feature_count,
+            sample_count=sample_count,
+            features_per_sample=features_per_sample,
+            message="; ".join(messages),
+        )
+
+
 class OverfittingError(Exception):
     """Raised when test set evaluation limit is exceeded."""
     pass
