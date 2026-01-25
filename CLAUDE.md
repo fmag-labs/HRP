@@ -269,13 +269,14 @@ hrp/
 
 ## Development Status
 
-All core phases complete (v1-v4):
-- **v1 (MVP Research Platform)**: 100% complete
-- **v2 (Production Data Pipeline)**: 100% complete
-- **v3 (ML & Validation Framework)**: 100% complete
-- **v4 (Agent Integration)**: 80% complete
+| Tier | Focus | Status |
+|------|-------|--------|
+| **Foundation** | Data + Research Core | ✅ 100% |
+| **Intelligence** | ML + Agents | 🟡 85% |
+| **Production** | Security + Ops | ⏳ 0% |
+| **Trading** | Live Execution | 🔮 0% |
 
-See `docs/plans/Project-Status.md` for detailed status
+See `docs/plans/Project-Status.md` for detailed tier-based status
 
 # Project Instructions
 
