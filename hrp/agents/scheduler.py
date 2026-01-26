@@ -788,6 +788,124 @@ class IngestionScheduler:
             f"(window: {audit_window_days} days, monitoring: {include_monitoring})"
         )
 
+    def setup_research_agent_triggers(
+        self,
+        poll_interval_seconds: int = 60,
+    ) -> LineageEventWatcher:
+        """
+        Set up event-driven triggers for research agent coordination.
+
+        Creates a LineageEventWatcher that monitors the lineage table and
+        automatically triggers downstream agents when upstream agents complete.
+
+        Trigger chain:
+        - Signal Scientist (hypothesis_created) → Alpha Researcher
+        - Alpha Researcher (alpha_researcher_review, PROCEED) → ML Scientist
+        - ML Scientist (experiment_completed) → ML Quality Sentinel
+
+        Args:
+            poll_interval_seconds: How often to poll lineage table (default: 60s)
+
+        Returns:
+            The configured LineageEventWatcher instance
+        """
+        from hrp.agents.alpha_researcher import AlphaResearcher
+        from hrp.agents.research_agents import MLQualitySentinel, MLScientist
+
+        watcher = LineageEventWatcher(
+            poll_interval_seconds=poll_interval_seconds,
+            scheduler=self,
+        )
+
+        # Trigger 1: Signal Scientist → Alpha Researcher
+        # When Signal Scientist creates a hypothesis, Alpha Researcher reviews it
+        def on_hypothesis_created(event: dict) -> None:
+            details = event.get("details", {})
+            hypothesis_id = details.get("hypothesis_id") or event.get("hypothesis_id")
+            if hypothesis_id:
+                logger.info(f"Triggering Alpha Researcher for hypothesis {hypothesis_id}")
+                try:
+                    researcher = AlphaResearcher()
+                    researcher.run()
+                except Exception as e:
+                    logger.error(f"Alpha Researcher trigger failed: {e}")
+
+        watcher.register_trigger(
+            event_type="hypothesis_created",
+            callback=on_hypothesis_created,
+            actor_filter="agent:signal-scientist",
+            name="signal_scientist_to_alpha_researcher",
+        )
+
+        # Trigger 2: Alpha Researcher → ML Scientist
+        # When Alpha Researcher promotes hypothesis to testing, ML Scientist validates it
+        def on_alpha_review(event: dict) -> None:
+            details = event.get("details", {})
+            recommendation = details.get("recommendation", "")
+            hypothesis_id = event.get("hypothesis_id")
+
+            # Only trigger if Alpha Researcher recommended PROCEED
+            if recommendation == "PROCEED" and hypothesis_id:
+                logger.info(f"Triggering ML Scientist for hypothesis {hypothesis_id}")
+                try:
+                    scientist = MLScientist(hypothesis_id=hypothesis_id)
+                    scientist.run()
+                except Exception as e:
+                    logger.error(f"ML Scientist trigger failed: {e}")
+
+        watcher.register_trigger(
+            event_type="alpha_researcher_review",
+            callback=on_alpha_review,
+            actor_filter="agent:alpha-researcher",
+            name="alpha_researcher_to_ml_scientist",
+        )
+
+        # Trigger 3: ML Scientist → ML Quality Sentinel
+        # When ML Scientist completes an experiment, Quality Sentinel audits it
+        def on_experiment_completed(event: dict) -> None:
+            details = event.get("details", {})
+            experiment_id = details.get("experiment_id") or event.get("experiment_id")
+            hypothesis_id = event.get("hypothesis_id")
+
+            if experiment_id or hypothesis_id:
+                logger.info(
+                    f"Triggering ML Quality Sentinel for experiment {experiment_id}"
+                )
+                try:
+                    sentinel = MLQualitySentinel(
+                        audit_window_days=1,
+                        send_alerts=True,
+                    )
+                    sentinel.run()
+                except Exception as e:
+                    logger.error(f"ML Quality Sentinel trigger failed: {e}")
+
+        watcher.register_trigger(
+            event_type="experiment_completed",
+            callback=on_experiment_completed,
+            actor_filter="agent:ml-scientist",
+            name="ml_scientist_to_quality_sentinel",
+        )
+
+        # Store watcher reference
+        self._event_watcher = watcher
+
+        logger.info(
+            f"Research agent triggers configured (poll interval: {poll_interval_seconds}s, "
+            f"triggers: {watcher.trigger_count})"
+        )
+
+        return watcher
+
+    def start_with_triggers(self) -> None:
+        """Start the scheduler with research agent triggers enabled."""
+        if not hasattr(self, "_event_watcher"):
+            self.setup_research_agent_triggers()
+
+        self._event_watcher.start()
+        self.start()
+        logger.info("Scheduler started with research agent triggers")
+
     def __repr__(self) -> str:
         """String representation of the scheduler."""
         status = "running" if self.running else "stopped"

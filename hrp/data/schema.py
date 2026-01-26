@@ -49,6 +49,7 @@ TABLES = {
             updated_at TIMESTAMP,
             outcome TEXT,
             confidence_score DECIMAL(3,2),
+            metadata JSON,
             CHECK (status IN ('draft', 'testing', 'validated', 'rejected', 'deployed', 'deleted')),
             CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1))
         )
@@ -225,6 +226,18 @@ TABLES = {
             output_tokens INTEGER DEFAULT 0,
             completed BOOLEAN DEFAULT FALSE,
             PRIMARY KEY (agent_type, run_id)
+        )
+    """,
+    "agent_token_usage": """
+        CREATE TABLE IF NOT EXISTS agent_token_usage (
+            id INTEGER PRIMARY KEY,
+            agent_type VARCHAR NOT NULL,
+            run_id VARCHAR NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            input_tokens INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            model VARCHAR,
+            estimated_cost DECIMAL(10,6)
         )
     """,
 }

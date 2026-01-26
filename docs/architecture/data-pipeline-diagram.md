@@ -421,6 +421,45 @@ For terminal display and code comments:
 
 ---
 
+## Event-Driven Agent Coordination
+
+The `LineageEventWatcher` enables automatic agent chaining by monitoring lineage events:
+
+```
+┌─────────────────┐     hypothesis_created      ┌─────────────────┐
+│ Signal Scientist│ ─────────────────────────▶  │ Alpha Researcher│
+│   (scheduled)   │     by signal-scientist     │   (triggered)   │
+└─────────────────┘                             └────────┬────────┘
+                                                         │
+                                          alpha_researcher_review
+                                               (PROCEED)
+                                                         │
+                                                         ▼
+                                                ┌─────────────────┐
+                                                │   ML Scientist  │
+                                                │   (triggered)   │
+                                                └────────┬────────┘
+                                                         │
+                                            experiment_completed
+                                                         │
+                                                         ▼
+                                                ┌─────────────────┐
+                                                │ Quality Sentinel│
+                                                │   (triggered)   │
+                                                └─────────────────┘
+```
+
+**Setup:**
+```python
+from hrp.agents.scheduler import IngestionScheduler
+
+scheduler = IngestionScheduler()
+scheduler.setup_research_agent_triggers(poll_interval_seconds=60)
+scheduler.start_with_triggers()
+```
+
+---
+
 ## Key Design Principles
 
 1. **Data Requirements over Job Dependencies**: Jobs check for data existence rather than whether predecessor jobs ran
@@ -428,6 +467,7 @@ For terminal display and code comments:
 3. **Agent Permissions**: Agents can create/analyze but never deploy (user approval required)
 4. **Hypothesis Lifecycle**: Formal state machine prevents premature deployment
 5. **Statistical Rigor**: Walk-forward validation and overfitting checks are mandatory
+6. **Event-Driven Coordination**: Agents auto-trigger downstream agents via lineage events
 
 ---
 

@@ -659,6 +659,7 @@ class PlatformAPI:
         status: str,
         outcome: Optional[str] = None,
         actor: str = "user",
+        metadata: Optional[Dict] = None,
     ) -> None:
         """
         Update a hypothesis status and/or outcome.
@@ -668,6 +669,7 @@ class PlatformAPI:
             status: New status ('draft', 'testing', 'validated', 'rejected', 'deployed')
             outcome: Optional outcome description
             actor: Who is making the update
+            metadata: Optional metadata dict to store (merged with existing)
 
         Raises:
             NotFoundError: If hypothesis doesn't exist
@@ -681,13 +683,31 @@ class PlatformAPI:
         if not existing:
             raise NotFoundError(f"Hypothesis {hypothesis_id} not found")
 
-        query = """
-            UPDATE hypotheses
-            SET status = ?, outcome = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE hypothesis_id = ?
-        """
+        # Handle metadata update
+        if metadata is not None:
+            # Merge with existing metadata
+            existing_metadata = existing.get("metadata") or {}
+            if isinstance(existing_metadata, str):
+                try:
+                    existing_metadata = json.loads(existing_metadata)
+                except json.JSONDecodeError:
+                    existing_metadata = {}
+            merged_metadata = {**existing_metadata, **metadata}
+            metadata_json = json.dumps(merged_metadata)
 
-        self._db.execute(query, (status, outcome, hypothesis_id))
+            query = """
+                UPDATE hypotheses
+                SET status = ?, outcome = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE hypothesis_id = ?
+            """
+            self._db.execute(query, (status, outcome, metadata_json, hypothesis_id))
+        else:
+            query = """
+                UPDATE hypotheses
+                SET status = ?, outcome = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE hypothesis_id = ?
+            """
+            self._db.execute(query, (status, outcome, hypothesis_id))
 
         self.log_event(
             event_type="hypothesis_updated",

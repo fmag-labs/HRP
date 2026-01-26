@@ -180,6 +180,38 @@ scheduler.setup_weekly_signal_scan(
 scheduler.start()
 ```
 
+### Enable event-driven agent coordination
+```python
+from hrp.agents.scheduler import IngestionScheduler
+
+scheduler = IngestionScheduler()
+
+# Set up all scheduled jobs
+scheduler.setup_daily_ingestion()
+scheduler.setup_weekly_signal_scan()
+
+# Enable automatic agent chaining via lineage events:
+# Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel
+scheduler.setup_research_agent_triggers(poll_interval_seconds=60)
+
+# Start scheduler with event watcher
+scheduler.start_with_triggers()
+```
+
+### Run Alpha Researcher for hypothesis review
+```python
+from hrp.agents import AlphaResearcher
+
+# Reviews draft hypotheses using Claude API
+# Promotes promising ones to 'testing' status
+researcher = AlphaResearcher()
+result = researcher.run()
+
+print(f"Analyzed: {result['hypotheses_analyzed']}")
+print(f"Promoted: {result['promoted_to_testing']}")
+# Research note written to docs/research/YYYY-MM-DD-alpha-researcher.md
+```
+
 ### Run a multi-factor strategy backtest
 ```python
 from hrp.research.strategies import generate_multifactor_signals
@@ -536,7 +568,7 @@ hrp/
 | Tier | Focus | Status |
 |------|-------|--------|
 | **Foundation** | Data + Research Core | ✅ 100% |
-| **Intelligence** | ML + Agents | 🟡 85% |
+| **Intelligence** | ML + Agents | 🟡 90% |
 | **Production** | Security + Ops | ⏳ 0% |
 | **Trading** | Live Execution | 🔮 0% |
 
