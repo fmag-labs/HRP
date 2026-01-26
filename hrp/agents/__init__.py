@@ -14,6 +14,9 @@ from hrp.agents.jobs import (
     UniverseUpdateJob,
 )
 from hrp.agents.research_agents import (
+    MLScientist,
+    MLScientistReport,
+    ModelExperimentResult,
     ResearchAgent,
     SignalScanReport,
     SignalScanResult,
@@ -35,6 +38,9 @@ __all__ = [
     "SignalScientist",
     "SignalScanResult",
     "SignalScanReport",
+    "MLScientist",
+    "MLScientistReport",
+    "ModelExperimentResult",
     # Scheduler
     "IngestionScheduler",
 ]
