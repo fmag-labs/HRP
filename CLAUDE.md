@@ -147,6 +147,39 @@ scheduler.setup_weekly_fundamentals(
 scheduler.start()
 ```
 
+### Run Signal Scientist for automated signal discovery
+```python
+from hrp.agents import SignalScientist
+
+# Run on-demand signal scan
+agent = SignalScientist(
+    symbols=None,  # None = all universe symbols
+    features=None,  # None = all 44 features
+    forward_horizons=[5, 10, 20],  # days
+    ic_threshold=0.03,  # minimum IC to create hypothesis
+    create_hypotheses=True,
+)
+result = agent.run()
+
+print(f"Signals found: {result['signals_found']}")
+print(f"Hypotheses created: {result['hypotheses_created']}")
+print(f"MLflow run: {result['mlflow_run_id']}")
+```
+
+### Schedule weekly signal scan
+```python
+from hrp.agents.scheduler import IngestionScheduler
+
+scheduler = IngestionScheduler()
+scheduler.setup_weekly_signal_scan(
+    scan_time='19:00',  # Monday 7 PM ET (after feature computation)
+    day_of_week='mon',
+    ic_threshold=0.03,
+    create_hypotheses=True,
+)
+scheduler.start()
+```
+
 ### Run a multi-factor strategy backtest
 ```python
 from hrp.research.strategies import generate_multifactor_signals
@@ -307,7 +340,7 @@ if not result.passed:
 
 ```bash
 pytest tests/ -v
-# Pass rate: 100% (1,478 passed, 1 skipped)
+# Pass rate: 100% (1,554 passed, 1 skipped)
 ```
 
 ## Services

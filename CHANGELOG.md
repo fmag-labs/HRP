@@ -1,12 +1,31 @@
 ## [Unreleased]
 
 ### Added
+- **Signal Scientist Research Agent**: First automated research agent for feature/signal discovery:
+  - **ResearchAgent Base Class** (`hrp/agents/research_agents.py`): Abstract base extending `IngestionJob` with actor tracking, lineage logging, and Platform API access
+  - **SignalScientist Agent**: Automated IC analysis across all 44 features against forward returns
+  - **Rolling IC Calculation**: 60-day windows with Spearman correlation for robust signal detection
+  - **Multi-Horizon Analysis**: Tests predictiveness at 5, 10, and 20 day forward return horizons
+  - **Two-Factor Combinations**: Scans 5 theoretically-motivated feature pairs (momentum+vol, trend+mean-reversion, etc.)
+  - **Automatic Hypothesis Creation**: Creates draft hypotheses for signals with IC > 0.03 and IC IR > 0.3
+  - **IC Thresholds**: Weak (0.02), Moderate (0.03), Strong (0.05)
+  - **MLflow Integration**: Logs all scan results with parameters, metrics, and signal rankings
+  - **Email Notifications**: Sends summary email with top signals and hypotheses created
+  - **Scheduler Integration**: `setup_weekly_signal_scan()` method for Monday 7 PM ET scheduling
+  - **Dataclasses**: `SignalScanResult` and `SignalScanReport` for structured output
 - **Research Agents Design**: Comprehensive design brainstorm for multi-agent quant research team
   - Researched real hedge fund structures (DE Shaw, Two Sigma, Citadel, Renaissance)
   - Proposed 3 architecture options: 8, 10, or 12 specialized AI agents
   - Key design: autonomous agents with shared workspace (hypotheses, MLflow, lineage)
   - Recommended 8-agent structure: Alpha Researcher, Signal Scientist, ML Scientist, ML Quality Sentinel, Quant Developer, Risk Manager, Validation Analyst, Report Generator
   - Design document: `docs/plans/2025-01-25-research-agents-design.md`
+
+### Testing
+- 38 new tests for Signal Scientist implementation:
+  - `tests/test_agents/test_signal_scientist.py`: 21 tests (IC calculation, hypothesis creation, MLflow, email)
+  - `tests/test_agents/test_research_agents.py`: 11 tests (base class, dataclasses)
+  - `tests/test_agents/test_scheduler.py`: 6 new tests (weekly signal scan setup)
+- 1,554 tests passing (100% pass rate)
 
 ## [1.4.1] - 2026-01-25
 

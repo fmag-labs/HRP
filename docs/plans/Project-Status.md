@@ -10,7 +10,7 @@
 | **Trading** | Live Execution | 0% | 🔮 Future |
 
 **Codebase:** ~18,000 lines of production code across 80+ modules
-**Test Suite:** 1,478 tests (100% pass rate)
+**Test Suite:** 1,554 tests (100% pass rate)
 
 ## Current Progress
 
@@ -149,12 +149,29 @@ ML capabilities, statistical rigor, and agent integration.
 | ML-predicted strategy | ✅ | Model selection, signal methods |
 | Strategy config UI | ✅ | Dashboard components (`hrp/dashboard/components/`) |
 
+### Research Agents 🟡
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| **Signal Scientist** | ✅ | Rolling IC analysis, hypothesis creation (`hrp/agents/research_agents.py`) |
+| Alpha Researcher | ❌ | Coordinate research, manage hypothesis pipeline |
+| ML Quality Sentinel | ❌ | Monitor model performance, drift detection |
+| Report Generator | ❌ | Weekly research summaries |
+
+**Signal Scientist Features:**
+- Rolling IC calculation (60-day windows) for robust signal detection
+- Multi-horizon analysis (5, 10, 20 day forward returns)
+- Two-factor combination scanning (5 theoretically-motivated pairs)
+- Automatic hypothesis creation for signals above IC threshold (0.03)
+- MLflow integration, email notifications, lineage tracking
+- Scheduler integration via `setup_weekly_signal_scan()`
+
 ### Remaining for Tier 2
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
 | PyFolio/Empyrical integration | Medium | Replace custom metrics with battle-tested library |
-| Research agents | Medium | Discovery, Validation, Report agents |
+| Research agents | Medium | Alpha Researcher, ML Quality Sentinel, Report Generator |
 | Enhanced risk limits | Low | Position sizing, sector exposure in backtests |
 
 ### Parked Features (Future Consideration)
@@ -273,8 +290,8 @@ Complete feature tracking with spec links.
 | F-021 | MCP Server for Research | 2 | ✅ done | — |
 | F-022 | Agent Permission Enforcement | 2 | ✅ done | — |
 | F-023 | Agent Rate Limiting | 2 | ✅ done | — |
-| F-024 | Discovery Agent | 2 | ❌ planned | — |
-| F-025 | Data Monitor Agent | 2 | ❌ planned | — |
+| F-024 | Signal Scientist Agent | 2 | ✅ done | — |
+| F-025 | Alpha Researcher Agent | 2 | ❌ planned | — |
 | F-026 | Weekly Report Agent | 2 | ❌ planned | — |
 | F-027 | Dashboard Authentication | 3 | ❌ planned | — |
 | F-028 | Security Hardening | 3 | ❌ planned | — |
@@ -346,6 +363,18 @@ Complete feature tracking with spec links.
 ## Document History
 
 **Last Updated:** January 25, 2026
+
+**Changes (January 25, 2026 - Signal Scientist Implementation):**
+- Implemented Signal Scientist research agent (`hrp/agents/research_agents.py`)
+- `ResearchAgent` base class extending `IngestionJob` with actor tracking and lineage logging
+- Rolling IC calculation with 60-day windows for robust signal detection
+- Multi-horizon analysis (5, 10, 20 day forward returns)
+- Two-factor combination scanning (5 theoretically-motivated pairs)
+- Automatic hypothesis creation for signals above IC threshold (0.03)
+- MLflow integration, email notifications, scheduler integration
+- 38 new tests (21 SignalScientist, 11 ResearchAgent base, 6 scheduler)
+- Test suite now at 1,554 tests (100% pass rate)
+- Updated F-024 from "Discovery Agent" to "Signal Scientist Agent" (✅ done)
 
 **Changes (January 25, 2026 - Research Agents Design):**
 - Created design brainstorm for multi-agent quant research team (`docs/plans/2025-01-25-research-agents-design.md`)
