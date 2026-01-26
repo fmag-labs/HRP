@@ -277,6 +277,300 @@ class TestRegimeResult:
         assert result.regime_labels[0] == MarketRegime.BULL
 
 
+class TestPrepareFeatures:
+    """Tests for RegimeDetector._prepare_features method."""
+
+    @pytest.fixture
+    def sample_prices(self):
+        """Create sample price data."""
+        np.random.seed(42)
+        dates = pd.date_range("2020-01-01", "2021-12-31", freq="B")
+        n = len(dates)
+        prices = 100 * np.exp(np.cumsum(np.random.normal(0.0005, 0.015, n)))
+        return pd.DataFrame({"close": prices}, index=dates)
+
+    def test_prepare_features_returns_correct_shape(self, sample_prices):
+        """Test _prepare_features returns correct array shape."""
+        config = HMMConfig(n_regimes=2, features=["returns_20d", "volatility_20d"])
+        detector = RegimeDetector(config)
+
+        X = detector._prepare_features(sample_prices, fit=True)
+
+        assert X.ndim == 2
+        assert X.shape[0] == len(sample_prices)
+        assert X.shape[1] == 2
+
+    def test_prepare_features_single_feature(self, sample_prices):
+        """Test _prepare_features with single feature."""
+        config = HMMConfig(n_regimes=2, features=["returns_20d"])
+        detector = RegimeDetector(config)
+
+        X = detector._prepare_features(sample_prices, fit=True)
+
+        assert X.shape[1] == 1
+
+    def test_prepare_features_custom_column_in_df(self, sample_prices):
+        """Test _prepare_features with custom feature in DataFrame."""
+        sample_prices["custom_feature"] = np.random.randn(len(sample_prices))
+        config = HMMConfig(n_regimes=2, features=["custom_feature"])
+        detector = RegimeDetector(config)
+
+        X = detector._prepare_features(sample_prices, fit=True)
+
+        assert X.shape[1] == 1
+        assert not np.isnan(X).all()
+
+    def test_prepare_features_unknown_feature_raises(self, sample_prices):
+        """Test _prepare_features raises for unknown feature."""
+        config = HMMConfig(n_regimes=2, features=["nonexistent_feature"])
+        detector = RegimeDetector(config)
+
+        with pytest.raises(ValueError, match="Unknown feature"):
+            detector._prepare_features(sample_prices, fit=True)
+
+    def test_prepare_features_no_close_column_fallback(self):
+        """Test _prepare_features uses first column if no 'close'."""
+        np.random.seed(42)
+        dates = pd.date_range("2020-01-01", "2021-12-31", freq="B")
+        n = len(dates)
+        prices = 100 * np.exp(np.cumsum(np.random.normal(0.0005, 0.015, n)))
+        df = pd.DataFrame({"price": prices}, index=dates)
+
+        config = HMMConfig(n_regimes=2, features=["returns_20d"])
+        detector = RegimeDetector(config)
+
+        X = detector._prepare_features(df, fit=True)
+
+        assert X.shape[1] == 1
+        assert not np.isnan(X[25:]).all()  # After warmup period
+
+    def test_prepare_features_normalizes_data(self, sample_prices):
+        """Test _prepare_features normalizes features when fit=True."""
+        config = HMMConfig(n_regimes=2, features=["returns_20d"])
+        detector = RegimeDetector(config)
+
+        X = detector._prepare_features(sample_prices, fit=True)
+
+        # After normalization, mean should be ~0 and std ~1
+        valid_mask = ~np.isnan(X).any(axis=1)
+        X_valid = X[valid_mask]
+        assert abs(np.mean(X_valid)) < 0.1
+        assert abs(np.std(X_valid) - 1.0) < 0.1
+
+    def test_prepare_features_uses_stored_params(self, sample_prices):
+        """Test _prepare_features uses stored normalization params when fit=False."""
+        config = HMMConfig(n_regimes=2, features=["returns_20d"])
+        detector = RegimeDetector(config)
+
+        # First call with fit=True stores params
+        detector._prepare_features(sample_prices, fit=True)
+
+        # Second call with fit=False should use stored params
+        X = detector._prepare_features(sample_prices, fit=False)
+
+        assert detector._feature_means is not None
+        assert detector._feature_stds is not None
+
+
+class TestLabelRegimes:
+    """Tests for RegimeDetector._label_regimes method."""
+
+    def test_label_regimes_2_regimes(self):
+        """Test _label_regimes with 2 regimes."""
+        config = HMMConfig(n_regimes=2, features=["returns_20d", "volatility_20d"])
+        detector = RegimeDetector(config)
+
+        regime_means = {
+            0: {"returns_20d": -0.05, "volatility_20d": 0.25},
+            1: {"returns_20d": 0.10, "volatility_20d": 0.15},
+        }
+
+        labels = detector._label_regimes(regime_means)
+
+        assert labels[0] == MarketRegime.BEAR
+        assert labels[1] == MarketRegime.BULL
+
+    def test_label_regimes_3_regimes(self):
+        """Test _label_regimes with 3 regimes."""
+        config = HMMConfig(n_regimes=3, features=["returns_20d", "volatility_20d"])
+        detector = RegimeDetector(config)
+
+        regime_means = {
+            0: {"returns_20d": -0.10, "volatility_20d": 0.30},
+            1: {"returns_20d": 0.00, "volatility_20d": 0.15},
+            2: {"returns_20d": 0.15, "volatility_20d": 0.10},
+        }
+
+        labels = detector._label_regimes(regime_means)
+
+        assert labels[0] == MarketRegime.BEAR
+        assert labels[1] == MarketRegime.SIDEWAYS
+        assert labels[2] == MarketRegime.BULL
+
+    def test_label_regimes_4_regimes_with_crisis(self):
+        """Test _label_regimes with 4 regimes identifies CRISIS."""
+        config = HMMConfig(n_regimes=4, features=["returns_20d", "volatility_20d"])
+        detector = RegimeDetector(config)
+
+        regime_means = {
+            0: {"returns_20d": -0.25, "volatility_20d": 0.50},  # Lowest return + high vol = CRISIS
+            1: {"returns_20d": -0.05, "volatility_20d": 0.20},
+            2: {"returns_20d": 0.02, "volatility_20d": 0.12},
+            3: {"returns_20d": 0.15, "volatility_20d": 0.10},
+        }
+
+        labels = detector._label_regimes(regime_means)
+
+        assert labels[0] == MarketRegime.CRISIS
+        assert labels[3] == MarketRegime.BULL
+
+    def test_label_regimes_4_regimes_without_crisis(self):
+        """Test _label_regimes with 4 regimes without CRISIS condition."""
+        config = HMMConfig(n_regimes=4, features=["returns_20d", "volatility_20d"])
+        detector = RegimeDetector(config)
+
+        # Lowest return has LOW vol (below median), so it's BEAR not CRISIS
+        regime_means = {
+            0: {"returns_20d": -0.10, "volatility_20d": 0.10},  # Low vol
+            1: {"returns_20d": -0.02, "volatility_20d": 0.20},
+            2: {"returns_20d": 0.02, "volatility_20d": 0.25},
+            3: {"returns_20d": 0.15, "volatility_20d": 0.30},  # Higher vol
+        }
+
+        labels = detector._label_regimes(regime_means)
+
+        assert labels[0] == MarketRegime.BEAR
+        assert labels[3] == MarketRegime.BULL
+
+    def test_label_regimes_no_return_feature(self):
+        """Test _label_regimes defaults to SIDEWAYS when no return feature."""
+        config = HMMConfig(n_regimes=2, features=["volatility_20d"])
+        detector = RegimeDetector(config)
+
+        regime_means = {
+            0: {"volatility_20d": 0.25},
+            1: {"volatility_20d": 0.15},
+        }
+
+        labels = detector._label_regimes(regime_means)
+
+        assert labels[0] == MarketRegime.SIDEWAYS
+        assert labels[1] == MarketRegime.SIDEWAYS
+
+
+class TestFitEdgeCases:
+    """Additional tests for RegimeDetector.fit edge cases."""
+
+    def test_fit_hmmlearn_import_error(self):
+        """Test fit raises ImportError with helpful message when hmmlearn missing."""
+        import sys
+        from unittest.mock import patch
+
+        config = HMMConfig(n_regimes=2)
+        detector = RegimeDetector(config)
+
+        dates = pd.date_range("2020-01-01", "2021-12-31", freq="B")
+        prices = pd.DataFrame({"close": np.random.randn(len(dates)).cumsum() + 100}, index=dates)
+
+        # Mock the import to fail
+        with patch.dict(sys.modules, {"hmmlearn": None, "hmmlearn.hmm": None}):
+            import builtins
+            original_import = builtins.__import__
+
+            def mock_import(name, *args, **kwargs):
+                if name == "hmmlearn.hmm" or name == "hmmlearn":
+                    raise ImportError("No module named 'hmmlearn'")
+                return original_import(name, *args, **kwargs)
+
+            builtins.__import__ = mock_import
+            try:
+                with pytest.raises(ImportError, match="hmmlearn is required"):
+                    detector.fit(prices)
+            finally:
+                builtins.__import__ = original_import
+
+
+class TestPredictEdgeCases:
+    """Additional tests for RegimeDetector.predict edge cases."""
+
+    @pytest.fixture
+    def sample_prices(self):
+        """Create sample price data."""
+        np.random.seed(42)
+        dates = pd.date_range("2015-01-01", "2023-12-31", freq="B")
+        n = len(dates)
+        prices = 100 * np.exp(np.cumsum(np.random.normal(0.0005, 0.015, n)))
+        return pd.DataFrame({"close": prices}, index=dates)
+
+    def test_predict_with_nan_in_data(self, sample_prices):
+        """Test predict handles NaN values in price data."""
+        pytest.importorskip("hmmlearn")
+
+        # Add some NaN values
+        sample_prices_with_nan = sample_prices.copy()
+        sample_prices_with_nan.loc[sample_prices_with_nan.index[100:110], "close"] = np.nan
+
+        config = HMMConfig(n_regimes=2)
+        detector = RegimeDetector(config)
+
+        # Fit on clean data
+        detector.fit(sample_prices)
+
+        # Predict on data with NaN
+        regimes = detector.predict(sample_prices_with_nan)
+
+        assert len(regimes) == len(sample_prices_with_nan)
+
+    def test_predict_preserves_index(self, sample_prices):
+        """Test predict preserves the original DataFrame index."""
+        pytest.importorskip("hmmlearn")
+
+        config = HMMConfig(n_regimes=2)
+        detector = RegimeDetector(config)
+        detector.fit(sample_prices)
+
+        regimes = detector.predict(sample_prices)
+
+        assert regimes.index.equals(sample_prices.index)
+
+
+class TestGetRegimeStatisticsEdgeCases:
+    """Additional tests for get_regime_statistics edge cases."""
+
+    @pytest.fixture
+    def sample_prices(self):
+        """Create sample price data."""
+        np.random.seed(42)
+        dates = pd.date_range("2015-01-01", "2023-12-31", freq="B")
+        n = len(dates)
+        prices = 100 * np.exp(np.cumsum(np.random.normal(0.0005, 0.015, n)))
+        return pd.DataFrame({"close": prices}, index=dates)
+
+    def test_get_regime_statistics_before_fit_raises(self, sample_prices):
+        """Test get_regime_statistics raises error if not fitted."""
+        config = HMMConfig(n_regimes=2)
+        detector = RegimeDetector(config)
+
+        with pytest.raises(ValueError, match="Model must be fitted"):
+            detector.get_regime_statistics(sample_prices)
+
+    def test_regime_durations_infinite_for_absorbing_state(self, sample_prices):
+        """Test regime durations handles absorbing state (p_stay = 1)."""
+        pytest.importorskip("hmmlearn")
+
+        config = HMMConfig(n_regimes=2)
+        detector = RegimeDetector(config)
+        detector.fit(sample_prices)
+
+        result = detector.get_regime_statistics(sample_prices)
+
+        # Verify durations are computed
+        for i in range(config.n_regimes):
+            assert i in result.regime_durations
+            # Duration should be positive (or inf for absorbing state)
+            assert result.regime_durations[i] > 0
+
+
 class TestModuleExports:
     """Test that regime module is properly exported."""
 
