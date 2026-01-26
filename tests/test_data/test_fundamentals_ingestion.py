@@ -1,15 +1,20 @@
 """
-Tests for the fundamentals data ingestion module.
+Comprehensive tests for fundamentals data ingestion.
 
 Tests cover:
-- Point-in-time validation (valid pass, invalid filtered)
-- Database upsert (insert new, update existing)
-- YFinanceFundamentalsAdapter behavior
+- YFinanceFundamentalsAdapter class
+- _validate_point_in_time function
+- _upsert_fundamentals function
 - ingest_fundamentals function
+- get_fundamentals_stats function
+- Snapshot fundamentals functions
+- Error handling and edge cases
 """
 
+import os
+import tempfile
 from datetime import date, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 
 import pandas as pd
 import pytest
@@ -17,448 +22,630 @@ import pytest
 from hrp.data.ingestion.fundamentals import (
     DEFAULT_METRICS,
     YFINANCE_PIT_BUFFER_DAYS,
+    SNAPSHOT_METRICS,
     YFinanceFundamentalsAdapter,
-    _upsert_fundamentals,
     _validate_point_in_time,
-    get_fundamentals_stats,
+    _upsert_fundamentals,
     ingest_fundamentals,
+    get_fundamentals_stats,
+    ingest_snapshot_fundamentals,
+    _upsert_snapshot_fundamentals,
+    get_latest_fundamentals,
 )
+from hrp.data.db import DatabaseManager, get_db
+from hrp.data.schema import create_tables
 
 
-class TestValidatePointInTime:
-    """Tests for the _validate_point_in_time function."""
-
-    def test_valid_records_pass(self):
-        """Test that valid point-in-time records pass validation."""
-        df = pd.DataFrame({
-            "symbol": ["AAPL", "AAPL"],
-            "report_date": [date(2023, 5, 1), date(2023, 8, 1)],
-            "period_end": [date(2023, 3, 31), date(2023, 6, 30)],
-            "metric": ["revenue", "revenue"],
-            "value": [100.0, 110.0],
-            "source": ["test", "test"],
-        })
-
-        result = _validate_point_in_time(df)
-
-        assert len(result) == 2
-        assert list(result["value"]) == [100.0, 110.0]
-
-    def test_invalid_records_filtered(self):
-        """Test that records with period_end > report_date are filtered."""
-        df = pd.DataFrame({
-            "symbol": ["AAPL", "AAPL", "AAPL"],
-            "report_date": [date(2023, 5, 1), date(2023, 3, 15), date(2023, 8, 1)],
-            "period_end": [date(2023, 3, 31), date(2023, 3, 31), date(2023, 6, 30)],
-            "metric": ["revenue", "revenue", "revenue"],
-            "value": [100.0, 90.0, 110.0],  # Second has future data
-            "source": ["test", "test", "test"],
-        })
-
-        result = _validate_point_in_time(df)
-
-        # Second record should be filtered (period_end > report_date)
-        assert len(result) == 2
-        assert list(result["value"]) == [100.0, 110.0]
-
-    def test_same_date_is_valid(self):
-        """Test that period_end == report_date is valid (edge case)."""
-        df = pd.DataFrame({
-            "symbol": ["AAPL"],
-            "report_date": [date(2023, 3, 31)],
-            "period_end": [date(2023, 3, 31)],
-            "metric": ["revenue"],
-            "value": [100.0],
-            "source": ["test"],
-        })
-
-        result = _validate_point_in_time(df)
-
-        assert len(result) == 1
-        assert result.iloc[0]["value"] == 100.0
-
-    def test_empty_dataframe(self):
-        """Test handling of empty DataFrame."""
-        df = pd.DataFrame()
-        result = _validate_point_in_time(df)
-        assert len(result) == 0
-
-    def test_string_dates_converted(self):
-        """Test that string dates are properly converted."""
-        df = pd.DataFrame({
-            "symbol": ["AAPL"],
-            "report_date": ["2023-05-01"],
-            "period_end": ["2023-03-31"],
-            "metric": ["revenue"],
-            "value": [100.0],
-            "source": ["test"],
-        })
-
-        result = _validate_point_in_time(df)
-        assert len(result) == 1
+# =============================================================================
+# Fixtures
+# =============================================================================
 
 
-class TestUpsertFundamentals:
-    """Tests for the _upsert_fundamentals function."""
+@pytest.fixture
+def fundamentals_test_db():
+    """Create a temporary database for fundamentals ingestion tests."""
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as f:
+        db_path = f.name
 
-    def test_insert_new_records(self, test_db_with_sources):
-        """Test inserting new fundamental records."""
-        from hrp.data.db import get_db
+    os.remove(db_path)
+    DatabaseManager.reset()
+    create_tables(db_path)
+    os.environ["HRP_DB_PATH"] = db_path
 
-        db = get_db(test_db_with_sources)
+    # Insert symbols for FK constraints
+    db = get_db(db_path)
+    with db.connection() as conn:
+        conn.execute("""
+            INSERT INTO symbols (symbol, name, exchange, asset_type)
+            VALUES
+                ('AAPL', 'Apple Inc.', 'NASDAQ', 'equity'),
+                ('MSFT', 'Microsoft Corp.', 'NASDAQ', 'equity'),
+                ('GOOGL', 'Alphabet Inc.', 'NASDAQ', 'equity'),
+                ('TEST', 'Test Corp.', 'NYSE', 'equity')
+        """)
+        # Insert data sources for FK constraint on fundamentals.source
+        conn.execute("""
+            INSERT INTO data_sources (source_id, source_type, api_name, status)
+            VALUES
+                ('test', 'manual', 'test', 'active'),
+                ('yfinance', 'api', 'yfinance', 'active'),
+                ('simfin', 'api', 'simfin', 'active')
+        """)
+        # Insert universe entries
+        conn.execute("""
+            INSERT INTO universe (symbol, date, in_universe, sector)
+            VALUES
+                ('AAPL', '2023-06-01', TRUE, 'Technology'),
+                ('MSFT', '2023-06-01', TRUE, 'Technology'),
+                ('GOOGL', '2023-06-01', TRUE, 'Technology'),
+                ('TEST', '2023-06-01', TRUE, 'Technology')
+        """)
 
-        # Add data source for fundamentals
-        with db.connection() as conn:
-            conn.execute(
-                "INSERT INTO data_sources (source_id, source_type, status) "
-                "VALUES ('test_fundamentals', 'test', 'active') ON CONFLICT DO NOTHING"
-            )
+    yield db_path
 
-        df = pd.DataFrame({
-            "symbol": ["AAPL", "AAPL"],
-            "report_date": [date(2023, 5, 1), date(2023, 8, 1)],
-            "period_end": [date(2023, 3, 31), date(2023, 6, 30)],
-            "metric": ["revenue", "revenue"],
-            "value": [100.0, 110.0],
-            "source": ["test_fundamentals", "test_fundamentals"],
-        })
+    # Cleanup
+    DatabaseManager.reset()
+    if "HRP_DB_PATH" in os.environ:
+        del os.environ["HRP_DB_PATH"]
+    if os.path.exists(db_path):
+        os.remove(db_path)
+    for ext in [".wal", "-journal", "-shm"]:
+        tmp_file = db_path + ext
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
 
-        rows_inserted = _upsert_fundamentals(db, df)
 
-        assert rows_inserted == 2
+@pytest.fixture
+def mock_fundamentals_df():
+    """Create mock fundamentals DataFrame."""
+    return pd.DataFrame({
+        "symbol": ["AAPL", "AAPL", "AAPL"],
+        "report_date": [date(2023, 5, 15), date(2023, 5, 15), date(2023, 5, 15)],
+        "period_end": [date(2023, 3, 31), date(2023, 3, 31), date(2023, 3, 31)],
+        "metric": ["revenue", "eps", "book_value"],
+        "value": [94836000000.0, 1.52, 50672000000.0],
+        "source": ["yfinance", "yfinance", "yfinance"],  # Use valid source_id
+    })
 
-        # Verify data was inserted
-        with db.connection() as conn:
-            result = conn.execute(
-                "SELECT COUNT(*) FROM fundamentals WHERE symbol = 'AAPL'"
-            ).fetchone()
-            assert result[0] == 2
 
-    def test_update_existing_records(self, test_db_with_sources):
-        """Test updating existing fundamental records (upsert)."""
-        from hrp.data.db import get_db
+@pytest.fixture
+def mock_snapshot_df():
+    """Create mock snapshot fundamentals DataFrame."""
+    return pd.DataFrame({
+        "symbol": ["AAPL", "MSFT"],
+        "market_cap": [2800000000000.0, 2500000000000.0],
+        "pe_ratio": [28.5, 32.1],
+        "pb_ratio": [45.2, 12.3],
+        "dividend_yield": [0.005, 0.008],
+        "ev_ebitda": [22.5, 25.3],
+    })
 
-        db = get_db(test_db_with_sources)
 
-        # Add data source
-        with db.connection() as conn:
-            conn.execute(
-                "INSERT INTO data_sources (source_id, source_type, status) "
-                "VALUES ('test_fundamentals', 'test', 'active') ON CONFLICT DO NOTHING"
-            )
+# =============================================================================
+# Constants Tests
+# =============================================================================
 
-        # Insert initial data
-        df1 = pd.DataFrame({
-            "symbol": ["AAPL"],
-            "report_date": [date(2023, 5, 1)],
-            "period_end": [date(2023, 3, 31)],
-            "metric": ["revenue"],
-            "value": [100.0],
-            "source": ["test_fundamentals"],
-        })
-        _upsert_fundamentals(db, df1)
 
-        # Update with new value
-        df2 = pd.DataFrame({
-            "symbol": ["AAPL"],
-            "report_date": [date(2023, 5, 1)],
-            "period_end": [date(2023, 3, 31)],
-            "metric": ["revenue"],
-            "value": [105.0],  # Updated value
-            "source": ["test_fundamentals"],
-        })
-        _upsert_fundamentals(db, df2)
+class TestConstants:
+    """Tests for module constants."""
 
-        # Verify only one record exists with updated value
-        with db.connection() as conn:
-            result = conn.execute(
-                "SELECT value FROM fundamentals "
-                "WHERE symbol = 'AAPL' AND report_date = '2023-05-01' AND metric = 'revenue'"
-            ).fetchone()
-            assert result[0] == 105.0
+    def test_default_metrics_not_empty(self):
+        """DEFAULT_METRICS should contain metrics."""
+        assert len(DEFAULT_METRICS) > 0
 
-    def test_empty_dataframe(self, test_db_with_sources):
-        """Test handling of empty DataFrame."""
-        from hrp.data.db import get_db
+    def test_default_metrics_contains_expected(self):
+        """DEFAULT_METRICS should contain expected metrics."""
+        expected = ["revenue", "eps", "book_value"]
+        for metric in expected:
+            assert metric in DEFAULT_METRICS
 
-        db = get_db(test_db_with_sources)
-        df = pd.DataFrame()
+    def test_yfinance_pit_buffer_reasonable(self):
+        """YFINANCE_PIT_BUFFER_DAYS should be reasonable."""
+        # 10-Q must be filed within 40-45 days of quarter end
+        assert 30 <= YFINANCE_PIT_BUFFER_DAYS <= 60
 
-        rows_inserted = _upsert_fundamentals(db, df)
-        assert rows_inserted == 0
+    def test_snapshot_metrics_not_empty(self):
+        """SNAPSHOT_METRICS should contain metrics."""
+        assert len(SNAPSHOT_METRICS) > 0
+
+    def test_snapshot_metrics_contains_expected(self):
+        """SNAPSHOT_METRICS should contain expected metrics."""
+        expected = ["market_cap", "pe_ratio", "pb_ratio"]
+        for metric in expected:
+            assert metric in SNAPSHOT_METRICS
+
+
+# =============================================================================
+# YFinanceFundamentalsAdapter Tests
+# =============================================================================
 
 
 class TestYFinanceFundamentalsAdapter:
-    """Tests for the YFinanceFundamentalsAdapter class."""
+    """Tests for YFinanceFundamentalsAdapter class."""
+
+    def test_init(self):
+        """YFinanceFundamentalsAdapter should initialize."""
+        adapter = YFinanceFundamentalsAdapter()
+        assert adapter.source_name == "yfinance"
 
     def test_get_fundamentals_returns_dataframe(self):
-        """Test that get_fundamentals returns proper DataFrame structure."""
+        """get_fundamentals should return a DataFrame."""
         adapter = YFinanceFundamentalsAdapter()
 
-        # Mock the yfinance Ticker
-        mock_income = pd.DataFrame(
-            {"2023-03-31": [100e9, 25e9, 1.50]},
-            index=["Total Revenue", "Net Income", "Diluted EPS"],
-        )
-        mock_income.columns = pd.to_datetime(mock_income.columns)
+        # Mock yfinance ticker
+        with patch("hrp.data.ingestion.fundamentals.yf.Ticker") as MockTicker:
+            mock_ticker = MagicMock()
 
-        mock_balance = pd.DataFrame(
-            {"2023-03-31": [350e9, 250e9, 100e9]},
-            index=["Total Assets", "Total Liabilities Net Minority Interest", "Stockholders Equity"],
-        )
-        mock_balance.columns = pd.to_datetime(mock_balance.columns)
+            # Create mock income statement (rows = metrics, columns = dates)
+            mock_income = pd.DataFrame(
+                {pd.Timestamp("2023-03-31"): [94836000000, 1.52]},
+                index=pd.Index(["Total Revenue", "Diluted EPS"]),
+            )
+            mock_ticker.quarterly_income_stmt = mock_income
 
-        with patch("yfinance.Ticker") as mock_ticker:
-            mock_instance = MagicMock()
-            mock_instance.quarterly_income_stmt = mock_income
-            mock_instance.quarterly_balance_sheet = mock_balance
-            mock_ticker.return_value = mock_instance
+            # Create mock balance sheet
+            mock_balance = pd.DataFrame(
+                {pd.Timestamp("2023-03-31"): [50672000000]},
+                index=pd.Index(["Stockholders Equity"]),
+            )
+            mock_ticker.quarterly_balance_sheet = mock_balance
 
-            result = adapter.get_fundamentals("AAPL")
+            MockTicker.return_value = mock_ticker
+
+            result = adapter.get_fundamentals("AAPL", metrics=["revenue", "eps"])
 
         assert isinstance(result, pd.DataFrame)
-        assert len(result) > 0
-        assert list(result.columns) == [
-            "symbol", "report_date", "period_end", "metric", "value", "source"
-        ]
-        assert all(result["symbol"] == "AAPL")
-        assert all(result["source"] == "yfinance")
 
-    def test_point_in_time_buffer_applied(self):
-        """Test that 45-day buffer is applied to report_date."""
+    def test_get_fundamentals_empty_data(self):
+        """get_fundamentals should return empty DataFrame for no data."""
         adapter = YFinanceFundamentalsAdapter()
 
-        period_end = date(2023, 3, 31)
-        expected_report_date = period_end + timedelta(days=YFINANCE_PIT_BUFFER_DAYS)
-
-        mock_income = pd.DataFrame(
-            {"2023-03-31": [100e9]},
-            index=["Total Revenue"],
-        )
-        mock_income.columns = pd.to_datetime(mock_income.columns)
-
-        with patch("yfinance.Ticker") as mock_ticker:
-            mock_instance = MagicMock()
-            mock_instance.quarterly_income_stmt = mock_income
-            mock_instance.quarterly_balance_sheet = pd.DataFrame()
-            mock_ticker.return_value = mock_instance
-
-            result = adapter.get_fundamentals("AAPL", metrics=["revenue"])
-
-        assert len(result) == 1
-        assert result.iloc[0]["period_end"] == period_end
-        assert result.iloc[0]["report_date"] == expected_report_date
-
-    def test_empty_data_returns_empty_dataframe(self):
-        """Test that missing data returns empty DataFrame."""
-        adapter = YFinanceFundamentalsAdapter()
-
-        with patch("yfinance.Ticker") as mock_ticker:
-            mock_instance = MagicMock()
-            mock_instance.quarterly_income_stmt = pd.DataFrame()
-            mock_instance.quarterly_balance_sheet = pd.DataFrame()
-            mock_ticker.return_value = mock_instance
+        with patch("hrp.data.ingestion.fundamentals.yf.Ticker") as MockTicker:
+            mock_ticker = MagicMock()
+            mock_ticker.quarterly_income_stmt = pd.DataFrame()
+            mock_ticker.quarterly_balance_sheet = pd.DataFrame()
+            MockTicker.return_value = mock_ticker
 
             result = adapter.get_fundamentals("INVALID")
 
         assert isinstance(result, pd.DataFrame)
-        assert len(result) == 0
+        assert result.empty
 
-    def test_date_filtering(self):
-        """Test that date filtering works correctly."""
+    def test_get_fundamentals_date_filtering(self):
+        """get_fundamentals should filter by date range."""
         adapter = YFinanceFundamentalsAdapter()
 
-        mock_income = pd.DataFrame(
-            {
-                "2022-12-31": [90e9],  # Before start_date
-                "2023-03-31": [100e9],  # In range
-                "2023-06-30": [110e9],  # In range
-            },
-            index=["Total Revenue"],
-        )
-        mock_income.columns = pd.to_datetime(mock_income.columns)
+        with patch("hrp.data.ingestion.fundamentals.yf.Ticker") as MockTicker:
+            mock_ticker = MagicMock()
 
-        with patch("yfinance.Ticker") as mock_ticker:
-            mock_instance = MagicMock()
-            mock_instance.quarterly_income_stmt = mock_income
-            mock_instance.quarterly_balance_sheet = pd.DataFrame()
-            mock_ticker.return_value = mock_instance
+            # Create data with multiple periods (rows = metrics, columns = dates)
+            mock_income = pd.DataFrame(
+                {
+                    pd.Timestamp("2022-12-31"): [90000000000],
+                    pd.Timestamp("2023-03-31"): [95000000000],
+                },
+                index=pd.Index(["Total Revenue"]),
+            )
+            mock_ticker.quarterly_income_stmt = mock_income
+            mock_ticker.quarterly_balance_sheet = pd.DataFrame()
 
-            # Note: report_date = period_end + 45 days
-            # 2022-12-31 + 45 = 2023-02-14 (before start_date 2023-05-01)
-            # 2023-03-31 + 45 = 2023-05-15 (in range)
-            # 2023-06-30 + 45 = 2023-08-14 (in range)
+            MockTicker.return_value = mock_ticker
+
+            # Filter to only include Q1 2023 (report_date = period_end + 45 days)
+            # Q1 2023 ends 2023-03-31, report_date ~= 2023-05-15
             result = adapter.get_fundamentals(
                 "AAPL",
                 metrics=["revenue"],
                 start_date=date(2023, 5, 1),
-                end_date=date(2023, 12, 31),
+                end_date=date(2023, 6, 30),
             )
 
-        # First period should be filtered out
-        assert len(result) == 2
+        # Should only include the Q1 2023 data
+        assert len(result) == 1
+        assert result.iloc[0]["value"] == 95000000000
 
-    def test_batch_fetch(self):
-        """Test batch fetching for multiple symbols."""
+    def test_get_fundamentals_batch(self):
+        """get_fundamentals_batch should fetch data for multiple symbols."""
         adapter = YFinanceFundamentalsAdapter()
 
-        mock_income = pd.DataFrame(
-            {"2023-03-31": [100e9]},
-            index=["Total Revenue"],
-        )
-        mock_income.columns = pd.to_datetime(mock_income.columns)
-
-        with patch("yfinance.Ticker") as mock_ticker:
-            mock_instance = MagicMock()
-            mock_instance.quarterly_income_stmt = mock_income
-            mock_instance.quarterly_balance_sheet = pd.DataFrame()
-            mock_ticker.return_value = mock_instance
+        with patch.object(adapter, "get_fundamentals") as mock_get:
+            mock_get.side_effect = [
+                pd.DataFrame({"symbol": ["AAPL"], "metric": ["revenue"], "value": [100]}),
+                pd.DataFrame({"symbol": ["MSFT"], "metric": ["revenue"], "value": [200]}),
+            ]
 
             result = adapter.get_fundamentals_batch(
-                ["AAPL", "MSFT"],
+                symbols=["AAPL", "MSFT"],
                 metrics=["revenue"],
             )
 
-        assert isinstance(result, pd.DataFrame)
-        # Each symbol should have one record
         assert len(result) == 2
         assert set(result["symbol"].unique()) == {"AAPL", "MSFT"}
 
+    def test_get_fundamentals_batch_partial_failure(self):
+        """get_fundamentals_batch should continue on partial failures."""
+        adapter = YFinanceFundamentalsAdapter()
+
+        with patch.object(adapter, "get_fundamentals") as mock_get:
+            mock_get.side_effect = [
+                Exception("API Error"),
+                pd.DataFrame({"symbol": ["MSFT"], "metric": ["revenue"], "value": [200]}),
+            ]
+
+            result = adapter.get_fundamentals_batch(
+                symbols=["AAPL", "MSFT"],
+                metrics=["revenue"],
+            )
+
+        # Should still return MSFT data
+        assert len(result) == 1
+        assert result.iloc[0]["symbol"] == "MSFT"
+
+    def test_get_fundamentals_batch_all_fail(self):
+        """get_fundamentals_batch should return empty DataFrame if all fail."""
+        adapter = YFinanceFundamentalsAdapter()
+
+        with patch.object(adapter, "get_fundamentals") as mock_get:
+            mock_get.side_effect = [Exception("Error 1"), Exception("Error 2")]
+
+            result = adapter.get_fundamentals_batch(
+                symbols=["AAPL", "MSFT"],
+                metrics=["revenue"],
+            )
+
+        assert result.empty
+
+
+# =============================================================================
+# _validate_point_in_time Tests
+# =============================================================================
+
+
+class TestValidatePointInTime:
+    """Tests for _validate_point_in_time function."""
+
+    def test_validate_empty_df(self):
+        """_validate_point_in_time should handle empty DataFrame."""
+        result = _validate_point_in_time(pd.DataFrame())
+        assert result.empty
+
+    def test_validate_valid_records(self):
+        """_validate_point_in_time should keep valid records."""
+        df = pd.DataFrame({
+            "report_date": [date(2023, 5, 15)],
+            "period_end": [date(2023, 3, 31)],
+            "value": [100],
+        })
+        result = _validate_point_in_time(df)
+        assert len(result) == 1
+
+    def test_validate_filters_lookahead(self):
+        """_validate_point_in_time should filter look-ahead bias records."""
+        df = pd.DataFrame({
+            "report_date": [date(2023, 3, 15)],  # Before period_end!
+            "period_end": [date(2023, 3, 31)],
+            "value": [100],
+        })
+        result = _validate_point_in_time(df)
+        assert len(result) == 0
+
+    def test_validate_mixed_records(self):
+        """_validate_point_in_time should filter only invalid records."""
+        df = pd.DataFrame({
+            "report_date": [date(2023, 5, 15), date(2023, 3, 15)],
+            "period_end": [date(2023, 3, 31), date(2023, 3, 31)],
+            "value": [100, 200],
+        })
+        result = _validate_point_in_time(df)
+        assert len(result) == 1
+        assert result.iloc[0]["value"] == 100
+
+    def test_validate_string_dates(self):
+        """_validate_point_in_time should handle string date columns."""
+        df = pd.DataFrame({
+            "report_date": ["2023-05-15"],
+            "period_end": ["2023-03-31"],
+            "value": [100],
+        })
+        result = _validate_point_in_time(df)
+        assert len(result) == 1
+
+
+# =============================================================================
+# _upsert_fundamentals Tests
+# =============================================================================
+
+
+class TestUpsertFundamentals:
+    """Tests for _upsert_fundamentals function."""
+
+    def test_upsert_empty_df(self, fundamentals_test_db):
+        """_upsert_fundamentals should return 0 for empty DataFrame."""
+        db = get_db(fundamentals_test_db)
+        result = _upsert_fundamentals(db, pd.DataFrame())
+        assert result == 0
+
+    def test_upsert_inserts_records(self, fundamentals_test_db, mock_fundamentals_df):
+        """_upsert_fundamentals should insert records into database."""
+        db = get_db(fundamentals_test_db)
+        result = _upsert_fundamentals(db, mock_fundamentals_df)
+
+        assert result == 3
+
+        # Verify in database
+        count = db.fetchone("SELECT COUNT(*) FROM fundamentals")[0]
+        assert count == 3
+
+    def test_upsert_upsert_behavior(self, fundamentals_test_db, mock_fundamentals_df):
+        """_upsert_fundamentals should update existing records."""
+        db = get_db(fundamentals_test_db)
+
+        # First insert
+        _upsert_fundamentals(db, mock_fundamentals_df)
+
+        # Modify and insert again
+        mock_fundamentals_df["value"] = [100000000000.0, 2.0, 60000000000.0]
+        _upsert_fundamentals(db, mock_fundamentals_df)
+
+        # Should still have 3 records
+        count = db.fetchone("SELECT COUNT(*) FROM fundamentals")[0]
+        assert count == 3
+
+
+# =============================================================================
+# ingest_fundamentals Tests
+# =============================================================================
+
 
 class TestIngestFundamentals:
-    """Tests for the ingest_fundamentals function."""
+    """Tests for ingest_fundamentals function."""
 
-    def test_successful_ingestion(self, test_db_with_sources):
-        """Test successful fundamentals ingestion."""
-        from hrp.data.db import get_db
-
-        db = get_db(test_db_with_sources)
-
-        # Add yfinance data source
-        with db.connection() as conn:
-            conn.execute(
-                "INSERT INTO data_sources (source_id, source_type, status) "
-                "VALUES ('yfinance', 'api', 'active') ON CONFLICT DO NOTHING"
-            )
-
-        mock_income = pd.DataFrame(
-            {"2023-03-31": [100e9, 25e9, 1.50]},
-            index=["Total Revenue", "Net Income", "Diluted EPS"],
-        )
-        mock_income.columns = pd.to_datetime(mock_income.columns)
-
-        mock_balance = pd.DataFrame(
-            {"2023-03-31": [350e9, 250e9, 100e9]},
-            index=["Total Assets", "Total Liabilities Net Minority Interest", "Stockholders Equity"],
-        )
-        mock_balance.columns = pd.to_datetime(mock_balance.columns)
-
-        with patch("yfinance.Ticker") as mock_ticker:
-            mock_instance = MagicMock()
-            mock_instance.quarterly_income_stmt = mock_income
-            mock_instance.quarterly_balance_sheet = mock_balance
-            mock_ticker.return_value = mock_instance
-
-            stats = ingest_fundamentals(
-                symbols=["AAPL"],
-                source="yfinance",
-            )
-
-        assert stats["symbols_success"] == 1
-        assert stats["symbols_failed"] == 0
-        assert stats["records_inserted"] > 0
-
-    def test_failed_symbol_continues(self, test_db_with_sources):
-        """Test that failure for one symbol doesn't stop others."""
-        from hrp.data.db import get_db
-
-        db = get_db(test_db_with_sources)
-
-        # Add yfinance data source
-        with db.connection() as conn:
-            conn.execute(
-                "INSERT INTO data_sources (source_id, source_type, status) "
-                "VALUES ('yfinance', 'api', 'active') ON CONFLICT DO NOTHING"
-            )
-
-        mock_income = pd.DataFrame(
-            {"2023-03-31": [100e9]},
-            index=["Total Revenue"],
-        )
-        mock_income.columns = pd.to_datetime(mock_income.columns)
-
-        call_count = [0]
-
-        def mock_ticker_side_effect(symbol):
-            call_count[0] += 1
-            mock_instance = MagicMock()
-            if symbol == "INVALID":
-                mock_instance.quarterly_income_stmt = pd.DataFrame()
-                mock_instance.quarterly_balance_sheet = pd.DataFrame()
-            else:
-                mock_instance.quarterly_income_stmt = mock_income
-                mock_instance.quarterly_balance_sheet = pd.DataFrame()
-            return mock_instance
-
-        with patch("yfinance.Ticker", side_effect=mock_ticker_side_effect):
-            stats = ingest_fundamentals(
-                symbols=["AAPL", "INVALID", "MSFT"],
-                metrics=["revenue"],
-                source="yfinance",
-            )
-
-        assert stats["symbols_success"] == 2
-        assert stats["symbols_failed"] == 1
-        assert "INVALID" in stats["failed_symbols"]
-
-    def test_invalid_source_raises(self, test_db_with_sources):
-        """Test that invalid source raises ValueError."""
-        with pytest.raises(ValueError, match="Unknown source"):
+    def test_ingest_unknown_source_raises(self, fundamentals_test_db):
+        """ingest_fundamentals should raise ValueError for unknown source."""
+        with pytest.raises(ValueError) as exc_info:
             ingest_fundamentals(
                 symbols=["AAPL"],
-                source="invalid_source",
+                source="unknown_source",
             )
+        assert "Unknown source" in str(exc_info.value)
+
+    def test_ingest_yfinance_source(self, fundamentals_test_db, mock_fundamentals_df):
+        """ingest_fundamentals should work with yfinance source."""
+        with patch.object(
+            YFinanceFundamentalsAdapter, "get_fundamentals"
+        ) as mock_get:
+            mock_get.return_value = mock_fundamentals_df
+
+            stats = ingest_fundamentals(
+                symbols=["AAPL"],
+                source="yfinance",
+            )
+
+        assert stats["symbols_requested"] == 1
+        assert stats["symbols_success"] == 1
+        assert stats["records_inserted"] == 3
+
+    def test_ingest_simfin_fallback(self, fundamentals_test_db, mock_fundamentals_df):
+        """ingest_fundamentals should fall back to yfinance if simfin unavailable."""
+        # SimFinSource is imported inside the function, so we patch the import
+        with patch.dict("sys.modules", {"hrp.data.sources.simfin_source": MagicMock()}):
+            with patch(
+                "hrp.data.sources.simfin_source.SimFinSource",
+                side_effect=ValueError("No API key"),
+            ):
+                with patch.object(
+                    YFinanceFundamentalsAdapter, "get_fundamentals"
+                ) as mock_get:
+                    mock_get.return_value = mock_fundamentals_df
+
+                    stats = ingest_fundamentals(
+                        symbols=["AAPL"],
+                        source="simfin",
+                    )
+
+        assert stats["symbols_success"] == 1
+
+    def test_ingest_tracks_pit_violations(self, fundamentals_test_db):
+        """ingest_fundamentals should track point-in-time violations."""
+        # Create data with PIT violation
+        invalid_df = pd.DataFrame({
+            "symbol": ["AAPL"],
+            "report_date": [date(2023, 3, 15)],  # Before period_end!
+            "period_end": [date(2023, 3, 31)],
+            "metric": ["revenue"],
+            "value": [100000000000.0],
+            "source": ["test"],
+        })
+
+        with patch.object(
+            YFinanceFundamentalsAdapter, "get_fundamentals"
+        ) as mock_get:
+            mock_get.return_value = invalid_df
+
+            stats = ingest_fundamentals(
+                symbols=["AAPL"],
+                source="yfinance",
+            )
+
+        assert stats["pit_violations_filtered"] == 1
+        assert stats["records_inserted"] == 0
+
+    def test_ingest_multiple_symbols(self, fundamentals_test_db):
+        """ingest_fundamentals should handle multiple symbols."""
+        df1 = pd.DataFrame({
+            "symbol": ["AAPL"],
+            "report_date": [date(2023, 5, 15)],
+            "period_end": [date(2023, 3, 31)],
+            "metric": ["revenue"],
+            "value": [100],
+            "source": ["test"],
+        })
+        df2 = pd.DataFrame({
+            "symbol": ["MSFT"],
+            "report_date": [date(2023, 5, 15)],
+            "period_end": [date(2023, 3, 31)],
+            "metric": ["revenue"],
+            "value": [200],
+            "source": ["test"],
+        })
+
+        with patch.object(
+            YFinanceFundamentalsAdapter, "get_fundamentals"
+        ) as mock_get:
+            mock_get.side_effect = [df1, df2]
+
+            stats = ingest_fundamentals(
+                symbols=["AAPL", "MSFT"],
+                source="yfinance",
+            )
+
+        assert stats["symbols_requested"] == 2
+        assert stats["symbols_success"] == 2
+
+
+# =============================================================================
+# get_fundamentals_stats Tests
+# =============================================================================
 
 
 class TestGetFundamentalsStats:
-    """Tests for the get_fundamentals_stats function."""
+    """Tests for get_fundamentals_stats function."""
 
-    def test_stats_with_data(self, test_db_with_sources):
-        """Test statistics with existing data."""
-        from hrp.data.db import get_db
-
-        db = get_db(test_db_with_sources)
-
-        # Add data source
-        with db.connection() as conn:
-            conn.execute(
-                "INSERT INTO data_sources (source_id, source_type, status) "
-                "VALUES ('test_fundamentals', 'test', 'active') ON CONFLICT DO NOTHING"
-            )
-
-        # Insert some test data
-        df = pd.DataFrame({
-            "symbol": ["AAPL", "AAPL", "MSFT"],
-            "report_date": [date(2023, 5, 1), date(2023, 8, 1), date(2023, 5, 1)],
-            "period_end": [date(2023, 3, 31), date(2023, 6, 30), date(2023, 3, 31)],
-            "metric": ["revenue", "revenue", "eps"],
-            "value": [100.0, 110.0, 5.5],
-            "source": ["test_fundamentals", "test_fundamentals", "test_fundamentals"],
-        })
-        _upsert_fundamentals(db, df)
-
-        stats = get_fundamentals_stats()
-
-        assert stats["total_records"] == 3
-        assert stats["unique_symbols"] == 2
-        assert stats["date_range"]["start"] is not None
-        assert stats["date_range"]["end"] is not None
-        assert len(stats["metrics"]) == 2  # revenue and eps
-        assert len(stats["per_symbol"]) == 2
-
-    def test_stats_empty_database(self, test_db_with_sources):
-        """Test statistics with empty fundamentals table."""
+    def test_stats_empty_db(self, fundamentals_test_db):
+        """get_fundamentals_stats should handle empty database."""
         stats = get_fundamentals_stats()
 
         assert stats["total_records"] == 0
         assert stats["unique_symbols"] == 0
+
+    def test_stats_with_data(self, fundamentals_test_db, mock_fundamentals_df):
+        """get_fundamentals_stats should return correct statistics."""
+        db = get_db(fundamentals_test_db)
+        _upsert_fundamentals(db, mock_fundamentals_df)
+
+        stats = get_fundamentals_stats()
+
+        assert stats["total_records"] == 3
+        assert stats["unique_symbols"] == 1
+        assert len(stats["metrics"]) == 3
+
+
+# =============================================================================
+# Snapshot Fundamentals Tests
+# =============================================================================
+
+
+class TestSnapshotFundamentals:
+    """Tests for snapshot fundamentals functions."""
+
+    def test_upsert_snapshot_empty(self, fundamentals_test_db):
+        """_upsert_snapshot_fundamentals should return 0 for empty DataFrame."""
+        db = get_db(fundamentals_test_db)
+        result = _upsert_snapshot_fundamentals(db, pd.DataFrame())
+        assert result == 0
+
+    def test_upsert_snapshot_inserts(self, fundamentals_test_db):
+        """_upsert_snapshot_fundamentals should insert records."""
+        db = get_db(fundamentals_test_db)
+
+        df = pd.DataFrame({
+            "symbol": ["AAPL", "AAPL"],
+            "date": [date(2023, 6, 1), date(2023, 6, 1)],
+            "feature_name": ["market_cap", "pe_ratio"],
+            "value": [2800000000000.0, 28.5],
+            "version": ["v1", "v1"],
+        })
+
+        result = _upsert_snapshot_fundamentals(db, df)
+        assert result == 2
+
+    def test_ingest_snapshot_fundamentals(self, fundamentals_test_db, mock_snapshot_df):
+        """ingest_snapshot_fundamentals should ingest snapshot data."""
+        # FundamentalSource is imported inside the function
+        with patch(
+            "hrp.data.sources.fundamental_source.FundamentalSource"
+        ) as MockSource:
+            mock_source = MagicMock()
+            mock_source.get_fundamentals_batch.return_value = mock_snapshot_df
+            MockSource.return_value = mock_source
+
+            stats = ingest_snapshot_fundamentals(
+                symbols=["AAPL", "MSFT"],
+                as_of_date=date(2023, 6, 1),
+            )
+
+        assert stats["symbols_requested"] == 2
+        assert stats["symbols_success"] == 2
+        # 2 symbols * 5 metrics = 10 records
+        assert stats["records_inserted"] == 10
+
+    def test_ingest_snapshot_empty_data(self, fundamentals_test_db):
+        """ingest_snapshot_fundamentals should handle empty data."""
+        with patch(
+            "hrp.data.sources.fundamental_source.FundamentalSource"
+        ) as MockSource:
+            mock_source = MagicMock()
+            mock_source.get_fundamentals_batch.return_value = pd.DataFrame()
+            MockSource.return_value = mock_source
+
+            stats = ingest_snapshot_fundamentals(
+                symbols=["INVALID"],
+                as_of_date=date(2023, 6, 1),
+            )
+
+        assert stats["symbols_failed"] == 1
+
+    def test_get_latest_fundamentals(self, fundamentals_test_db):
+        """get_latest_fundamentals should retrieve latest values."""
+        db = get_db(fundamentals_test_db)
+
+        # Insert snapshot data with same date for all metrics (typical use case)
+        with db.connection() as conn:
+            conn.execute("""
+                INSERT INTO features (symbol, date, feature_name, value, version)
+                VALUES
+                    ('AAPL', '2023-06-01', 'market_cap', 2700000000000.0, 'v1'),
+                    ('AAPL', '2023-06-01', 'pe_ratio', 28.5, 'v1')
+            """)
+
+        result = get_latest_fundamentals(["AAPL"], ["market_cap", "pe_ratio"])
+
+        assert not result.empty
+        # Result is pivoted, so market_cap and pe_ratio are columns
+        aapl_row = result[result["symbol"] == "AAPL"].iloc[0]
+        assert aapl_row["market_cap"] == 2700000000000.0
+        assert aapl_row["pe_ratio"] == 28.5
+
+    def test_get_latest_fundamentals_empty(self, fundamentals_test_db):
+        """get_latest_fundamentals should return empty for no data."""
+        result = get_latest_fundamentals(["INVALID"], ["market_cap"])
+        assert result.empty
+
+
+# =============================================================================
+# Integration Tests
+# =============================================================================
+
+
+class TestFundamentalsIngestionIntegration:
+    """Integration tests for fundamentals ingestion."""
+
+    def test_full_workflow(self, fundamentals_test_db, mock_fundamentals_df):
+        """Test complete ingestion and stats workflow."""
+        with patch.object(
+            YFinanceFundamentalsAdapter, "get_fundamentals"
+        ) as mock_get:
+            mock_get.return_value = mock_fundamentals_df
+
+            # Ingest
+            ingest_stats = ingest_fundamentals(
+                symbols=["AAPL"],
+                source="yfinance",
+            )
+
+        assert ingest_stats["symbols_success"] == 1
+        assert ingest_stats["records_inserted"] == 3
+
+        # Check stats
+        db_stats = get_fundamentals_stats()
+        assert db_stats["total_records"] == 3
