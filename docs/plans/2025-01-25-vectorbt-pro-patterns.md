@@ -2,7 +2,7 @@
 
 **Date**: 2025-01-25
 **Source**: PyQuantNews thread on cross-validation for backtesting
-**Status**: Planned
+**Status**: ✅ Implemented
 
 ## Executive Summary
 

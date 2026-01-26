@@ -330,6 +330,132 @@ if not result.passed:
     print(f"Leakage detected: {result.suspicious_features}")
 ```
 
+### Run cross-validated optimization
+```python
+from hrp.ml import OptimizationConfig, cross_validated_optimize
+from datetime import date
+
+config = OptimizationConfig(
+    model_type='ridge',
+    target='returns_20d',
+    features=['momentum_20d', 'volatility_20d', 'rsi_14d'],
+    param_grid={'alpha': [0.1, 1.0, 10.0, 100.0]},
+    start_date=date(2015, 1, 1),
+    end_date=date(2023, 12, 31),
+    n_folds=5,
+    scoring_metric='ic',  # ic, mse, or sharpe
+    max_trials=50,  # Integrates with HyperparameterTrialCounter
+    hypothesis_id='HYP-2025-001',
+)
+
+result = cross_validated_optimize(
+    config=config,
+    symbols=['AAPL', 'MSFT', 'GOOGL'],
+    log_to_mlflow=True,
+)
+
+print(f"Best params: {result.best_params}")
+print(f"Best score: {result.best_score:.4f}")
+```
+
+### Run parameter sweep with Sharpe decay analysis
+```python
+from hrp.research.parameter_sweep import SweepConfig, parallel_parameter_sweep
+from datetime import date
+
+config = SweepConfig(
+    param_grid={
+        "fast_period": [10, 15, 20, 25, 30],
+        "slow_period": [20, 30, 40, 50, 60],
+    },
+    symbols=['AAPL', 'MSFT', 'GOOGL'],
+    start_date=date(2018, 1, 1),
+    end_date=date(2023, 12, 31),
+    n_folds=3,
+    strategy_type="momentum_crossover",
+    constraints=[
+        # Ensure slow_period > fast_period by at least 5
+        {"type": "difference_min", "params": ["slow_period", "fast_period"], "min_diff": 5}
+    ],
+    n_jobs=-1,  # Use all CPU cores
+)
+
+result = parallel_parameter_sweep(config)
+
+# Sharpe decay analysis: Blue = good, Red = overfitting
+print(f"Generalization Score: {result.generalization_score:.1%}")
+print(f"Best params: {result.best_params}")
+
+# Access Sharpe decay matrix for visualization
+# result.sharpe_diff_matrix: test_sharpe - train_sharpe per fold
+# result.sharpe_diff_median: aggregated across folds
+```
+
+### Configure ATR trailing stops
+```python
+from hrp.research.config import BacktestConfig, StopLossConfig
+from hrp.research.stops import apply_trailing_stops
+
+# Add stop-loss to backtest config
+stop_config = StopLossConfig(
+    enabled=True,
+    type="atr_trailing",  # "fixed_pct", "atr_trailing", "volatility_scaled"
+    atr_multiplier=2.0,
+    atr_period=14,
+)
+
+config = BacktestConfig(
+    symbols=['AAPL', 'MSFT'],
+    start_date=date(2020, 1, 1),
+    end_date=date(2023, 12, 31),
+    stop_loss=stop_config,
+)
+
+# Or apply trailing stops to signals manually
+from hrp.research.stops import apply_trailing_stops
+
+modified_signals, stop_events = apply_trailing_stops(
+    signals=signals,
+    prices=prices,
+    stop_config=stop_config,
+)
+```
+
+### HMM regime detection
+```python
+from hrp.ml import HMMConfig, RegimeDetector, MarketRegime
+
+# Configure and fit regime detector
+config = HMMConfig(
+    n_regimes=3,
+    features=['returns_20d', 'volatility_20d'],
+    covariance_type='full',
+)
+
+detector = RegimeDetector(config)
+detector.fit(prices)
+
+# Predict regimes
+regimes = detector.predict(prices)  # Series of regime labels
+
+# Get regime statistics
+result = detector.get_regime_statistics(prices)
+print(f"Current regime: {result.current_regime}")
+print(f"Regime durations: {result.regime_durations}")
+
+# Check strategy stability across regimes
+from hrp.risk.robustness import check_regime_stability_hmm
+
+stability = check_regime_stability_hmm(
+    returns=strategy_returns,
+    prices=prices,
+    strategy_metrics_by_date=metrics_df,
+    n_regimes=3,
+    min_regimes_profitable=2,
+)
+print(f"Regime stability: {'PASS' if stability.passed else 'FAIL'}")
+```
+
 ## File Locations
 
 - Database: `~/hrp-data/hrp.duckdb`

@@ -16,6 +16,18 @@ from hrp.ml.validation import (
     compute_fold_metrics,
     aggregate_fold_metrics,
 )
+from hrp.ml.optimization import (
+    OptimizationConfig,
+    OptimizationResult,
+    cross_validated_optimize,
+    SCORING_METRICS,
+)
+from hrp.ml.regime import (
+    MarketRegime,
+    HMMConfig,
+    RegimeResult,
+    RegimeDetector,
+)
 
 __all__ = [
     # Models
@@ -39,4 +51,14 @@ __all__ = [
     "generate_folds",
     "compute_fold_metrics",
     "aggregate_fold_metrics",
+    # Optimization
+    "OptimizationConfig",
+    "OptimizationResult",
+    "cross_validated_optimize",
+    "SCORING_METRICS",
+    # Regime Detection
+    "MarketRegime",
+    "HMMConfig",
+    "RegimeResult",
+    "RegimeDetector",
 ]

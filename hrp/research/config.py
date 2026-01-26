@@ -10,6 +10,45 @@ import pandas as pd
 
 
 @dataclass
+class StopLossConfig:
+    """
+    Configuration for stop-loss mechanisms.
+
+    Attributes:
+        enabled: Whether stop-loss is enabled
+        type: Type of stop-loss ("fixed_pct", "atr_trailing", "volatility_scaled")
+        atr_multiplier: ATR multiplier for trailing stop (default 2.0)
+        atr_period: ATR calculation period in days (default 14)
+        fixed_pct: Fixed percentage for fixed stop-loss (default 0.05 = 5%)
+        lookback_for_high: Lookback period for trailing high (default 1)
+    """
+
+    enabled: bool = False
+    type: str = "atr_trailing"  # "fixed_pct", "atr_trailing", "volatility_scaled"
+    atr_multiplier: float = 2.0
+    atr_period: int = 14
+    fixed_pct: float = 0.05
+    lookback_for_high: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        valid_types = ("fixed_pct", "atr_trailing", "volatility_scaled")
+        if self.type not in valid_types:
+            raise ValueError(
+                f"Invalid stop-loss type: '{self.type}'. "
+                f"Valid types: {', '.join(valid_types)}"
+            )
+        if self.atr_multiplier <= 0:
+            raise ValueError("atr_multiplier must be positive")
+        if self.atr_period < 1:
+            raise ValueError("atr_period must be at least 1")
+        if not 0 < self.fixed_pct < 1:
+            raise ValueError("fixed_pct must be between 0 and 1")
+        if self.lookback_for_high < 1:
+            raise ValueError("lookback_for_high must be at least 1")
+
+
+@dataclass
 class CostModel:
     """Transaction cost model (IBKR realistic)."""
 
@@ -41,6 +80,9 @@ class BacktestConfig:
 
     # Costs
     costs: CostModel = field(default_factory=CostModel)
+
+    # Stop-loss
+    stop_loss: StopLossConfig = field(default_factory=StopLossConfig)
 
     # Validation splits
     train_end: date = None

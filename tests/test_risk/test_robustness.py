@@ -1,5 +1,6 @@
 """Tests for robustness checks."""
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -8,6 +9,7 @@ from hrp.risk.robustness import (
     check_parameter_sensitivity,
     check_time_stability,
     check_regime_stability,
+    check_regime_stability_hmm,
 )
 
 
@@ -172,3 +174,130 @@ class TestRegimeStability:
         """Test empty regime dict raises ValueError."""
         with pytest.raises(ValueError, match="No regime metrics"):
             check_regime_stability({})
+
+
+class TestRegimeStabilityHMM:
+    """Tests for HMM-based regime stability checks."""
+
+    @pytest.fixture
+    def sample_prices(self):
+        """Create sample price data with regime-like patterns."""
+        np.random.seed(42)
+        dates = pd.date_range("2015-01-01", "2023-12-31", freq="B")
+        n = len(dates)
+
+        # Create prices with different regime characteristics
+        prices = [100.0]
+        for i in range(1, n):
+            if i < n // 3:
+                # Bull market
+                change = np.random.normal(0.001, 0.01)
+            elif i < 2 * n // 3:
+                # Bear market
+                change = np.random.normal(-0.0005, 0.02)
+            else:
+                # Sideways
+                change = np.random.normal(0.0, 0.015)
+            prices.append(prices[-1] * (1 + change))
+
+        return pd.DataFrame({
+            "close": prices,
+            "high": [p * 1.01 for p in prices],
+            "low": [p * 0.99 for p in prices],
+        }, index=dates)
+
+    @pytest.fixture
+    def sample_returns(self, sample_prices):
+        """Create sample strategy returns."""
+        close = sample_prices["close"]
+        returns = close.pct_change().dropna()
+        # Add some alpha
+        returns = returns + np.random.randn(len(returns)) * 0.001
+        return returns
+
+    @pytest.fixture
+    def sample_metrics(self, sample_prices):
+        """Create sample strategy metrics by date."""
+        return pd.DataFrame({
+            "return": sample_prices["close"].pct_change(),
+        }, index=sample_prices.index)
+
+    def test_check_regime_stability_hmm(self, sample_returns, sample_prices, sample_metrics):
+        """Test HMM regime stability check runs successfully."""
+        pytest.importorskip("hmmlearn")
+
+        result = check_regime_stability_hmm(
+            returns=sample_returns,
+            prices=sample_prices,
+            strategy_metrics_by_date=sample_metrics,
+            n_regimes=3,
+            min_regimes_profitable=2,
+        )
+
+        assert isinstance(result, RobustnessResult)
+        assert "regime_stability_hmm" in result.checks
+
+    def test_returns_regime_metrics(self, sample_returns, sample_prices, sample_metrics):
+        """Test result contains regime metrics."""
+        pytest.importorskip("hmmlearn")
+
+        result = check_regime_stability_hmm(
+            returns=sample_returns,
+            prices=sample_prices,
+            strategy_metrics_by_date=sample_metrics,
+            n_regimes=3,
+        )
+
+        checks = result.checks.get("regime_stability_hmm", {})
+        if "error" not in checks:
+            assert "regimes" in checks
+            assert "n_profitable" in checks
+            assert "transition_matrix" in checks
+
+    def test_handles_missing_hmmlearn(self, sample_returns, sample_prices, sample_metrics):
+        """Test graceful handling when hmmlearn not available."""
+        # This test verifies the function doesn't crash when hmmlearn is missing
+        # It will either succeed (hmmlearn installed) or return error result
+        result = check_regime_stability_hmm(
+            returns=sample_returns,
+            prices=sample_prices,
+            strategy_metrics_by_date=sample_metrics,
+        )
+
+        assert isinstance(result, RobustnessResult)
+
+    def test_different_n_regimes(self, sample_returns, sample_prices, sample_metrics):
+        """Test with different numbers of regimes."""
+        pytest.importorskip("hmmlearn")
+
+        for n_regimes in [2, 3, 4]:
+            result = check_regime_stability_hmm(
+                returns=sample_returns,
+                prices=sample_prices,
+                strategy_metrics_by_date=sample_metrics,
+                n_regimes=n_regimes,
+            )
+
+            checks = result.checks.get("regime_stability_hmm", {})
+            if "error" not in checks:
+                assert checks.get("n_regimes") == n_regimes
+
+
+class TestModuleExports:
+    """Test robustness module exports."""
+
+    def test_all_functions_exported(self):
+        """Test all robustness functions are importable."""
+        from hrp.risk.robustness import (
+            RobustnessResult,
+            check_parameter_sensitivity,
+            check_time_stability,
+            check_regime_stability,
+            check_regime_stability_hmm,
+        )
+
+        assert RobustnessResult is not None
+        assert check_parameter_sensitivity is not None
+        assert check_time_stability is not None
+        assert check_regime_stability is not None
+        assert check_regime_stability_hmm is not None

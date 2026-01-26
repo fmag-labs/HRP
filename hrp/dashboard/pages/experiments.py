@@ -34,6 +34,18 @@ from hrp.dashboard.components.strategy_config import (
     render_multifactor_config,
     render_ml_predicted_config,
 )
+from hrp.dashboard.components.walkforward_viz import (
+    render_walkforward_splits,
+    render_fold_metrics_heatmap,
+    render_fold_comparison_chart,
+    render_stability_summary,
+)
+from hrp.dashboard.components.sharpe_decay_viz import (
+    render_sharpe_decay_heatmap,
+    render_generalization_summary,
+    render_parameter_sensitivity_chart,
+    render_top_bottom_params,
+)
 
 
 # MLflow configuration
@@ -930,6 +942,389 @@ def render_run_backtest_tab() -> None:
                 st.error(f"Backtest failed: {str(e)}")
 
 
+def render_validation_analysis_tab() -> None:
+    """Render the Validation Analysis tab with walk-forward and parameter sweep visualizations."""
+    st.subheader("Validation Analysis")
+
+    st.markdown(
+        """
+        Analyze model stability and parameter robustness using walk-forward validation
+        and Sharpe decay heatmaps (VectorBT PRO style).
+        """
+    )
+
+    # Sub-tabs for different validation types
+    validation_type = st.radio(
+        "Select Analysis Type",
+        ["Walk-Forward Validation", "Parameter Sweep Analysis"],
+        horizontal=True,
+        key="validation_analysis_type"
+    )
+
+    if validation_type == "Walk-Forward Validation":
+        render_walkforward_analysis_section()
+    else:
+        render_parameter_sweep_section()
+
+
+def render_walkforward_analysis_section() -> None:
+    """Render walk-forward validation section."""
+    from datetime import date
+
+    st.markdown("### Walk-Forward Validation")
+
+    # Get available symbols
+    available_symbols = get_available_symbols()
+
+    if not available_symbols:
+        st.warning("No symbols found in database. Please ingest price data first.")
+        return
+
+    with st.form("walkforward_form"):
+        st.markdown("#### Configuration")
+
+        # Symbol selection
+        col1, col2 = st.columns(2)
+
+        with col1:
+            wf_symbols = st.multiselect(
+                "Select Symbols",
+                available_symbols,
+                default=available_symbols[:5] if len(available_symbols) >= 5 else available_symbols,
+                help="Symbols for validation",
+                key="wf_symbols"
+            )
+
+        with col2:
+            model_type = st.selectbox(
+                "Model Type",
+                ["ridge", "lasso", "random_forest", "lightgbm", "xgboost"],
+                help="ML model for walk-forward validation",
+                key="wf_model_type"
+            )
+
+        # Date range
+        col1, col2 = st.columns(2)
+        default_end = date.today()
+        default_start = date(2015, 1, 1)
+
+        with col1:
+            wf_start = st.date_input(
+                "Start Date",
+                value=default_start,
+                key="wf_start"
+            )
+
+        with col2:
+            wf_end = st.date_input(
+                "End Date",
+                value=default_end,
+                key="wf_end"
+            )
+
+        # Features and target
+        available_features = [
+            "momentum_20d", "momentum_60d", "momentum_252d",
+            "volatility_20d", "volatility_60d",
+            "rsi_14d", "macd_line", "macd_signal",
+            "volume_ratio", "bb_width_20d",
+        ]
+
+        features = st.multiselect(
+            "Features",
+            available_features,
+            default=["momentum_20d", "volatility_20d", "rsi_14d"],
+            help="Features for ML model",
+            key="wf_features"
+        )
+
+        target = st.selectbox(
+            "Target Variable",
+            ["returns_5d", "returns_10d", "returns_20d", "returns_60d"],
+            index=2,
+            help="Target to predict",
+            key="wf_target"
+        )
+
+        # Validation parameters
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            n_folds = st.number_input(
+                "Number of Folds",
+                min_value=2,
+                max_value=10,
+                value=5,
+                key="wf_nfolds"
+            )
+
+        with col2:
+            window_type = st.selectbox(
+                "Window Type",
+                ["expanding", "rolling"],
+                help="Expanding window grows over time; rolling uses fixed window",
+                key="wf_window_type"
+            )
+
+        with col3:
+            feature_selection = st.checkbox(
+                "Feature Selection",
+                value=True,
+                help="Automatically select best features",
+                key="wf_feature_selection"
+            )
+
+        submitted = st.form_submit_button("Run Walk-Forward Validation", type="primary")
+
+    # Run validation
+    if submitted:
+        if not wf_symbols:
+            st.error("Please select at least one symbol.")
+            return
+
+        if not features:
+            st.error("Please select at least one feature.")
+            return
+
+        with st.spinner("Running walk-forward validation..."):
+            try:
+                from hrp.ml import WalkForwardConfig, walk_forward_validate
+
+                config = WalkForwardConfig(
+                    model_type=model_type,
+                    target=target,
+                    features=features,
+                    start_date=wf_start,
+                    end_date=wf_end,
+                    n_folds=n_folds,
+                    window_type=window_type,
+                    feature_selection=feature_selection,
+                    n_jobs=-1,
+                )
+
+                result = walk_forward_validate(
+                    config=config,
+                    symbols=wf_symbols,
+                    log_to_mlflow=True,
+                )
+
+                # Store result in session state for visualization
+                st.session_state["wf_result"] = result
+                st.session_state["wf_config"] = config
+                st.success("Walk-forward validation completed!")
+
+            except Exception as e:
+                logger.error(f"Walk-forward validation failed: {e}")
+                st.error(f"Validation failed: {str(e)}")
+                return
+
+    # Display results if available
+    if "wf_result" in st.session_state and "wf_config" in st.session_state:
+        result = st.session_state["wf_result"]
+        config = st.session_state["wf_config"]
+
+        st.markdown("---")
+        st.markdown("### Validation Results")
+
+        # Render visualizations
+        render_walkforward_splits(result.fold_results, config)
+
+        st.markdown("---")
+
+        # Stability summary
+        aggregate_metrics = {
+            "mean_mse": result.mean_mse,
+            "std_mse": result.std_mse,
+            "mean_ic": result.mean_ic,
+            "std_ic": result.std_ic,
+        }
+        render_stability_summary(result.fold_results, result.stability_score, aggregate_metrics)
+
+        st.markdown("---")
+
+        # Fold metrics heatmap
+        render_fold_metrics_heatmap(result.fold_results)
+
+        st.markdown("---")
+
+        # Fold comparison chart
+        render_fold_comparison_chart(result.fold_results)
+
+
+def render_parameter_sweep_section() -> None:
+    """Render parameter sweep analysis section."""
+    from datetime import date
+
+    st.markdown("### Parameter Sweep Analysis")
+    st.markdown(
+        """
+        Explore parameter space and identify overfitting vs. robust parameter regions
+        using Sharpe decay heatmaps.
+        """
+    )
+
+    # Get available symbols
+    available_symbols = get_available_symbols()
+
+    if not available_symbols:
+        st.warning("No symbols found in database. Please ingest price data first.")
+        return
+
+    with st.form("parameter_sweep_form"):
+        st.markdown("#### Configuration")
+
+        # Symbol selection
+        sweep_symbols = st.multiselect(
+            "Select Symbols",
+            available_symbols,
+            default=available_symbols[:5] if len(available_symbols) >= 5 else available_symbols,
+            help="Symbols for parameter sweep",
+            key="sweep_symbols"
+        )
+
+        # Date range
+        col1, col2 = st.columns(2)
+        default_end = date.today()
+        default_start = date(2018, 1, 1)
+
+        with col1:
+            sweep_start = st.date_input(
+                "Start Date",
+                value=default_start,
+                key="sweep_start"
+            )
+
+        with col2:
+            sweep_end = st.date_input(
+                "End Date",
+                value=default_end,
+                key="sweep_end"
+            )
+
+        # Parameter ranges
+        st.markdown("#### Parameter Ranges")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            fast_min = st.number_input("Fast Period Min", value=5, min_value=2, key="fast_min")
+            fast_max = st.number_input("Fast Period Max", value=30, min_value=3, key="fast_max")
+            fast_step = st.number_input("Fast Period Step", value=5, min_value=1, key="fast_step")
+
+        with col2:
+            slow_min = st.number_input("Slow Period Min", value=20, min_value=5, key="slow_min")
+            slow_max = st.number_input("Slow Period Max", value=60, min_value=10, key="slow_max")
+            slow_step = st.number_input("Slow Period Step", value=10, min_value=1, key="slow_step")
+
+        # Validation settings
+        col1, col2 = st.columns(2)
+
+        with col1:
+            n_folds = st.number_input(
+                "Number of Folds",
+                min_value=2,
+                max_value=10,
+                value=3,
+                key="sweep_nfolds"
+            )
+
+        with col2:
+            n_jobs = st.number_input(
+                "Parallel Jobs",
+                min_value=-1,
+                max_value=16,
+                value=-1,
+                help="-1 uses all CPU cores",
+                key="sweep_njobs"
+            )
+
+        submitted = st.form_submit_button("Run Parameter Sweep", type="primary")
+
+    # Run sweep
+    if submitted:
+        if not sweep_symbols:
+            st.error("Please select at least one symbol.")
+            return
+
+        with st.spinner("Running parameter sweep (this may take a while)..."):
+            try:
+                from hrp.research.parameter_sweep import SweepConfig, parallel_parameter_sweep
+
+                # Generate parameter ranges
+                fast_periods = list(range(fast_min, fast_max + 1, fast_step))
+                slow_periods = list(range(slow_min, slow_max + 1, slow_step))
+
+                config = SweepConfig(
+                    param_grid={
+                        "fast_period": fast_periods,
+                        "slow_period": slow_periods,
+                    },
+                    symbols=sweep_symbols,
+                    start_date=sweep_start,
+                    end_date=sweep_end,
+                    n_folds=n_folds,
+                    strategy_type="momentum_crossover",
+                    constraints=[
+                        {
+                            "type": "difference_min",
+                            "params": ["slow_period", "fast_period"],
+                            "min_diff": 5,
+                        }
+                    ],
+                    n_jobs=n_jobs,
+                )
+
+                result = parallel_parameter_sweep(config)
+
+                # Store result in session state
+                st.session_state["sweep_result"] = result
+                st.success(f"Parameter sweep completed! Tested {len(result.results_df)} combinations.")
+
+            except Exception as e:
+                logger.error(f"Parameter sweep failed: {e}")
+                st.error(f"Sweep failed: {str(e)}")
+                return
+
+    # Display results if available
+    if "sweep_result" in st.session_state:
+        result = st.session_state["sweep_result"]
+
+        st.markdown("---")
+        st.markdown("### Sweep Results")
+
+        # Generalization summary
+        render_generalization_summary(result)
+
+        st.markdown("---")
+
+        # Sharpe decay heatmap
+        render_sharpe_decay_heatmap(
+            result,
+            param_x="fast_period",
+            param_y="slow_period",
+        )
+
+        st.markdown("---")
+
+        # Top and bottom parameters
+        render_top_bottom_params(result, n_show=5)
+
+        st.markdown("---")
+
+        # Parameter sensitivity (pick first parameter for demo)
+        param_cols = [c for c in result.results_df.columns
+                     if c not in ["combo_idx", "sharpe_diff_agg", "train_sharpe_agg", "test_sharpe_agg"]
+                     and not c.startswith("train_sharpe_fold_") and not c.startswith("test_sharpe_fold_")]
+
+        if param_cols:
+            sensitivity_param = st.selectbox(
+                "Parameter for Sensitivity Analysis",
+                param_cols,
+                key="sensitivity_param"
+            )
+            render_parameter_sensitivity_chart(result, sensitivity_param)
+
+
 def render() -> None:
     """Main render function for the Experiments page."""
     st.title("Experiments")
@@ -942,7 +1337,7 @@ def render() -> None:
     )
 
     # Create tabs
-    tab1, tab2, tab3 = st.tabs(["Browse", "Compare", "Run Backtest"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Browse", "Compare", "Run Backtest", "Validation Analysis"])
 
     with tab1:
         render_browse_tab()
@@ -952,6 +1347,9 @@ def render() -> None:
 
     with tab3:
         render_run_backtest_tab()
+
+    with tab4:
+        render_validation_analysis_tab()
 
 
 # Entry point for Streamlit multipage apps
