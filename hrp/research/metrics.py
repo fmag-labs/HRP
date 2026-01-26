@@ -83,7 +83,7 @@ def _calculate_cagr(returns: pd.Series, periods_per_year: int) -> float:
     n_years = len(returns) / periods_per_year
     if n_years <= 0 or total_return <= 0:
         return 0.0
-    return total_return ** (1 / n_years) - 1
+    return float(total_return ** (1 / n_years) - 1)
 
 
 def _sharpe_ratio(excess_returns: pd.Series, periods_per_year: int) -> float:
@@ -92,7 +92,7 @@ def _sharpe_ratio(excess_returns: pd.Series, periods_per_year: int) -> float:
     # Handle near-zero volatility (floating point precision)
     if std < 1e-10:
         return 0.0
-    return excess_returns.mean() / std * np.sqrt(periods_per_year)
+    return float(excess_returns.mean() / std * np.sqrt(periods_per_year))
 
 
 def _sortino_ratio(returns: pd.Series, risk_free_rate: float, periods_per_year: int) -> float:
@@ -101,7 +101,7 @@ def _sortino_ratio(returns: pd.Series, risk_free_rate: float, periods_per_year: 
     downside = _downside_volatility(returns, periods_per_year)
     if downside == 0:
         return 0.0
-    return excess.mean() * periods_per_year / downside
+    return float(excess.mean() * periods_per_year / downside)
 
 
 def _downside_volatility(returns: pd.Series, periods_per_year: int) -> float:
@@ -113,7 +113,7 @@ def _downside_volatility(returns: pd.Series, periods_per_year: int) -> float:
     # Handle near-zero volatility (floating point precision)
     if std < 1e-10:
         return 0.0
-    return std * np.sqrt(periods_per_year)
+    return float(std * np.sqrt(periods_per_year))
 
 
 def _max_drawdown(returns: pd.Series) -> float:
@@ -124,7 +124,7 @@ def _max_drawdown(returns: pd.Series) -> float:
     cumulative = pd.concat([pd.Series([1.0]), cumulative]).reset_index(drop=True)
     running_max = cumulative.cummax()
     drawdown = (cumulative - running_max) / running_max
-    return drawdown.min()
+    return float(drawdown.min())
 
 
 def _calculate_alpha_beta(returns: pd.Series, benchmark: pd.Series, periods_per_year: int) -> tuple[float, float]:

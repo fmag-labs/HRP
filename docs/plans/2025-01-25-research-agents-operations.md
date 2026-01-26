@@ -520,3 +520,29 @@ Pipeline: Discovery → Modeling → Validation → Risk Review
 ## Document History
 
 - **2025-01-25:** Initial brainstorm documentation from conversation
+
+My recommendation for first 2-3 agents:                                                                                                                                           
+  ┌──────────┬─────────────────────┬───────────────────────────────────────────────────────────────────┐                                                                            
+  │ Priority │        Agent        │                             Rationale                             │                                                                            
+  ├──────────┼─────────────────────┼───────────────────────────────────────────────────────────────────┤                                                                            
+  │ 1st      │ Signal Scientist    │ Starts the pipeline - discovers signals that feed everything else │                                                                            
+  ├──────────┼─────────────────────┼───────────────────────────────────────────────────────────────────┤                                                                            
+  │ 2nd      │ ML Scientist        │ Core value - runs the experiments that produce strategies         │                                                                            
+  ├──────────┼─────────────────────┼───────────────────────────────────────────────────────────────────┤                                                                            
+  │ 3rd      │ ML Quality Sentinel │ Safety net - prevents garbage from propagating                    │                                                                            
+  └──────────┴─────────────────────┴───────────────────────────────────────────────────────────────────┘                                                                            
+  Why this order:                                                                                                                                                                   
+  1. Signal Scientist can work standalone (scans features, logs findings)                                                                                                           
+  2. ML Scientist consumes Signal Scientist output and produces the actual strategies                                                                                               
+  3. ML Quality Sentinel catches problems early before wasting compute downstream                                                                                                   
+                                                                                                                                                                                    
+  What we defer:                                                                                                                                                                    
+  - Alpha Researcher: You can manually refine hypotheses initially                                                                                                                  
+  - Quant Developer: Backtesting can be triggered manually                                                                                                                          
+  - Validation/Risk/Report: Later stages, less urgent                                                                                                                               
+                                                                                                                                                                                    
+  Which agents would you like to start with?                                                                                                                                        
+                                                                                                                                                                                    
+✻ Sautéed for 1m 41s                                                                                                                                                                
+                                                                                                                                                                                    
+❯ let's start with signal scientist. give me a full description of the agent for review before we build it        

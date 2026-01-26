@@ -796,13 +796,16 @@ class TestSignalScientistIntegration:
         assert agent.create_hypotheses is False
         assert agent.as_of_date == date(2024, 1, 15)
 
-    def test_has_dependency_on_feature_computation(self, signal_test_db):
-        """SignalScientist should depend on feature_computation job."""
+    def test_has_data_requirement_on_features(self, signal_test_db):
+        """SignalScientist should require feature data to exist."""
         from hrp.agents.research_agents import SignalScientist
 
         agent = SignalScientist()
 
-        assert "feature_computation" in agent.dependencies
+        # Now uses data requirements instead of job dependencies
+        assert agent.dependencies == []
+        assert len(agent.data_requirements) == 1
+        assert agent.data_requirements[0].table == "features"
 
     def test_factor_pairs_are_defined(self, signal_test_db):
         """SignalScientist should have predefined factor pairs."""

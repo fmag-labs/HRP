@@ -27,7 +27,7 @@ class RateLimiter:
         """
         self.max_calls = max_calls
         self.period = period
-        self.tokens = max_calls
+        self.tokens: float = float(max_calls)
         self.last_update = time.monotonic()
         self.lock = threading.Lock()
 

@@ -35,6 +35,81 @@ class JobStatus(Enum):
     RETRYING = "retrying"
 
 
+class DataRequirement:
+    """
+    Specifies a data availability requirement for job dependencies.
+
+    Instead of checking if a job has run, this checks if the actual
+    data needed by the job exists in the database.
+    """
+
+    def __init__(
+        self,
+        table: str,
+        min_rows: int = 1,
+        max_age_days: int | None = None,
+        date_column: str = "date",
+        description: str | None = None,
+    ):
+        """
+        Initialize a data requirement.
+
+        Args:
+            table: Database table to check (e.g., "prices", "features")
+            min_rows: Minimum number of rows required
+            max_age_days: Maximum age in days for most recent data (None = no limit)
+            date_column: Column to check for recency
+            description: Human-readable description for error messages
+        """
+        self.table = table
+        self.min_rows = min_rows
+        self.max_age_days = max_age_days
+        self.date_column = date_column
+        self.description = description or f"{table} data"
+
+    def check(self) -> tuple[bool, str]:
+        """
+        Check if the data requirement is met.
+
+        Returns:
+            Tuple of (is_met, message)
+        """
+        db = get_db()
+        with db.connection() as conn:
+            # Check row count
+            result = conn.execute(
+                f"SELECT COUNT(*) FROM {self.table}"
+            ).fetchone()
+            row_count = result[0] if result else 0
+
+            if row_count < self.min_rows:
+                return False, f"{self.description}: found {row_count} rows, need {self.min_rows}"
+
+            # Check recency if max_age_days specified
+            if self.max_age_days is not None:
+                result = conn.execute(
+                    f"SELECT MAX({self.date_column}) FROM {self.table}"
+                ).fetchone()
+                if result and result[0]:
+                    from datetime import datetime
+                    max_date = result[0]
+                    if isinstance(max_date, str):
+                        max_date = datetime.strptime(max_date[:10], "%Y-%m-%d").date()
+                    elif hasattr(max_date, 'date'):
+                        max_date = max_date.date()
+
+                    age_days = (date.today() - max_date).days
+                    if age_days > self.max_age_days:
+                        return False, (
+                            f"{self.description}: most recent data is {age_days} days old "
+                            f"(max allowed: {self.max_age_days})"
+                        )
+                else:
+                    return False, f"{self.description}: no date data found"
+
+            return True, f"{self.description}: OK ({row_count} rows)"
+
+
 class IngestionJob(ABC):
     """
     Base class for scheduled data ingestion jobs.
@@ -42,7 +117,7 @@ class IngestionJob(ABC):
     Features:
     - Automatic logging to ingestion_log table
     - Retry logic with exponential backoff
-    - Dependency management
+    - Dependency management (job-based or data-based)
     - Status tracking
     """
 
@@ -52,6 +127,7 @@ class IngestionJob(ABC):
         max_retries: int = 3,
         retry_backoff: float = 2.0,
         dependencies: list[str] | None = None,
+        data_requirements: list[DataRequirement] | None = None,
     ):
         """
         Initialize an ingestion job.
@@ -61,11 +137,15 @@ class IngestionJob(ABC):
             max_retries: Maximum number of retry attempts
             retry_backoff: Exponential backoff multiplier (seconds)
             dependencies: List of job IDs that must complete before this job runs
+                         (legacy - prefer data_requirements for new jobs)
+            data_requirements: List of DataRequirement objects specifying what data
+                              must exist before this job can run
         """
         self.job_id = job_id
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.dependencies = dependencies or []
+        self.data_requirements = data_requirements or []
         self._status = JobStatus.PENDING
         self.log_id: int | None = None
         self.retry_count = 0
@@ -121,8 +201,16 @@ class IngestionJob(ABC):
         Returns:
             Dictionary with job execution results
         """
-        # Check dependencies
-        if not self._check_dependencies():
+        # Check data requirements first (preferred method)
+        data_ok, data_error = self._check_data_requirements()
+        if not data_ok:
+            logger.error(data_error)
+            self._log_failure(data_error)
+            self._send_failure_notification(data_error)
+            return {"status": "failed", "error": data_error}
+
+        # Check job-based dependencies (legacy - only if no data_requirements)
+        if not self.data_requirements and not self._check_dependencies():
             error_msg = f"Dependencies not met for job {self.job_id}"
             logger.error(error_msg)
             self._log_failure(error_msg)
@@ -225,6 +313,35 @@ class IngestionJob(ABC):
 
         logger.info(f"All dependencies met for job {self.job_id}")
         return True
+
+    def _check_data_requirements(self) -> tuple[bool, str | None]:
+        """
+        Check if all data requirements are met.
+
+        This is the preferred way to check dependencies - it verifies
+        that the actual data exists rather than checking if a job ran.
+
+        Returns:
+            Tuple of (all_met, error_message)
+        """
+        if not self.data_requirements:
+            return True, None
+
+        failed_requirements = []
+        for req in self.data_requirements:
+            is_met, message = req.check()
+            if not is_met:
+                logger.warning(f"Data requirement not met: {message}")
+                failed_requirements.append(message)
+            else:
+                logger.debug(f"Data requirement met: {message}")
+
+        if failed_requirements:
+            error_msg = "Data requirements not met: " + "; ".join(failed_requirements)
+            return False, error_msg
+
+        logger.info(f"All data requirements met for job {self.job_id}")
+        return True, None
 
     def _log_start(self) -> None:
         """Log job start to ingestion_log table."""
@@ -464,7 +581,7 @@ class FeatureComputationJob(IngestionJob):
     Scheduled job for feature computation from price data.
 
     Wraps the compute_features() function with retry logic and logging.
-    Depends on price ingestion completing successfully.
+    Requires recent price data to exist in the database.
     """
 
     def __init__(
@@ -477,7 +594,7 @@ class FeatureComputationJob(IngestionJob):
         job_id: str = "feature_computation",
         max_retries: int = 3,
         retry_backoff: float = 2.0,
-        dependencies: list[str] | None = None,
+        max_price_age_days: int = 7,
     ):
         """
         Initialize feature computation job.
@@ -491,14 +608,26 @@ class FeatureComputationJob(IngestionJob):
             job_id: Unique identifier for this job
             max_retries: Maximum number of retry attempts
             retry_backoff: Exponential backoff multiplier (seconds)
-            dependencies: List of job IDs that must complete before this job runs
-                         (default: ['price_ingestion'])
+            max_price_age_days: Maximum age of price data in days (default: 7)
         """
-        # Default dependency on price ingestion
-        if dependencies is None:
-            dependencies = ["price_ingestion"]
+        # Use data requirements instead of job-based dependencies
+        data_requirements = [
+            DataRequirement(
+                table="prices",
+                min_rows=1000,  # Need substantial price history
+                max_age_days=max_price_age_days,
+                date_column="date",
+                description="Price data",
+            )
+        ]
 
-        super().__init__(job_id, max_retries, retry_backoff, dependencies)
+        super().__init__(
+            job_id,
+            max_retries,
+            retry_backoff,
+            dependencies=None,  # No job-based dependencies
+            data_requirements=data_requirements,
+        )
         self.symbols = symbols
         self.start = start or (date.today() - timedelta(days=30))
         self.end = end or date.today()

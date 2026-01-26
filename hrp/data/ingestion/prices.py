@@ -59,8 +59,8 @@ def ingest_prices(
     db = get_db()
 
     # Initialize primary data source with fallback
-    primary_source = None
-    fallback_source = None
+    primary_source: PolygonSource | YFinanceSource | None = None
+    fallback_source: PolygonSource | YFinanceSource | None = None
 
     if source == "polygon":
         try:
@@ -79,7 +79,7 @@ def ingest_prices(
     else:
         raise ValueError(f"Unknown source: {source}. Use 'polygon' or 'yfinance'")
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,

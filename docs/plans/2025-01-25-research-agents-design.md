@@ -1,18 +1,40 @@
-# Research Agents Design Brainstorm
+# Research Agents Design
 
 **Date:** January 25, 2025
-**Status:** Draft - Pending Implementation
+**Status:** Design Complete - Ready for Implementation
 **Related:** Tier 2 Intelligence (85% complete) - Research Agents feature
 
 ---
 
 ## Goal
 
-Build a multi-agent quant research team that runs autonomously and coordinates through a shared workspace in the Cursor AI environment. Agents should simulate roles found at top quantitative hedge funds (Two Sigma, DE Shaw, Renaissance, Citadel).
+Build a multi-agent quant research team that runs autonomously and coordinates through a shared workspace. Agents simulate roles found at top quantitative hedge funds (Two Sigma, DE Shaw, Renaissance, Citadel).
 
 ---
 
-## Design Decisions
+## Final Design Decisions
+
+| Decision | Choice |
+|----------|--------|
+| Agent count | 8 agents (Option A - lean) |
+| Implementation | Case-by-case: 3 SDK, 3 Custom, 1 Hybrid, 2 Already Built |
+| Build order | Alpha Researcher → ML Quality Sentinel → Validation Analyst |
+| Communication | Shared registries only (no direct agent-to-agent) |
+| Scheduling | APScheduler (extend existing infrastructure) |
+| SDK infrastructure | Shared `SDKAgent` base class |
+
+### Agent Implementation Matrix
+
+| Agent | Type | Status | Reasoning |
+|-------|------|--------|-----------|
+| Signal Scientist | Custom | ✅ Built | Deterministic: calculate IC, threshold check |
+| ML Scientist | Custom | ✅ Built | Deterministic: walk-forward validation pipeline |
+| Alpha Researcher | SDK | To build (1st) | Needs reasoning: "is this pattern meaningful?" |
+| ML Quality Sentinel | Custom | To build (2nd) | Deterministic: run checklist of validations |
+| Validation Analyst | Hybrid | To build (3rd) | Mix: deterministic tests + reasoning for edge cases |
+| Risk Manager | Custom | To build | Deterministic: check limits, flag violations |
+| Quant Developer | SDK | To build | Needs reasoning: "how to implement this strategy?" |
+| Report Generator | SDK | To build | Needs reasoning: "what's the narrative here?" |
 
 ### Coordination Model
 **Decision:** Autonomous with shared workspace
@@ -23,7 +45,7 @@ Build a multi-agent quant research team that runs autonomously and coordinates t
 
 ### Execution Model
 **Decision:** Both scheduled and on-demand
-- Scheduled runs for regular operations (e.g., nightly discovery)
+- Scheduled runs via APScheduler (existing infrastructure)
 - Manual triggers via MCP tools for ad-hoc research
 
 ---
@@ -242,6 +264,8 @@ You (CIO/Research Director)
 **Schedule:** Weekly discovery runs + on-demand
 **Uses:** `create_hypothesis`, `get_features`, `get_prices`, `run_backtest`
 
+> **Detailed spec:** See [Alpha Researcher Specification](#alpha-researcher-specification) below
+
 ### 2. Signal Scientist
 **Focus:** Feature engineering, signal discovery, predictive pattern identification
 **Inputs:** Price data, existing features, alternative data
@@ -336,13 +360,26 @@ You (CIO/Research Director)
 ## Implementation Considerations
 
 ### Agent Infrastructure
-- Extend existing `IngestionJob` pattern or create new `ResearchAgent` base class
-- Each agent needs: scheduled execution, MCP tool access, logging, error handling
-- Consider using Claude Agent SDK for agent implementation
+
+**Two base classes:**
+
+1. **`ResearchAgent`** (existing) - For Custom agents
+   - Extends `IngestionJob` pattern
+   - Deterministic workflows
+   - Used by: Signal Scientist, ML Scientist, ML Quality Sentinel, Risk Manager
+
+2. **`SDKAgent`** (to build) - For SDK agents
+   - Wraps Claude Agent SDK
+   - Reasoning capabilities via Claude API
+   - Common setup: API auth, tool registration, error handling, cost tracking
+   - Used by: Alpha Researcher, Quant Developer, Report Generator
+
+3. **Hybrid agents** (Validation Analyst)
+   - Extend `ResearchAgent` but can invoke Claude API for specific reasoning steps
 
 ### MCP Integration
 - Agents use existing 22 MCP tools
-- May need additional tools for agent-to-agent communication
+- No direct agent-to-agent communication (shared registries only)
 - Actor tracking already supports agent identification
 
 ### Permissions
@@ -354,25 +391,225 @@ You (CIO/Research Director)
 
 ## Next Steps
 
-1. [ ] Decide on Option A, B, or C
-2. [ ] Define detailed specifications for each agent
-3. [ ] Design agent base class / infrastructure
-4. [ ] Implement agents incrementally (start with 2-3 core agents)
-5. [ ] Test coordination through shared workspace
-6. [ ] Add scheduling and MCP triggers
-7. [ ] Expand to full team
+1. [x] Decide on Option A, B, or C → **Option A (8 agents)**
+2. [x] Decide SDK vs Custom per agent → **See matrix above**
+3. [x] Decide communication model → **Shared registries only**
+4. [x] Decide scheduling → **APScheduler**
+5. [x] Write Alpha Researcher specification → **See spec below**
+6. [ ] Design `SDKAgent` base class
+7. [ ] Build lineage event watcher
+8. [ ] Implement Alpha Researcher (SDK)
+9. [ ] Implement ML Quality Sentinel (Custom)
+10. [ ] Implement Validation Analyst (Hybrid)
+11. [ ] Test coordination through shared workspace
+12. [ ] Expand to remaining agents
 
 ---
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. **Agent implementation:** Claude Agent SDK vs custom implementation?
-2. **Scheduling:** APScheduler (existing) vs separate agent orchestrator?
-3. **Communication:** Direct agent-to-agent or only via shared registries?
-4. **Priority:** Which 2-3 agents to build first?
+| Question | Decision |
+|----------|----------|
+| Agent implementation | Case-by-case: SDK for reasoning, Custom for deterministic |
+| Scheduling | APScheduler (extend existing) |
+| Communication | Shared registries only |
+| Priority | Alpha Researcher → ML Quality Sentinel → Validation Analyst |
+
+## SDK Agent Operations
+
+### Error Handling: Checkpoint & Resume
+- Save agent state to lineage after each tool call
+- On failure, can resume from last checkpoint
+- Partial work preserved, not wasted
+
+### Cost Controls: Layered Budget System
+
+| Level | Limit | Action |
+|-------|-------|--------|
+| Per-run | Max tokens per agent execution (e.g., 50K in + 10K out) | Agent stops, logs partial work |
+| Daily | Aggregate across all SDK agents | Scheduler pauses SDK agents |
+| Per-hypothesis | Track spend per hypothesis | Expensive hypotheses flagged for review |
+
+### Testing Strategy: Mixed Approach
+
+| Test Type | Method | Cost |
+|-----------|--------|------|
+| Unit tests | Mock Claude responses (recorded/replayed) | Free |
+| Integration tests | Claude Haiku (cheap model) | ~10x cheaper |
+| E2E / Staging | Full model (Sonnet/Opus) | Full cost |
+
+---
+
+## Alpha Researcher Specification
+
+### Overview
+
+| Aspect | Decision |
+|--------|----------|
+| Type | SDK Agent (Claude reasoning) |
+| Trigger | Lineage event (after Signal Scientist) + MCP on-demand |
+| Scope | Refine thesis + regime context + related hypotheses |
+| Tools | Read-only analysis (no backtests) |
+| Outputs | Hypothesis update + lineage event + research note |
+| Checkpoints | Per hypothesis |
+
+### Trigger Model
+
+**Primary: Lineage Event Trigger**
+- Signal Scientist logs `AGENT_RUN_COMPLETE` event to lineage
+- Scheduler's event watcher detects new event
+- Triggers Alpha Researcher automatically
+- Processes all hypotheses in "draft" status
+
+**Secondary: MCP On-Demand**
+- New tool: `run_alpha_researcher(hypothesis_id: str | None)`
+- If `hypothesis_id` provided: process single hypothesis
+- If `None`: process all draft hypotheses
+
+**Infrastructure required:** Lineage event watcher in scheduler (new component)
+
+### Scope: What Alpha Researcher Does
+
+For each draft hypothesis:
+
+1. **Analyze economic rationale**
+   - Why might this signal work?
+   - What market inefficiency does it exploit?
+   - Is there academic/practitioner support?
+
+2. **Check regime context**
+   - Call `detect_regime` for historical regime labels
+   - Analyze: does signal work in bull/bear/sideways markets?
+   - Add regime-conditional notes to hypothesis
+
+3. **Search related hypotheses**
+   - Query hypothesis registry for similar features/signals
+   - Check for conflicting hypotheses
+   - Note if novel or variant of existing idea
+
+4. **Update hypothesis**
+   - Refine thesis with economic reasoning
+   - Strengthen falsification criteria
+   - Add metadata: `regime_notes`, `related_hypotheses`
+   - Update status: "draft" → "testing"
+
+5. **Log to lineage**
+   - Event type: `ALPHA_RESEARCHER_REVIEW`
+   - Include reasoning summary
+
+### Tools Available
+
+| Tool | Purpose | Exists? |
+|------|---------|---------|
+| `get_hypothesis` | Read draft hypothesis details | ✅ |
+| `update_hypothesis` | Update thesis, status, metadata | ✅ |
+| `list_hypotheses` | Find related/conflicting hypotheses | ✅ |
+| `get_prices` | Analyze price history for context | ✅ |
+| `get_features` | Check signal behavior | ✅ |
+| `detect_regime` | Get historical regime labels (HMM) | ✅ |
+
+**Not available:** `run_backtest` - ML Scientist handles backtesting
+
+### Outputs
+
+**1. Hypothesis Updates (per hypothesis)**
+- Updated `thesis` with economic rationale
+- Updated `falsification` criteria
+- New `metadata` fields:
+  - `regime_notes`: regime-conditional analysis
+  - `related_hypotheses`: list of related hypothesis IDs
+  - `alpha_researcher_review_date`: timestamp
+- Status change: "draft" → "testing"
+
+**2. Lineage Events (per hypothesis)**
+- Event type: `ALPHA_RESEARCHER_REVIEW`
+- Actor: `agent:alpha-researcher`
+- Details: reasoning summary, regime findings, related hypotheses
+
+**3. Research Note (per run)**
+- Location: `docs/research/YYYY-MM-DD-alpha-researcher.md`
+- Contents:
+  - Summary of hypotheses processed
+  - Key findings per hypothesis
+  - Regime context observations
+  - Recommendations for ML Scientist
+
+### Checkpoint & Resume
+
+**Granularity:** Per hypothesis
+
+```
+Workflow:
+1. Fetch all draft hypotheses
+2. For each hypothesis:          ← CHECKPOINT after each
+   a. Analyze economic rationale
+   b. Check regime context
+   c. Search related hypotheses
+   d. Update hypothesis record
+   e. Log to lineage
+3. Write research note
+```
+
+**On failure:**
+- Agent state saved after each hypothesis
+- Resume picks up from last incomplete hypothesis
+- Already-processed hypotheses not re-processed
+
+### Example Research Note
+
+```markdown
+# Alpha Researcher Report - 2025-01-26
+
+## Summary
+- Hypotheses reviewed: 3
+- Promoted to testing: 2
+- Needs more data: 1
+
+## HYP-2025-042: momentum_20d predicts monthly returns
+
+**Economic Rationale:**
+Momentum effect is well-documented (Jegadeesh & Titman 1993).
+Signal likely captures trend-following behavior and slow
+information diffusion.
+
+**Regime Analysis:**
+- Bull markets: IC = 0.045 (strong)
+- Bear markets: IC = 0.012 (weak)
+- Sideways: IC = 0.028 (moderate)
+Signal is regime-dependent; works best in trending markets.
+
+**Related Hypotheses:**
+- HYP-2025-031: momentum_60d (similar, longer lookback)
+- HYP-2025-018: returns_252d (annual momentum, correlated)
+
+**Recommendation:** Proceed to ML testing with regime-aware model.
+Status updated: draft → testing
+
+---
+## HYP-2025-043: ...
+```
+
+### New Infrastructure Required
+
+1. **Lineage Event Watcher**
+   - Component in scheduler
+   - Polls lineage for new `AGENT_RUN_COMPLETE` events
+   - Triggers dependent agents
+
+2. **MCP Tool: `run_alpha_researcher`**
+   - Parameters: `hypothesis_id: str | None`
+   - Returns: processing summary
+
+3. **`SDKAgent` Base Class**
+   - Claude API setup
+   - Tool registration
+   - Cost tracking
+   - Checkpoint management
 
 ---
 
 ## Document History
 
 - **2025-01-25:** Initial brainstorm captured from conversation
+- **2025-01-26:** Design decisions finalized (8 agents, hybrid SDK/Custom, build order)
+- **2025-01-26:** Added Alpha Researcher detailed specification

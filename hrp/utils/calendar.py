@@ -144,7 +144,7 @@ def get_next_trading_day(from_date: date) -> date:
     if len(sessions) == 0:
         raise ValueError(f"No trading days found after {from_date}")
     
-    result = sessions[0].date()
+    result: date = sessions[0].date()
 
     logger.debug(f"get_next_trading_day({from_date}): {result}")
     return result
@@ -182,7 +182,7 @@ def get_previous_trading_day(from_date: date) -> date:
     if len(sessions) == 0:
         raise ValueError(f"No trading days found before {from_date}")
     
-    result = sessions[-1].date()
+    result: date = sessions[-1].date()
 
     logger.debug(f"get_previous_trading_day({from_date}): {result}")
     return result

@@ -23,8 +23,8 @@ BENCHMARKS = {
 
 def get_benchmark_prices(
     benchmark: str = "SPY",
-    start: date = None,
-    end: date = None,
+    start: date | None = None,
+    end: date | None = None,
 ) -> pd.DataFrame:
     """
     Get benchmark price data.
@@ -47,7 +47,7 @@ def get_benchmark_prices(
         FROM prices
         WHERE symbol = ?
     """
-    params = [benchmark]
+    params: list[str | date] = [benchmark]
 
     if start:
         query += " AND date >= ?"
@@ -83,8 +83,8 @@ def get_benchmark_prices(
 
 def get_benchmark_returns(
     benchmark: str = "SPY",
-    start: date = None,
-    end: date = None,
+    start: date | None = None,
+    end: date | None = None,
     use_adjusted: bool = True,
 ) -> pd.Series:
     """

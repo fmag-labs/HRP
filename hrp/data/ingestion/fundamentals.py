@@ -335,8 +335,9 @@ def ingest_fundamentals(
     metrics = metrics or DEFAULT_METRICS
 
     # Initialize data source with fallback
-    primary_source = None
-    fallback_source = None
+    # Type as Any because SimFinSource is conditionally imported
+    primary_source: Any = None
+    fallback_source: Any = None
 
     if source == "simfin":
         try:
@@ -355,7 +356,7 @@ def ingest_fundamentals(
     else:
         raise ValueError(f"Unknown source: {source}. Use 'simfin' or 'yfinance'")
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,
@@ -629,7 +630,7 @@ def ingest_snapshot_fundamentals(
     db = get_db()
     source = FundamentalSource()
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,

@@ -52,6 +52,7 @@ def ingest_corporate_actions(
     db = get_db()
 
     # Initialize data source
+    data_source: PolygonSource | YFinanceSource
     if source == "polygon":
         data_source = PolygonSource()
     elif source == "yfinance":
@@ -59,7 +60,7 @@ def ingest_corporate_actions(
     else:
         raise ValueError(f"Unknown source: {source}")
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,

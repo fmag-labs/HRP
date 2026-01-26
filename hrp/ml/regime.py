@@ -113,7 +113,7 @@ class RegimeDetector:
             config: HMM configuration
         """
         self.config = config
-        self._model = None
+        self._model: Any = None  # GaussianHMM when fitted
         self._fitted = False
         self._feature_means: np.ndarray | None = None
         self._feature_stds: np.ndarray | None = None

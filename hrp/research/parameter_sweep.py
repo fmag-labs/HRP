@@ -446,7 +446,7 @@ def parallel_parameter_sweep(
     param_columns = list(config.param_ranges.keys())
 
     for combo_idx, params in enumerate(valid_combinations):
-        row = {"combo_idx": combo_idx}
+        row: dict[str, Any] = {"combo_idx": combo_idx}
         row.update(params)
 
         fold_train_sharpes = []

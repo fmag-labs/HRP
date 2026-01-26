@@ -69,8 +69,8 @@ class BacktestConfig:
 
     # Universe
     symbols: list[str] = field(default_factory=list)
-    start_date: date = None
-    end_date: date = None
+    start_date: date | None = None
+    end_date: date | None = None
 
     # Position sizing
     sizing_method: str = "equal"  # equal, volatility, signal_scaled
@@ -85,8 +85,8 @@ class BacktestConfig:
     stop_loss: StopLossConfig = field(default_factory=StopLossConfig)
 
     # Validation splits
-    train_end: date = None
-    test_start: date = None
+    train_end: date | None = None
+    test_start: date | None = None
 
     # Metadata
     name: str = ""
@@ -95,7 +95,7 @@ class BacktestConfig:
     # Return type
     total_return: bool = False  # If True, include dividend reinvestment
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.costs is None:
             self.costs = CostModel()
 
@@ -108,7 +108,7 @@ class BacktestResult:
     metrics: dict[str, float]
     equity_curve: pd.Series
     trades: pd.DataFrame
-    benchmark_metrics: dict[str, float] = None
+    benchmark_metrics: dict[str, float] | None = None
 
     @property
     def sharpe(self) -> float:

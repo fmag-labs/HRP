@@ -228,7 +228,7 @@ def backfill_prices(
     # Initialize rate limiter
     rate_limiter = RateLimiter(max_calls=rate_limit_calls, period=rate_limit_period)
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,
@@ -394,7 +394,7 @@ def backfill_features(
         symbols = progress.get_pending_symbols(symbols)
         logger.info(f"Resuming backfill: {len(symbols)} symbols remaining")
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,
@@ -513,7 +513,7 @@ def backfill_corporate_actions(
     # Rate limiter for API calls (Yahoo Finance: 2000/hour)
     rate_limiter = RateLimiter(max_calls=2000, period=3600)
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,

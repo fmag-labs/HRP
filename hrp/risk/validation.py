@@ -116,23 +116,23 @@ def calculate_bootstrap_ci(
     
     def calculate_metric(r: pd.Series) -> float:
         if metric == "sharpe":
-            return (r.mean() / r.std()) * np.sqrt(252) if r.std() > 0 else 0
+            return float((r.mean() / r.std()) * np.sqrt(252)) if r.std() > 0 else 0.0
         elif metric == "mean":
-            return r.mean() * 252
+            return float(r.mean() * 252)
         elif metric == "std":
-            return r.std() * np.sqrt(252)
+            return float(r.std() * np.sqrt(252))
         else:
             raise ValueError(f"Unknown metric: {metric}")
-    
+
     # Bootstrap
-    bootstrap_values = []
+    bootstrap_values_list: list[float] = []
     n = len(returns)
-    
+
     for _ in range(n_bootstraps):
         sample = returns.sample(n=n, replace=True)
-        bootstrap_values.append(calculate_metric(sample))
-    
-    bootstrap_values = np.array(bootstrap_values)
+        bootstrap_values_list.append(calculate_metric(sample))
+
+    bootstrap_values = np.array(bootstrap_values_list)
     
     # Calculate percentiles
     alpha = 1 - confidence
@@ -162,9 +162,9 @@ def validate_strategy(
     """
     if criteria is None:
         criteria = ValidationCriteria()
-    
-    failed = []
-    warnings = []
+
+    failed: list[str] = []
+    warnings: list[str] = []
     
     # Check each criterion
     if metrics.get("sharpe", 0) < criteria.min_sharpe:

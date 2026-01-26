@@ -17,7 +17,7 @@ import pandas as pd
 from loguru import logger
 from scipy import stats
 
-from hrp.agents.jobs import IngestionJob
+from hrp.agents.jobs import DataRequirement, IngestionJob
 from hrp.api.platform import PlatformAPI
 from hrp.data.db import get_db
 from hrp.notifications.email import EmailNotifier
@@ -66,6 +66,7 @@ class ResearchAgent(IngestionJob, ABC):
         job_id: str,
         actor: str,
         dependencies: list[str] | None = None,
+        data_requirements: list | None = None,
         max_retries: int = 2,
     ):
         """
@@ -75,11 +76,15 @@ class ResearchAgent(IngestionJob, ABC):
             job_id: Unique identifier for this job
             actor: Actor identity for lineage (e.g., 'agent:signal-scientist')
             dependencies: List of job IDs that must complete before this job runs
+                         (legacy - prefer data_requirements)
+            data_requirements: List of DataRequirement objects specifying what data
+                              must exist before this agent can run
             max_retries: Maximum number of retry attempts
         """
         super().__init__(
             job_id=job_id,
             dependencies=dependencies or [],
+            data_requirements=data_requirements or [],
             max_retries=max_retries,
         )
         self.actor = actor
@@ -233,6 +238,7 @@ class SignalScientist(ResearchAgent):
         ic_threshold: float = 0.03,
         create_hypotheses: bool = True,
         as_of_date: date | None = None,
+        max_feature_age_days: int = 7,
     ):
         """
         Initialize the Signal Scientist agent.
@@ -245,11 +251,24 @@ class SignalScientist(ResearchAgent):
             ic_threshold: Minimum IC to create hypothesis (default: 0.03)
             create_hypotheses: Whether to create draft hypotheses
             as_of_date: Date to run scan as of (default: today)
+            max_feature_age_days: Maximum age of feature data in days (default: 7)
         """
+        # Use data requirements instead of job-based dependencies
+        data_requirements = [
+            DataRequirement(
+                table="features",
+                min_rows=1000,  # Need substantial feature history
+                max_age_days=max_feature_age_days,
+                date_column="date",
+                description="Feature data",
+            )
+        ]
+
         super().__init__(
             job_id=self.DEFAULT_JOB_ID,
             actor=self.ACTOR,
-            dependencies=["feature_computation"],  # Requires fresh features
+            dependencies=None,  # No job-based dependencies
+            data_requirements=data_requirements,
         )
         self.symbols = symbols  # None = all universe
         self.features = features  # None = all features

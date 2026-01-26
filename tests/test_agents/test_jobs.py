@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from hrp.agents.jobs import (
+    DataRequirement,
     FeatureComputationJob,
     IngestionJob,
     JobStatus,
@@ -237,12 +238,15 @@ class TestFeatureComputationJob:
         """FeatureComputationJob should initialize with defaults."""
         job = FeatureComputationJob()
         assert job.job_id == "feature_computation"
-        assert job.dependencies == ["price_ingestion"]  # Default dependency
+        # Now uses data requirements instead of job dependencies
+        assert job.dependencies == []
+        assert len(job.data_requirements) == 1
+        assert job.data_requirements[0].table == "prices"
 
-    def test_init_with_custom_dependencies(self):
-        """FeatureComputationJob should accept custom dependencies."""
-        job = FeatureComputationJob(dependencies=["custom_job"])
-        assert job.dependencies == ["custom_job"]
+    def test_init_with_custom_max_age(self):
+        """FeatureComputationJob should accept custom max_price_age_days."""
+        job = FeatureComputationJob(max_price_age_days=14)
+        assert job.data_requirements[0].max_age_days == 14
 
     @patch("hrp.data.ingestion.features.compute_features_batch")
     def test_execute_calls_compute_features(self, mock_compute, job_test_db):
@@ -265,25 +269,25 @@ class TestFeatureComputationJob:
         assert result["records_fetched"] == 500  # features_computed
         assert result["records_inserted"] == 500
 
-    @patch("hrp.agents.jobs.compute_features")
+    @patch("hrp.data.ingestion.features.compute_features_batch")
     @patch("hrp.agents.jobs.EmailNotifier")
-    def test_run_checks_dependency(self, mock_notifier, mock_compute, job_test_db):
-        """run() should check dependencies before executing."""
+    def test_run_checks_data_requirements(self, mock_notifier, mock_compute, job_test_db):
+        """run() should check data requirements before executing."""
         mock_notifier_instance = MagicMock()
         mock_notifier.return_value = mock_notifier_instance
 
-        # No successful price_ingestion in log = dependency not met
+        # No price data = data requirement not met
         job = FeatureComputationJob()
         result = job.run()
 
         assert result["status"] == "failed"
-        assert "Dependencies not met" in result["error"]
+        assert "Data requirements not met" in result["error"]
         mock_compute.assert_not_called()
 
     @patch("hrp.data.ingestion.features.compute_features_batch")
     @patch("hrp.agents.jobs.EmailNotifier")
-    def test_run_with_met_dependency(self, mock_notifier, mock_compute, job_test_db):
-        """run() should execute when dependencies are met."""
+    def test_run_with_met_data_requirements(self, mock_notifier, mock_compute, job_test_db):
+        """run() should execute when data requirements are met."""
         mock_compute.return_value = {
             "features_computed": 100,
             "rows_inserted": 100,
@@ -291,17 +295,30 @@ class TestFeatureComputationJob:
             "symbols_failed": 0,
         }
 
-        # Insert successful price_ingestion record
+        # Insert sufficient price data to meet requirements
         from hrp.data.db import get_db
 
         db = get_db(job_test_db)
         with db.connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO ingestion_log (log_id, source_id, status, completed_at)
-                VALUES (1, 'price_ingestion', 'completed', CURRENT_TIMESTAMP)
-                """
-            )
+            # Insert symbols first (FK constraint)
+            for i in range(100):
+                conn.execute(
+                    f"""
+                    INSERT INTO symbols (symbol, name, exchange)
+                    VALUES ('SYM{i}', 'Symbol {i}', 'NYSE')
+                    """
+                )
+            # Insert 1000+ rows of price data with recent dates
+            for i in range(1001):
+                day = 1 + (i % 28)
+                month = 1 + (i // 28) % 12
+                year = 2026 if month == 1 else 2025
+                conn.execute(
+                    f"""
+                    INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                    VALUES ('SYM{i % 100}', '{year}-{month:02d}-{day:02d}', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
+                    """
+                )
 
         job = FeatureComputationJob()
         result = job.run()
@@ -647,3 +664,252 @@ class TestUniverseUpdateJob:
         assert log_row is not None
         assert log_row[0] == "failed"
         assert "Wikipedia fetch error" in log_row[1]
+
+
+class TestDataRequirement:
+    """Tests for DataRequirement class."""
+
+    def test_init_defaults(self):
+        """DataRequirement should initialize with defaults."""
+        req = DataRequirement(table="prices")
+        assert req.table == "prices"
+        assert req.min_rows == 1
+        assert req.max_age_days is None
+        assert req.date_column == "date"
+        assert req.description == "prices data"
+
+    def test_init_with_custom_values(self):
+        """DataRequirement should accept custom values."""
+        req = DataRequirement(
+            table="features",
+            min_rows=1000,
+            max_age_days=7,
+            date_column="computed_at",
+            description="Feature data",
+        )
+        assert req.table == "features"
+        assert req.min_rows == 1000
+        assert req.max_age_days == 7
+        assert req.date_column == "computed_at"
+        assert req.description == "Feature data"
+
+    def test_check_empty_table_fails(self, job_test_db):
+        """Check should fail when table has no data."""
+        req = DataRequirement(table="prices", min_rows=1)
+        is_met, message = req.check()
+        assert is_met is False
+        assert "found 0 rows" in message
+
+    def test_check_sufficient_rows_passes(self, job_test_db):
+        """Check should pass when table has sufficient rows."""
+        from hrp.data.db import get_db
+
+        db = get_db(job_test_db)
+        with db.connection() as conn:
+            # Insert symbols first (FK constraint)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, name, exchange)
+                VALUES
+                    ('AAPL', 'Apple Inc.', 'NASDAQ'),
+                    ('MSFT', 'Microsoft Corporation', 'NASDAQ')
+                """
+            )
+            # Insert test price data
+            conn.execute(
+                """
+                INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                VALUES
+                    ('AAPL', '2026-01-20', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5),
+                    ('AAPL', '2026-01-21', 100.5, 102.0, 100.0, 101.5, 1100000, 101.5),
+                    ('MSFT', '2026-01-20', 200.0, 201.0, 199.0, 200.5, 500000, 200.5)
+                """
+            )
+
+        req = DataRequirement(table="prices", min_rows=2)
+        is_met, message = req.check()
+        assert is_met is True
+        assert "OK" in message
+
+    def test_check_insufficient_rows_fails(self, job_test_db):
+        """Check should fail when table has insufficient rows."""
+        from hrp.data.db import get_db
+
+        db = get_db(job_test_db)
+        with db.connection() as conn:
+            # Insert symbol first (FK constraint)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, name, exchange)
+                VALUES ('AAPL', 'Apple Inc.', 'NASDAQ')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                VALUES ('AAPL', '2026-01-20', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
+                """
+            )
+
+        req = DataRequirement(table="prices", min_rows=100)
+        is_met, message = req.check()
+        assert is_met is False
+        assert "found 1 rows, need 100" in message
+
+    def test_check_recent_data_passes(self, job_test_db):
+        """Check should pass when data is recent enough."""
+        from hrp.data.db import get_db
+
+        db = get_db(job_test_db)
+        with db.connection() as conn:
+            # Insert symbol first (FK constraint)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, name, exchange)
+                VALUES ('AAPL', 'Apple Inc.', 'NASDAQ')
+                """
+            )
+            # Insert recent data
+            conn.execute(
+                """
+                INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                VALUES ('AAPL', CURRENT_DATE - INTERVAL '1 day', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
+                """
+            )
+
+        req = DataRequirement(table="prices", min_rows=1, max_age_days=7)
+        is_met, message = req.check()
+        assert is_met is True
+        assert "OK" in message
+
+    def test_check_stale_data_fails(self, job_test_db):
+        """Check should fail when data is too old."""
+        from hrp.data.db import get_db
+
+        db = get_db(job_test_db)
+        with db.connection() as conn:
+            # Insert symbol first (FK constraint)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, name, exchange)
+                VALUES ('AAPL', 'Apple Inc.', 'NASDAQ')
+                """
+            )
+            # Insert old data
+            conn.execute(
+                """
+                INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                VALUES ('AAPL', '2020-01-01', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
+                """
+            )
+
+        req = DataRequirement(table="prices", min_rows=1, max_age_days=7)
+        is_met, message = req.check()
+        assert is_met is False
+        assert "days old" in message
+
+
+class TestDataRequirementIntegration:
+    """Tests for data requirement integration with jobs."""
+
+    def test_job_with_data_requirements(self, job_test_db):
+        """Job should check data requirements before running."""
+        from hrp.data.db import get_db
+
+        class TestJob(IngestionJob):
+            def execute(self):
+                return {"status": "success"}
+
+        # Job with data requirement that won't be met
+        job = TestJob(
+            job_id="test_job",
+            data_requirements=[
+                DataRequirement(table="prices", min_rows=1000)
+            ],
+        )
+
+        result = job.run()
+        assert result["status"] == "failed"
+        assert "Data requirements not met" in result["error"]
+
+    def test_job_with_met_data_requirements(self, job_test_db):
+        """Job should run when data requirements are met."""
+        from hrp.data.db import get_db
+
+        db = get_db(job_test_db)
+        with db.connection() as conn:
+            # Insert symbol first (FK constraint)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, name, exchange)
+                VALUES ('AAPL', 'Apple Inc.', 'NASDAQ')
+                """
+            )
+            # Insert enough test data
+            for i in range(10):
+                conn.execute(
+                    f"""
+                    INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                    VALUES ('AAPL', '2026-01-{10+i:02d}', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
+                    """
+                )
+
+        class TestJob(IngestionJob):
+            def execute(self):
+                return {"records_fetched": 10, "records_inserted": 10}
+
+        job = TestJob(
+            job_id="test_job",
+            data_requirements=[
+                DataRequirement(table="prices", min_rows=5)
+            ],
+        )
+
+        result = job.run()
+        assert result.get("records_inserted") == 10
+
+    def test_data_requirements_skip_job_dependencies(self, job_test_db):
+        """When data_requirements are specified, job dependencies should be skipped."""
+
+        class TestJob(IngestionJob):
+            def execute(self):
+                return {"status": "success"}
+
+        # Job with both data requirements and job dependencies
+        # Data requirements are met, job dependency is not
+        from hrp.data.db import get_db
+
+        db = get_db(job_test_db)
+        with db.connection() as conn:
+            # Insert symbol first (FK constraint)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, name, exchange)
+                VALUES ('AAPL', 'Apple Inc.', 'NASDAQ')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                VALUES ('AAPL', CURRENT_DATE, 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
+                """
+            )
+
+        job = TestJob(
+            job_id="test_job",
+            dependencies=["nonexistent_job"],  # This would fail
+            data_requirements=[
+                DataRequirement(table="prices", min_rows=1)  # This passes
+            ],
+        )
+
+        # Should pass because data_requirements take precedence
+        result = job.run()
+        assert result.get("status") == "success"
+
+    def test_feature_computation_uses_data_requirements(self, job_test_db):
+        """FeatureComputationJob should use data requirements."""
+        job = FeatureComputationJob()
+        assert len(job.data_requirements) == 1
+        assert job.data_requirements[0].table == "prices"
+        assert job.dependencies == []  # No job dependencies

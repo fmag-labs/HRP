@@ -210,7 +210,7 @@ class UniverseManager:
         # Get previous universe for change detection
         previous_symbols = set(self.get_universe_at_date(as_of_date))
 
-        stats = {
+        stats: dict[str, Any] = {
             "date": as_of_date,
             "total_constituents": len(constituents),
             "included": 0,
@@ -425,7 +425,7 @@ class UniverseManager:
         Returns:
             Dictionary with exclusion statistics.
         """
-        stats = {"date": as_of_date, "excluded": 0, "symbols": []}
+        stats: dict[str, Any] = {"date": as_of_date, "excluded": 0, "symbols": []}
 
         with self._db.connection() as conn:
             for symbol, price in prices.items():
@@ -465,7 +465,7 @@ class UniverseManager:
 
     def _log_universe_change(
         self,
-        conn,
+        conn: Any,
         as_of_date: date,
         details: dict[str, Any],
         actor: str,
@@ -474,7 +474,7 @@ class UniverseManager:
         import json
 
         # Convert any non-serializable types
-        def json_serializer(obj):
+        def json_serializer(obj: Any) -> str:
             if isinstance(obj, date):
                 return obj.isoformat()
             raise TypeError(f"Object of type {type(obj)} is not JSON serializable")

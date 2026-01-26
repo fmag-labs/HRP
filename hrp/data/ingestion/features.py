@@ -86,7 +86,7 @@ def compute_features(
             "failed_symbols": [],
         }
 
-    stats = {
+    stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
         "symbols_success": 0,
         "symbols_failed": 0,
