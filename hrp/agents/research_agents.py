@@ -1258,7 +1258,7 @@ class MLScientist(ResearchAgent):
         from hrp.risk.overfitting import HyperparameterTrialCounter
 
         results = []
-        hypothesis_id = hypothesis.get("id", "unknown")
+        hypothesis_id = hypothesis.get("hypothesis_id", "unknown")
 
         # Initialize trial counter
         counter = HyperparameterTrialCounter(
@@ -1469,7 +1469,7 @@ class MLScientist(ResearchAgent):
         status: str,
     ) -> None:
         """Update hypothesis with ML results."""
-        hypothesis_id = hypothesis.get("id", "unknown")
+        hypothesis_id = hypothesis.get("hypothesis_id", "unknown")
 
         # Build outcome string with ML results
         outcome = (
