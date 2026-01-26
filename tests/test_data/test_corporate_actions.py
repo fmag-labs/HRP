@@ -20,6 +20,8 @@ from hrp.data.ingestion.corporate_actions import (
     ingest_corporate_actions,
     get_corporate_action_stats,
     _upsert_corporate_actions,
+    main,
+    TEST_SYMBOLS,
 )
 
 
@@ -578,3 +580,283 @@ class TestIntegrationEndToEnd:
         assert len(actions) == 2
         assert actions[0][0] == date(2023, 3, 15)
         assert actions[1][0] == date(2023, 6, 15)
+
+
+# =============================================================================
+# Polygon Source Tests
+# =============================================================================
+
+
+class TestPolygonSource:
+    """Tests for Polygon data source integration."""
+
+    def test_ingest_with_polygon_source(self, test_db_with_symbols):
+        """Test ingesting corporate actions using Polygon source."""
+        mock_actions = pd.DataFrame({
+            'symbol': ['AAPL'],
+            'date': [date(2023, 3, 15)],
+            'action_type': ['split'],
+            'factor': [4.0],  # Polygon uses 'factor' field
+            'source': ['polygon'],
+        })
+
+        with patch('hrp.data.ingestion.corporate_actions.PolygonSource') as mock_source_class:
+            mock_source = MagicMock()
+            mock_source.get_corporate_actions.return_value = mock_actions
+            mock_source_class.return_value = mock_source
+
+            stats = ingest_corporate_actions(
+                symbols=['AAPL'],
+                start=date(2023, 1, 1),
+                end=date(2023, 12, 31),
+                source='polygon',
+            )
+
+        assert stats['symbols_success'] == 1
+        assert stats['rows_inserted'] == 1
+
+        # Verify data in database
+        from hrp.data.db import get_db
+        db = get_db()
+        result = db.fetchone(
+            "SELECT action_type, factor FROM corporate_actions WHERE symbol = 'AAPL'"
+        )
+        assert result[0] == 'split'
+        assert float(result[1]) == 4.0
+
+    def test_polygon_factor_field_handling(self, test_db_with_symbols):
+        """Test that Polygon's 'factor' field is correctly mapped."""
+        mock_actions = pd.DataFrame({
+            'symbol': ['MSFT', 'MSFT'],
+            'date': [date(2023, 5, 20), date(2023, 9, 15)],
+            'action_type': ['dividend', 'split'],
+            'factor': [0.75, 3.0],  # Polygon uses 'factor'
+            'source': ['polygon', 'polygon'],
+        })
+
+        with patch('hrp.data.ingestion.corporate_actions.PolygonSource') as mock_source_class:
+            mock_source = MagicMock()
+            mock_source.get_corporate_actions.return_value = mock_actions
+            mock_source_class.return_value = mock_source
+
+            stats = ingest_corporate_actions(
+                symbols=['MSFT'],
+                start=date(2023, 1, 1),
+                end=date(2023, 12, 31),
+                source='polygon',
+            )
+
+        assert stats['rows_inserted'] == 2
+
+        # Verify factors are stored correctly
+        from hrp.data.db import get_db
+        db = get_db()
+        results = db.fetchall(
+            "SELECT action_type, factor FROM corporate_actions WHERE symbol = 'MSFT' ORDER BY date"
+        )
+        assert len(results) == 2
+        assert float(results[0][1]) == 0.75
+        assert float(results[1][1]) == 3.0
+
+
+# =============================================================================
+# main() CLI Tests
+# =============================================================================
+
+
+class TestMainCLI:
+    """Tests for the main() CLI entry point."""
+
+    def test_main_stats_empty(self, test_db_with_symbols, capsys):
+        """Test --stats flag with empty table."""
+        import sys
+        with patch.object(sys, 'argv', ['corporate_actions', '--stats']):
+            main()
+
+        captured = capsys.readouterr()
+        assert 'Corporate Actions Data Statistics' in captured.out
+        assert 'Total rows: 0' in captured.out
+
+    def test_main_stats_with_data(self, test_db_with_symbols, capsys):
+        """Test --stats flag with data."""
+        from hrp.data.db import get_db
+        db = get_db()
+        df = pd.DataFrame({
+            'symbol': ['AAPL', 'AAPL'],
+            'date': [date(2023, 3, 15), date(2023, 6, 15)],
+            'action_type': ['dividend', 'split'],
+            'value': [0.23, 4.0],
+            'source': ['test', 'test'],
+        })
+        _upsert_corporate_actions(db, df)
+
+        import sys
+        with patch.object(sys, 'argv', ['corporate_actions', '--stats']):
+            main()
+
+        captured = capsys.readouterr()
+        assert 'Corporate Actions Data Statistics' in captured.out
+        assert 'Total rows: 2' in captured.out
+        assert 'Unique symbols: 1' in captured.out
+        assert 'dividend' in captured.out
+        assert 'split' in captured.out
+        assert 'AAPL' in captured.out
+
+    def test_main_ingest_default_symbols(self, test_db_with_symbols, capsys):
+        """Test default ingestion with default symbols."""
+        mock_actions = pd.DataFrame()  # Empty to avoid actual data insertion
+
+        with patch('hrp.data.ingestion.corporate_actions.PolygonSource') as mock_source_class:
+            mock_source = MagicMock()
+            mock_source.get_corporate_actions.return_value = mock_actions
+            mock_source_class.return_value = mock_source
+
+            import sys
+            with patch.object(sys, 'argv', [
+                'corporate_actions',
+                '--start', '2023-01-01',
+                '--end', '2023-01-31',
+                '--source', 'polygon',
+            ]):
+                main()
+
+        captured = capsys.readouterr()
+        assert 'Ingestion Complete' in captured.out
+        # Default symbols are TEST_SYMBOLS
+        assert f'{len(TEST_SYMBOLS)}/{len(TEST_SYMBOLS)} success' in captured.out
+
+    def test_main_ingest_specific_symbols(self, test_db_with_symbols, capsys):
+        """Test ingestion with specific symbols."""
+        mock_actions = pd.DataFrame({
+            'symbol': ['AAPL'],
+            'date': [date(2023, 3, 15)],
+            'action_type': ['dividend'],
+            'value': [0.23],
+            'source': ['yfinance'],
+        })
+
+        with patch('hrp.data.ingestion.corporate_actions.YFinanceSource') as mock_source_class:
+            mock_source = MagicMock()
+            mock_source.get_corporate_actions.return_value = mock_actions
+            mock_source_class.return_value = mock_source
+
+            import sys
+            with patch.object(sys, 'argv', [
+                'corporate_actions',
+                '--symbols', 'AAPL', 'MSFT',
+                '--start', '2023-01-01',
+                '--end', '2023-12-31',
+                '--source', 'yfinance',
+            ]):
+                main()
+
+        captured = capsys.readouterr()
+        assert 'Ingestion Complete' in captured.out
+        assert '2/2 success' in captured.out
+
+    def test_main_ingest_with_failures(self, test_db_with_symbols, capsys):
+        """Test ingestion that has some failures."""
+        def get_actions_side_effect(symbol, start, end):
+            if symbol == 'INVALID':
+                raise Exception("Symbol not found")
+            return pd.DataFrame()
+
+        with patch('hrp.data.ingestion.corporate_actions.YFinanceSource') as mock_source_class:
+            mock_source = MagicMock()
+            mock_source.get_corporate_actions.side_effect = get_actions_side_effect
+            mock_source_class.return_value = mock_source
+
+            import sys
+            with patch.object(sys, 'argv', [
+                'corporate_actions',
+                '--symbols', 'AAPL', 'INVALID',
+                '--start', '2023-01-01',
+                '--end', '2023-12-31',
+                '--source', 'yfinance',
+            ]):
+                main()
+
+        captured = capsys.readouterr()
+        assert 'Ingestion Complete' in captured.out
+        assert '1/2 success' in captured.out
+        assert 'INVALID' in captured.out  # Failed symbol listed
+
+    def test_main_ingest_default_end_date(self, test_db_with_symbols, capsys):
+        """Test ingestion with default end date (today)."""
+        mock_actions = pd.DataFrame()
+
+        with patch('hrp.data.ingestion.corporate_actions.PolygonSource') as mock_source_class:
+            mock_source = MagicMock()
+            mock_source.get_corporate_actions.return_value = mock_actions
+            mock_source_class.return_value = mock_source
+
+            import sys
+            with patch.object(sys, 'argv', [
+                'corporate_actions',
+                '--symbols', 'AAPL',
+                '--start', '2023-01-01',
+                # No --end, should default to today
+            ]):
+                main()
+
+        captured = capsys.readouterr()
+        assert 'Ingestion Complete' in captured.out
+
+    def test_main_ingest_with_rows(self, test_db_with_symbols, capsys):
+        """Test ingestion output shows row counts."""
+        mock_actions = pd.DataFrame({
+            'symbol': ['AAPL', 'AAPL', 'AAPL'],
+            'date': [date(2023, 3, 15), date(2023, 6, 15), date(2023, 9, 15)],
+            'action_type': ['dividend', 'dividend', 'dividend'],
+            'value': [0.23, 0.24, 0.25],
+            'source': ['yfinance', 'yfinance', 'yfinance'],
+        })
+
+        with patch('hrp.data.ingestion.corporate_actions.YFinanceSource') as mock_source_class:
+            mock_source = MagicMock()
+            mock_source.get_corporate_actions.return_value = mock_actions
+            mock_source_class.return_value = mock_source
+
+            import sys
+            with patch.object(sys, 'argv', [
+                'corporate_actions',
+                '--symbols', 'AAPL',
+                '--start', '2023-01-01',
+                '--end', '2023-12-31',
+                '--source', 'yfinance',
+            ]):
+                main()
+
+        captured = capsys.readouterr()
+        assert 'Ingestion Complete' in captured.out
+        assert '3 fetched' in captured.out
+        assert '3 inserted' in captured.out
+
+
+# =============================================================================
+# TEST_SYMBOLS Constant Tests
+# =============================================================================
+
+
+class TestTestSymbolsConstant:
+    """Tests for the TEST_SYMBOLS constant."""
+
+    def test_test_symbols_not_empty(self):
+        """TEST_SYMBOLS should contain default test symbols."""
+        assert len(TEST_SYMBOLS) > 0
+
+    def test_test_symbols_is_list(self):
+        """TEST_SYMBOLS should be a list."""
+        assert isinstance(TEST_SYMBOLS, list)
+
+    def test_test_symbols_contains_strings(self):
+        """TEST_SYMBOLS should contain string ticker symbols."""
+        for symbol in TEST_SYMBOLS:
+            assert isinstance(symbol, str)
+            assert len(symbol) > 0
+
+    def test_test_symbols_contains_expected(self):
+        """TEST_SYMBOLS should contain some expected large-cap symbols."""
+        expected = ['AAPL', 'MSFT', 'GOOGL']
+        for symbol in expected:
+            assert symbol in TEST_SYMBOLS
