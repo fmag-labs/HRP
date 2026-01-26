@@ -79,8 +79,10 @@
   - `tests/test_data/test_prices_ingestion.py`: 19 tests (ingest_prices, upsert, stats)
   - `tests/test_data/test_fundamentals_ingestion.py`: 34 tests (point-in-time, adapters)
   - `tests/test_ml/test_validation.py`: 51 tests (walk-forward validation, fold processing)
-- Coverage improvements: simfin_source.py 0%→88%, computation.py 0%→77%, validation.py 71%→93%
-- 1,680 tests passing (100% pass rate)
+  - `tests/test_ml/test_regime.py`: 38 tests (HMM regime detection, label assignment)
+  - `tests/test_agents/test_cli.py`: 38 tests (CLI job management, main entry point)
+- Coverage improvements: simfin_source.py 0%→88%, computation.py 0%→77%, validation.py 71%→93%, regime.py 37%→69%, cli.py 51%→97%
+- 1,828 tests passing (100% pass rate)
 
 ## [1.4.1] - 2026-01-25
 
