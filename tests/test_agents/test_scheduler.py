@@ -332,3 +332,91 @@ class TestSetupDailyBackup:
             include_mlflow=False,
             keep_days=14,
         )
+
+
+class TestSetupWeeklySignalScan:
+    """Tests for weekly signal scan setup."""
+
+    @patch("hrp.agents.research_agents.SignalScientist")
+    def test_setup_weekly_signal_scan_creates_job(self, mock_scientist):
+        """setup_weekly_signal_scan should create a signal scientist job."""
+        scheduler = IngestionScheduler()
+
+        mock_agent_instance = MagicMock()
+        mock_scientist.return_value = mock_agent_instance
+
+        scheduler.setup_weekly_signal_scan()
+
+        jobs = scheduler.list_jobs()
+        job_ids = [j["id"] for j in jobs]
+
+        assert "signal_scientist_weekly" in job_ids
+        assert len(jobs) == 1
+
+    @patch("hrp.agents.research_agents.SignalScientist")
+    def test_setup_weekly_signal_scan_with_custom_day(self, mock_scientist):
+        """setup_weekly_signal_scan should respect custom day of week."""
+        scheduler = IngestionScheduler()
+
+        mock_agent_instance = MagicMock()
+        mock_scientist.return_value = mock_agent_instance
+
+        scheduler.setup_weekly_signal_scan(day_of_week="fri")
+
+        jobs = scheduler.list_jobs()
+        assert len(jobs) == 1
+        assert "fri" in jobs[0]["trigger"]
+
+    @patch("hrp.agents.research_agents.SignalScientist")
+    def test_setup_weekly_signal_scan_with_custom_time(self, mock_scientist):
+        """setup_weekly_signal_scan should respect custom time."""
+        scheduler = IngestionScheduler()
+
+        mock_agent_instance = MagicMock()
+        mock_scientist.return_value = mock_agent_instance
+
+        scheduler.setup_weekly_signal_scan(scan_time="20:30")
+
+        jobs = scheduler.list_jobs()
+        assert len(jobs) == 1
+        # Verify time is in trigger
+        assert "20" in jobs[0]["trigger"] and "30" in jobs[0]["trigger"]
+
+    @patch("hrp.agents.research_agents.SignalScientist")
+    def test_setup_weekly_signal_scan_passes_params(self, mock_scientist):
+        """setup_weekly_signal_scan should pass parameters to SignalScientist."""
+        scheduler = IngestionScheduler()
+
+        mock_agent_instance = MagicMock()
+        mock_scientist.return_value = mock_agent_instance
+
+        symbols = ["AAPL", "MSFT"]
+        features = ["momentum_20d", "volatility_60d"]
+
+        scheduler.setup_weekly_signal_scan(
+            symbols=symbols,
+            features=features,
+            ic_threshold=0.05,
+            create_hypotheses=False,
+        )
+
+        mock_scientist.assert_called_once_with(
+            symbols=symbols,
+            features=features,
+            ic_threshold=0.05,
+            create_hypotheses=False,
+        )
+
+    def test_setup_weekly_signal_scan_invalid_day_raises(self):
+        """setup_weekly_signal_scan should raise for invalid day."""
+        scheduler = IngestionScheduler()
+
+        with pytest.raises(ValueError, match="day_of_week"):
+            scheduler.setup_weekly_signal_scan(day_of_week="invalid")
+
+    def test_setup_weekly_signal_scan_invalid_time_raises(self):
+        """setup_weekly_signal_scan should raise for invalid time."""
+        scheduler = IngestionScheduler()
+
+        with pytest.raises(ValueError):
+            scheduler.setup_weekly_signal_scan(scan_time="25:00")

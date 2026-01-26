@@ -421,6 +421,67 @@ class IngestionScheduler:
             f"on {day_of_week.upper()}"
         )
 
+    def setup_weekly_signal_scan(
+        self,
+        scan_time: str = "19:00",
+        day_of_week: str = "mon",
+        symbols: list[str] | None = None,
+        features: list[str] | None = None,
+        ic_threshold: float = 0.03,
+        create_hypotheses: bool = True,
+    ) -> None:
+        """
+        Configure weekly signal discovery scan.
+
+        Schedules the Signal Scientist agent to run weekly, scanning features
+        for predictive signals and creating draft hypotheses for promising ones.
+
+        Args:
+            scan_time: Time to run scan (HH:MM format, default: 19:00)
+            day_of_week: Day of week to run (mon, tue, wed, thu, fri, sat, sun, default: mon)
+            symbols: List of symbols to scan (None = universe symbols)
+            features: List of features to scan (None = all 44 features)
+            ic_threshold: Minimum IC to create hypothesis (default: 0.03)
+            create_hypotheses: Whether to create draft hypotheses
+        """
+        from hrp.agents.research_agents import SignalScientist
+
+        # Parse and validate time
+        hour, minute = _parse_time(scan_time, "scan_time")
+
+        # Validate day of week
+        valid_days = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+        day_lower = day_of_week.lower()
+        if day_lower not in valid_days:
+            raise ValueError(
+                f"day_of_week must be one of {valid_days}, got '{day_of_week}'"
+            )
+
+        # Create agent instance
+        agent = SignalScientist(
+            symbols=symbols,
+            features=features,
+            ic_threshold=ic_threshold,
+            create_hypotheses=create_hypotheses,
+        )
+
+        # Schedule signal scan job
+        self.add_job(
+            func=agent.run,
+            job_id="signal_scientist_weekly",
+            trigger=CronTrigger(
+                day_of_week=day_lower,
+                hour=hour,
+                minute=minute,
+                timezone=ET_TIMEZONE,
+            ),
+            name="Weekly Signal Scan",
+        )
+        logger.info(
+            f"Scheduled weekly signal scan at {scan_time} ET on {day_of_week.upper()} "
+            f"(IC threshold: {ic_threshold}, create_hypotheses: {create_hypotheses})"
+        )
+
     def __repr__(self) -> str:
         """String representation of the scheduler."""
         status = "running" if self.running else "stopped"
