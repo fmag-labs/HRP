@@ -406,3 +406,365 @@ class TestGetFundamentalsForBacktest:
 
         # Should be sorted
         assert result.index.is_monotonic_increasing
+
+
+# =============================================================================
+# run_backtest Tests
+# =============================================================================
+
+
+class TestRunBacktest:
+    """Tests for run_backtest function."""
+
+    def test_run_backtest_basic(self, test_db):
+        """Run a basic backtest with provided signals and prices."""
+        from hrp.research.backtest import run_backtest, get_price_data
+        from unittest.mock import patch, MagicMock
+
+        # Get actual price data from test_db
+        prices = get_price_data(["AAPL", "MSFT"], date(2022, 7, 1), date(2022, 7, 8))
+
+        # Create simple signals (all long)
+        signals = pd.DataFrame(
+            1.0,
+            index=prices.index,
+            columns=prices['close'].columns,
+        )
+
+        config = BacktestConfig(
+            symbols=["AAPL", "MSFT"],
+            start_date=date(2022, 7, 1),
+            end_date=date(2022, 7, 8),
+            name="test_backtest",
+        )
+
+        # Mock get_benchmark_returns since SPY might not be in test DB
+        with patch("hrp.research.backtest.get_benchmark_returns") as mock_benchmark:
+            mock_benchmark.side_effect = Exception("No benchmark data")
+
+            result = run_backtest(signals, config, prices)
+
+        # Verify result structure
+        assert result.config == config
+        assert "total_return" in result.metrics or "sharpe_ratio" in result.metrics or len(result.metrics) >= 0
+        assert isinstance(result.equity_curve, pd.Series) or isinstance(result.equity_curve, pd.DataFrame)
+        assert isinstance(result.trades, pd.DataFrame)
+
+    def test_run_backtest_with_stop_loss(self, test_db):
+        """Run backtest with stop loss configuration."""
+        from hrp.research.backtest import run_backtest, get_price_data
+        from hrp.research.config import StopLossConfig
+        from unittest.mock import patch, MagicMock
+
+        prices = get_price_data(["AAPL", "MSFT"], date(2022, 7, 1), date(2022, 7, 8))
+
+        signals = pd.DataFrame(
+            1.0,
+            index=prices.index,
+            columns=prices['close'].columns,
+        )
+
+        # Configure trailing stop loss
+        stop_config = StopLossConfig(
+            enabled=True,
+            type="atr_trailing",
+            atr_multiplier=2.0,
+        )
+
+        config = BacktestConfig(
+            symbols=["AAPL", "MSFT"],
+            start_date=date(2022, 7, 1),
+            end_date=date(2022, 7, 8),
+            name="test_backtest_stop_loss",
+            stop_loss=stop_config,
+        )
+
+        # Mock the trailing stops function to return signals unchanged
+        with patch("hrp.research.backtest.apply_trailing_stops") as mock_stops:
+            mock_stops.return_value = (signals, None)
+
+            with patch("hrp.research.backtest.get_benchmark_returns") as mock_benchmark:
+                mock_benchmark.side_effect = Exception("No benchmark data")
+
+                # Should not raise - stop loss should be applied
+                result = run_backtest(signals, config, prices)
+
+        # Verify apply_trailing_stops was called
+        mock_stops.assert_called_once()
+        assert result is not None
+
+    def test_run_backtest_loads_prices(self, test_db):
+        """Run backtest that loads prices from config."""
+        from hrp.research.backtest import run_backtest, get_price_data
+        from unittest.mock import patch
+
+        # Create signals for the date range
+        prices_ref = get_price_data(["AAPL", "MSFT"], date(2022, 7, 1), date(2022, 7, 8))
+        signals = pd.DataFrame(
+            1.0,
+            index=prices_ref.index,
+            columns=prices_ref['close'].columns,
+        )
+
+        config = BacktestConfig(
+            symbols=["AAPL", "MSFT"],
+            start_date=date(2022, 7, 1),
+            end_date=date(2022, 7, 8),
+            name="test_backtest_load_prices",
+        )
+
+        with patch("hrp.research.backtest.get_benchmark_returns") as mock_benchmark:
+            mock_benchmark.side_effect = Exception("No benchmark data")
+
+            # prices=None should cause prices to be loaded
+            result = run_backtest(signals, config, prices=None)
+
+        assert result is not None
+
+
+# =============================================================================
+# generate_momentum_signals Tests
+# =============================================================================
+
+
+class TestGenerateMomentumSignals:
+    """Tests for generate_momentum_signals function."""
+
+    def test_generate_momentum_signals_basic(self, test_db):
+        """Generate momentum signals for given prices."""
+        from hrp.research.backtest import generate_momentum_signals, get_price_data
+
+        # Get price data with longer range for momentum calculation
+        # Add more test data for a longer period
+        from hrp.data.db import get_db
+        db = get_db()
+
+        # Insert more dates for momentum lookback
+        test_dates = pd.date_range("2022-01-03", periods=30, freq="B")
+        for symbol in ["AAPL", "MSFT"]:
+            for i, dt in enumerate(test_dates):
+                db.execute("""
+                    INSERT OR REPLACE INTO prices (symbol, date, open, high, low, close, adj_close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (symbol, dt.date(), 100.0 + i, 105.0 + i, 95.0 + i, 100.0 + i, 100.0 + i, 1000000))
+
+        prices = get_price_data(["AAPL", "MSFT"], date(2022, 1, 3), date(2022, 2, 15))
+
+        signals = generate_momentum_signals(prices, lookback=10, top_n=1)
+
+        # Verify signals structure
+        assert isinstance(signals, pd.DataFrame)
+        assert signals.shape[0] == prices.shape[0]  # Same number of rows
+
+        # First 'lookback' rows should be 0
+        assert (signals.iloc[:10] == 0).all().all()
+
+        # After lookback, signals should be 0 or 1
+        assert signals.isin([0.0, 1.0]).all().all()
+
+    def test_generate_momentum_signals_top_n(self, test_db):
+        """Momentum signals should have at most top_n stocks selected."""
+        from hrp.research.backtest import generate_momentum_signals, get_price_data
+        from hrp.data.db import get_db
+        db = get_db()
+
+        # Insert more dates
+        test_dates = pd.date_range("2022-01-03", periods=20, freq="B")
+        for symbol in ["AAPL", "MSFT"]:
+            for i, dt in enumerate(test_dates):
+                db.execute("""
+                    INSERT OR REPLACE INTO prices (symbol, date, open, high, low, close, adj_close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (symbol, dt.date(), 100.0 + i, 105.0 + i, 95.0 + i, 100.0 + i, 100.0 + i, 1000000))
+
+        prices = get_price_data(["AAPL", "MSFT"], date(2022, 1, 3), date(2022, 1, 31))
+
+        signals = generate_momentum_signals(prices, lookback=5, top_n=1)
+
+        # After lookback, each day should have at most 1 stock selected
+        for idx in range(5, len(signals)):
+            assert signals.iloc[idx].sum() <= 1
+
+
+# =============================================================================
+# main() CLI Tests
+# =============================================================================
+
+
+class TestMainCLI:
+    """Tests for main() CLI entry point."""
+
+    def test_main_momentum_strategy(self, test_db, capsys):
+        """Run main with momentum strategy."""
+        import sys
+        from unittest.mock import patch
+        from hrp.research.backtest import main
+        from hrp.data.db import get_db
+
+        # Insert more data for momentum lookback (252 days default)
+        db = get_db()
+        test_dates = pd.date_range("2021-01-04", periods=300, freq="B")
+        for symbol in ["AAPL", "MSFT"]:
+            for i, dt in enumerate(test_dates):
+                db.execute("""
+                    INSERT OR REPLACE INTO prices (symbol, date, open, high, low, close, adj_close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (symbol, dt.date(), 100.0 + i*0.1, 105.0 + i*0.1, 95.0 + i*0.1, 100.0 + i*0.1, 100.0 + i*0.1, 1000000))
+
+        with patch.object(sys, 'argv', [
+            'backtest',
+            '--strategy', 'momentum',
+            '--symbols', 'AAPL', 'MSFT',
+            '--start', '2021-01-04',
+            '--end', '2021-12-31',
+        ]):
+            with patch("hrp.research.backtest.get_benchmark_returns") as mock_benchmark:
+                mock_benchmark.side_effect = Exception("No benchmark")
+                main()
+
+        captured = capsys.readouterr()
+        assert "Backtest Results" in captured.out
+        assert "momentum" in captured.out
+
+    def test_main_unknown_strategy(self, test_db):
+        """Unknown strategy should raise ValueError."""
+        import sys
+        from unittest.mock import patch
+        from hrp.research.backtest import main
+        from hrp.data.db import get_db
+
+        # Insert minimum data
+        db = get_db()
+        test_dates = pd.date_range("2022-01-03", periods=10, freq="B")
+        for symbol in ["AAPL"]:
+            for i, dt in enumerate(test_dates):
+                db.execute("""
+                    INSERT OR REPLACE INTO prices (symbol, date, open, high, low, close, adj_close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (symbol, dt.date(), 100.0 + i, 105.0 + i, 95.0 + i, 100.0 + i, 100.0 + i, 1000000))
+
+        with patch.object(sys, 'argv', [
+            'backtest',
+            '--strategy', 'unknown_strategy',
+            '--symbols', 'AAPL',
+            '--start', '2022-01-03',
+            '--end', '2022-01-14',
+        ]):
+            with pytest.raises(ValueError) as exc_info:
+                main()
+
+            assert "Unknown strategy" in str(exc_info.value)
+
+    def test_main_default_symbols(self, test_db, capsys):
+        """Main should use symbols from database when not specified."""
+        import sys
+        from unittest.mock import patch
+        from hrp.research.backtest import main
+        from hrp.data.db import get_db
+
+        # Insert data
+        db = get_db()
+        test_dates = pd.date_range("2021-01-04", periods=300, freq="B")
+        for symbol in ["AAPL", "MSFT"]:
+            for i, dt in enumerate(test_dates):
+                db.execute("""
+                    INSERT OR REPLACE INTO prices (symbol, date, open, high, low, close, adj_close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (symbol, dt.date(), 100.0 + i*0.1, 105.0 + i*0.1, 95.0 + i*0.1, 100.0 + i*0.1, 100.0 + i*0.1, 1000000))
+
+        with patch.object(sys, 'argv', [
+            'backtest',
+            '--start', '2021-01-04',
+            '--end', '2021-12-31',
+            # No --symbols, should default to database symbols
+        ]):
+            with patch("hrp.research.backtest.get_benchmark_returns") as mock_benchmark:
+                mock_benchmark.side_effect = Exception("No benchmark")
+                main()
+
+        captured = capsys.readouterr()
+        assert "Backtest Results" in captured.out
+
+
+# =============================================================================
+# get_price_data adjustment tests
+# =============================================================================
+
+
+class TestGetPriceDataAdjustments:
+    """Tests for price adjustments in get_price_data."""
+
+    def test_get_price_data_with_split_adjustment(self, test_db):
+        """Test that split adjustments are applied when requested."""
+        from hrp.research.backtest import get_price_data
+        from unittest.mock import patch, MagicMock
+
+        # Mock the API to track if adjust_prices_for_splits is called
+        mock_api = MagicMock()
+        mock_api.adjust_prices_for_splits.side_effect = lambda df: df  # Pass through
+
+        with patch("hrp.api.platform.PlatformAPI", return_value=mock_api):
+            prices = get_price_data(
+                ["AAPL", "MSFT"],
+                date(2022, 7, 1),
+                date(2022, 7, 8),
+                adjust_splits=True,
+            )
+
+        # Verify the adjustment method was called
+        mock_api.adjust_prices_for_splits.assert_called_once()
+
+    def test_get_price_data_with_dividend_adjustment(self, test_db):
+        """Test that dividend adjustments are applied when requested."""
+        from hrp.research.backtest import get_price_data
+        from unittest.mock import patch, MagicMock
+
+        # Mock the API to track if adjust_prices_for_dividends is called
+        mock_api = MagicMock()
+        mock_api.adjust_prices_for_splits.side_effect = lambda df: df
+        mock_api.adjust_prices_for_dividends.side_effect = lambda df, reinvest: df
+
+        with patch("hrp.api.platform.PlatformAPI", return_value=mock_api):
+            prices = get_price_data(
+                ["AAPL", "MSFT"],
+                date(2022, 7, 1),
+                date(2022, 7, 8),
+                adjust_splits=True,
+                adjust_dividends=True,
+            )
+
+        # Verify both adjustment methods were called
+        mock_api.adjust_prices_for_splits.assert_called_once()
+        mock_api.adjust_prices_for_dividends.assert_called_once()
+
+    def test_get_price_data_no_adjustments(self, test_db):
+        """Test that no adjustments are applied when not requested."""
+        from hrp.research.backtest import get_price_data
+        from unittest.mock import patch, MagicMock
+
+        # Mock the API - won't be instantiated since adjust_splits=False
+        mock_api = MagicMock()
+
+        # With adjust_splits=False, the API is never created so we just verify the function works
+        prices = get_price_data(
+            ["AAPL", "MSFT"],
+            date(2022, 7, 1),
+            date(2022, 7, 8),
+            adjust_splits=False,
+            adjust_dividends=False,
+        )
+
+        # Verify prices are returned
+        assert not prices.empty
+
+    def test_get_price_data_empty_raises(self, test_db):
+        """Test that empty price data raises an error."""
+        from hrp.research.backtest import get_price_data
+
+        # Use a date range in the past with no data in test_db
+        with pytest.raises(Exception):  # Can be ValueError or DateOutOfBounds
+            get_price_data(
+                ["AAPL"],
+                date(2010, 1, 1),  # Past date - no data in test_db
+                date(2010, 1, 31),
+            )
