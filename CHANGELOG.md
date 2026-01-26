@@ -14,6 +14,54 @@
   - **Scheduler Integration**: `setup_weekly_signal_scan()` method for Monday 7 PM ET scheduling
   - **Dataclasses**: `SignalScanResult` and `SignalScanReport` for structured output
 - **Research Agents Design**: Comprehensive design brainstorm for multi-agent quant research team
+
+## [1.5.0] - 2026-01-25
+
+### Added
+- **VectorBT PRO-Inspired Features**: Comprehensive optimization and validation framework inspired by VectorBT PRO patterns:
+
+  **Cross-Validated Optimization** (`hrp/ml/optimization.py`):
+  - `OptimizationConfig` and `OptimizationResult` dataclasses
+  - `cross_validated_optimize()` function with walk-forward validation
+  - Integration with overfitting guards (HyperparameterTrialCounter, SharpeDecayMonitor, TestSetGuard)
+  - MLflow logging for all optimization trials
+
+  **Parallel Parameter Sweeps** (`hrp/research/parameter_sweep.py`):
+  - `SweepConfig`, `SweepConstraint`, `SweepResult` dataclasses
+  - `parallel_parameter_sweep()` with constraint validation
+  - **Sharpe decay analysis**: test_sharpe - train_sharpe for overfitting detection
+  - 14 constraint types: sum_equals, max_total, min_total, ratio_bound, difference_min, difference_max, exclusion, range_bound, product_max, product_min, same_sign, step_multiple, monotonic_increasing, at_least_n_nonzero
+
+  **ATR-Based Trailing Stops** (`hrp/research/stops.py`):
+  - `StopLossConfig` added to `BacktestConfig`
+  - `compute_atr_stops()`, `apply_trailing_stops()`, `calculate_stop_statistics()`
+  - Stop types: fixed_pct, atr_trailing, volatility_scaled
+  - **Integrated into `run_backtest()`** - stops applied automatically when enabled
+
+  **Walk-Forward & Sharpe Decay Visualizations**:
+  - `hrp/dashboard/components/walkforward_viz.py`: Timeline splits, fold metrics heatmap, stability summary
+  - `hrp/dashboard/components/sharpe_decay_viz.py`: VectorBT PRO-style Sharpe decay heatmap (Blue=good, Red=overfit)
+  - New "Validation Analysis" tab in Experiments dashboard page
+
+  **HMM Regime Detection** (`hrp/ml/regime.py`):
+  - `MarketRegime` enum (BULL, BEAR, SIDEWAYS, CRISIS)
+  - `HMMConfig`, `RegimeResult`, `RegimeDetector` classes
+  - `check_regime_stability_hmm()` in robustness module
+  - New dependency: `hmmlearn>=0.3.0`
+
+### Testing
+- 115 new tests for VectorBT PRO features:
+  - `tests/test_ml/test_optimization.py`: 26 tests
+  - `tests/test_ml/test_regime.py`: 18 tests
+  - `tests/test_research/test_parameter_sweep.py`: 34 tests
+  - `tests/test_research/test_stops.py`: 22 tests
+  - `tests/test_dashboard/test_walkforward_viz.py`: 7 tests
+  - `tests/test_dashboard/test_sharpe_decay_viz.py`: 8 tests
+- 1,593 tests passing (100% pass rate)
+
+### Documentation
+- Updated CLAUDE.md with usage examples for all new features
+- Implementation plan: `docs/plans/2025-01-25-vectorbt-pro-patterns.md` (now marked ✅ Implemented)
   - Researched real hedge fund structures (DE Shaw, Two Sigma, Citadel, Renaissance)
   - Proposed 3 architecture options: 8, 10, or 12 specialized AI agents
   - Key design: autonomous agents with shared workspace (hypotheses, MLflow, lineage)
