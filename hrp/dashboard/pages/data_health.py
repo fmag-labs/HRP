@@ -99,6 +99,49 @@ def get_ingestion_logs(limit: int = 10) -> pd.DataFrame:
         ])
 
 
+def render_quality_alert_banner() -> None:
+    """Render alert banner for critical quality issues."""
+    from hrp.api.platform import PlatformAPI
+
+    try:
+        # Get latest quality results
+        api = PlatformAPI()
+        result = api.run_quality_checks(as_of_date=date.today())
+
+        if result["critical_issues"] > 0:
+            st.error(
+                f"🚨 **Critical Data Quality Issues Detected**\n\n"
+                f"{result['critical_issues']} critical issues found. "
+                f"Health Score: {result['health_score']:.0f}/100"
+            )
+
+            # Show top 5 critical issues
+            all_issues = []
+            for r in result["results"]:
+                all_issues.extend(r["issues"])
+
+            critical_issues = [i for i in all_issues if i.get("severity") == "critical"]
+            critical_issues.sort(key=lambda x: x.get("date", ""), reverse=True)
+
+            with st.expander("View Critical Issues"):
+                for issue in critical_issues[:5]:
+                    st.markdown(f"**[{issue['symbol']}] {issue['date']}**")
+                    st.markdown(f"- {issue['description']}")
+                    if issue.get("details"):
+                        for key, value in issue["details"].items():
+                            st.markdown(f"  - {key}: {value}")
+
+        elif result["warning_issues"] > 0:
+            st.warning(
+                f"⚠️ **Data Quality Warnings**\n\n"
+                f"{result['warning_issues']} warnings found. "
+                f"Health Score: {result['health_score']:.0f}/100"
+            )
+
+    except Exception as e:
+        st.warning(f"Could not load quality alerts: {e}")
+
+
 @st.cache_data(ttl=300)
 def get_symbol_coverage() -> pd.DataFrame:
     """Get per-symbol data summary."""
@@ -530,6 +573,16 @@ def render() -> None:
         </p>
     </div>
     """, unsafe_allow_html=True)
+
+    # -------------------------------------------------------------------------
+    # Real-time Quality Alert Banner
+    # -------------------------------------------------------------------------
+    render_quality_alert_banner()
+
+    st.markdown(
+        """<div style="height: 1px; background: #374151; margin: 2rem 0;"></div>""",
+        unsafe_allow_html=True,
+    )
 
     # -------------------------------------------------------------------------
     # Health Score Hero
