@@ -1243,3 +1243,199 @@ class PlatformAPI:
             status["scheduler"] = {"error": str(e)}
 
         return status
+
+    def run_quality_checks(
+        self,
+        as_of_date: date | None = None,
+        checks: list[str] | None = None,
+        send_alerts: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Run data quality checks and return results.
+
+        Args:
+            as_of_date: Date to run checks for (default: today)
+            checks: List of check names to run (default: all checks)
+            send_alerts: Whether to send email alerts for critical issues
+
+        Returns:
+            Dictionary with quality check results
+
+        Raises:
+            ValueError: If check names are invalid
+        """
+        from hrp.data.quality.checks import (
+            DEFAULT_CHECKS,
+            PriceAnomalyCheck,
+            CompletenessCheck,
+            GapDetectionCheck,
+            StaleDataCheck,
+            VolumeAnomalyCheck,
+        )
+        from hrp.data.quality.report import QualityReportGenerator
+
+        as_of_date = as_of_date or date.today()
+
+        # Map check names to classes
+        check_classes = {
+            "price_anomaly": PriceAnomalyCheck,
+            "completeness": CompletenessCheck,
+            "gap_detection": GapDetectionCheck,
+            "stale_data": StaleDataCheck,
+            "volume_anomaly": VolumeAnomalyCheck,
+        }
+
+        # Validate check names
+        if checks:
+            invalid = [c for c in checks if c not in check_classes]
+            if invalid:
+                raise ValueError(f"Invalid check names: {invalid}")
+            checks_to_run = [check_classes[c] for c in checks]
+        else:
+            checks_to_run = DEFAULT_CHECKS
+
+        # Run checks
+        generator = QualityReportGenerator(checks=checks_to_run)
+        report = generator.generate_report(as_of_date)
+
+        # Send alerts if requested
+        if send_alerts and report.critical_issues > 0:
+            self._send_quality_alerts(report)
+
+        return {
+            "health_score": report.health_score,
+            "critical_issues": report.critical_issues,
+            "warning_issues": report.warning_issues,
+            "passed": report.passed,
+            "results": [
+                {
+                    "check_name": r.check_name,
+                    "passed": r.passed,
+                    "critical_count": r.critical_count,
+                    "warning_count": r.warning_count,
+                    "run_time_ms": r.run_time_ms,
+                    "issues": [i.to_dict() for i in r.issues],
+                }
+                for r in report.results
+            ],
+            "generated_at": report.generated_at.isoformat(),
+        }
+
+    def get_quality_trend(self, days: int = 30) -> dict[str, Any]:
+        """
+        Get historical quality scores for trend analysis.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            Dictionary with trend data
+        """
+        from hrp.data.quality.report import QualityReportGenerator
+
+        generator = QualityReportGenerator()
+        trend_data = generator.get_health_trend(days=days)
+
+        if not trend_data:
+            return {
+                "dates": [],
+                "health_scores": [],
+                "critical_issues": [],
+                "warning_issues": [],
+            }
+
+        return {
+            "dates": [d["date"].isoformat() for d in trend_data],
+            "health_scores": [d["health_score"] for d in trend_data],
+            "critical_issues": [d.get("critical_issues", 0) for d in trend_data],
+            "warning_issues": [d.get("warning_issues", 0) for d in trend_data],
+        }
+
+    def get_data_health_summary(self) -> dict[str, Any]:
+        """
+        Get summary statistics for data health dashboard.
+
+        Returns:
+            Dictionary with health metrics
+        """
+        with self._db.connection() as conn:
+            # Symbol count
+            symbol_count = conn.execute(
+                "SELECT COUNT(DISTINCT symbol) FROM prices"
+            ).fetchone()[0]
+
+            # Date range
+            date_range = conn.execute(
+                "SELECT MIN(date), MAX(date) FROM prices"
+            ).fetchone()
+
+            # Total records
+            prices_count = conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
+            features_count = conn.execute(
+                "SELECT COUNT(*) FROM features"
+            ).fetchone()[0]
+            fundamentals_count = conn.execute(
+                "SELECT COUNT(*) FROM fundamentals"
+            ).fetchone()[0]
+
+            # Data freshness
+            last_price_date = conn.execute(
+                "SELECT MAX(date) FROM prices"
+            ).fetchone()[0]
+            if last_price_date:
+                days_stale = (date.today() - last_price_date).days
+                is_fresh = days_stale <= 3
+            else:
+                days_stale = None
+                is_fresh = False
+
+            # Ingestion summary
+            ingestion_summary = conn.execute("""
+                SELECT
+                    COUNT(*) as total_runs,
+                    SUM(CASE WHEN LOWER(status) = 'completed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate,
+                    MAX(completed_at) as last_successful
+                FROM ingestion_log
+            """).fetchone()
+
+        return {
+            "symbol_count": symbol_count,
+            "date_range": {
+                "start": str(date_range[0]) if date_range[0] else None,
+                "end": str(date_range[1]) if date_range[1] else None,
+            },
+            "total_records": {
+                "prices": prices_count,
+                "features": features_count,
+                "fundamentals": fundamentals_count,
+            },
+            "data_freshness": {
+                "last_date": str(last_price_date) if last_price_date else None,
+                "days_stale": days_stale,
+                "is_fresh": is_fresh,
+            },
+            "ingestion_summary": {
+                "total_runs": ingestion_summary[0] or 0,
+                "success_rate": round(ingestion_summary[1] or 0, 1),
+                "last_successful": str(ingestion_summary[2]) if ingestion_summary[2] else None,
+            },
+        }
+
+    def _send_quality_alerts(self, report) -> None:
+        """Send email alerts for critical quality issues."""
+        try:
+            from hrp.notifications.email import EmailNotifier
+
+            notifier = EmailNotifier()
+            notifier.send_quality_alert(
+                health_score=report.health_score,
+                critical_issues=report.critical_issues,
+                warning_issues=report.warning_issues,
+                issues=[i.to_dict() for r in report.results for i in r.issues],
+                timestamp=report.generated_at.isoformat(),
+            )
+            logger.info(
+                f"Sent quality alerts: {report.critical_issues} critical issues"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send quality alerts: {e}")
