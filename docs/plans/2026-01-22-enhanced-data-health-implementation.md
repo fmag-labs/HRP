@@ -13,7 +13,7 @@
 ## Task 1: Add Quality Report Data Functions
 
 **Files:**
-- Modify: `hrp/dashboard/pages/data_health.py:1-14` (imports)
+- Modify: `hrp/dashboard/pages/data_health.py:1-14` (import
 - Modify: `hrp/dashboard/pages/data_health.py:267` (add new functions before render)
 
 **Step 1: Add imports for quality report**

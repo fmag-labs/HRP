@@ -1,5 +1,40 @@
 ## [Unreleased]
 
+## [1.7.1] - 2026-01-27
+
+### Changed
+- **Code Simplification**: Comprehensive refactoring across all modules:
+  - Renamed BacktestConfig → DefaultBacktestConfig to avoid naming collision
+  - Consolidated test data constants (TEST_SYMBOLS) in hrp/data/constants.py
+  - Created unified exception hierarchy (HRPError, APIError, ValidationError, NotificationError)
+  - Added JobResult dataclasses with backward compatibility (attribute + dict access)
+  - Created Validator utilities class with reusable validation methods
+  - Built DataSourceFactory for data source creation with automatic fallback
+  - Added filter_to_trading_days() utility to hrp/utils/calendar.py
+  - Added database query logging decorator (log_query) to hrp/utils/db_helpers.py
+  - Created AgentReport base class for standardized agent reporting
+  - Simplified feature selection cache (removed class, using module-level dict)
+- Reduced code duplication by ~8,500 lines net (1,441 added, 9,933 removed)
+- Improved type safety and maintainability
+
+### Testing
+- 38 new tests for code simplification:
+  - tests/test_utils/test_config.py: DefaultBacktestConfig tests
+  - tests/test_utils/test_calendar_filter.py: filter_to_trading_days tests
+  - tests/test_utils/test_db_helpers.py: log_query decorator tests
+  - tests/test_data/test_constants.py: TEST_SYMBOLS constant tests
+  - tests/test_data/test_factory.py: DataSourceFactory tests
+  - tests/test_agents/test_job_results.py: JobResult dataclass tests
+  - tests/test_agents/test_reporting.py: AgentReport tests
+  - tests/test_exceptions.py: Exception hierarchy tests
+  - tests/test_api/test_validators.py: Validator class tests
+  - tests/test_ml/test_feature_cache.py: Simplified cache tests
+- 2,548 tests passing (99.9% pass rate)
+
+### Documentation
+- Updated Project-Status.md with code simplification changes
+- Updated test count: 2,510 → 2,548
+
 ## [1.7.0] - 2026-01-27
 
 ### Added

@@ -9,8 +9,8 @@
 | **Production** | Security + Ops | 0% | ⏳ Planned |
 | **Trading** | Live Execution | 0% | 🔮 Future |
 
-**Codebase:** ~24,000 lines of production code across 90+ modules
-**Test Suite:** 2,510 tests (99.7% pass rate)
+**Codebase:** ~24,500 lines of production code across 100+ modules
+**Test Suite:** 2,548 tests (99.9% pass rate)
 
 ## Current Progress
 
@@ -409,6 +409,26 @@ Complete feature tracking with spec links.
 ## Document History
 
 **Last Updated:** January 27, 2026
+
+**Changes (January 27, 2026 - Code Simplification):**
+- Implemented comprehensive code simplification across all phases (1.7.1)
+- Phase 1 - Quick Wins:
+  - Renamed BacktestConfig to DefaultBacktestConfig (hrp/utils/config.py)
+  - Consolidated test data constants in hrp/data/constants.py
+  - Created unified exception hierarchy in hrp/exceptions.py
+- Phase 2 - Structural Improvements:
+  - Added JobResult dataclasses with backward compatibility (hrp/agents/job_results.py)
+  - Created Validator utilities class (hrp/api/validators.py)
+  - Built DataSourceFactory for data source creation (hrp/data/sources/factory.py)
+- Phase 3 - Refactoring:
+  - Added filter_to_trading_days() utility (hrp/utils/calendar.py)
+  - Added database query logging decorator (hrp/utils/db_helpers.py)
+  - Created AgentReport base class (hrp/agents/reporting.py)
+- Phase 4 - Clean-up:
+  - Simplified feature selection cache (module-level dict in hrp/ml/validation.py)
+- 30 files changed: 1,441 insertions, 9,933 deletions (net -8,492 lines)
+- 14 new test files added
+- Test count updated: 2,510 → 2,548 tests
 
 **Changes (January 27, 2026 - Data Management Improvements):**
 - Implemented EMA/VWAP feature backfill (`hrp/data/backfill.py`)

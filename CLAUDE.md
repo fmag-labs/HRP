@@ -811,7 +811,7 @@ print(f"Regime stability: {'PASS' if stability.passed else 'FAIL'}")
 
 ```bash
 pytest tests/ -v
-# Pass rate: 100% (2,510 passed, 18 skipped)
+# Pass rate: 99.9% (2,548 passed, 1 skipped)
 ```
 
 ## Performance Metrics (Empyrical-powered)
