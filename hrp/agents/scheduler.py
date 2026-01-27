@@ -684,6 +684,54 @@ class IngestionScheduler:
             f"on {day_of_week.upper()}"
         )
 
+    def setup_weekly_fundamentals_timeseries(
+        self,
+        fundamentals_time: str = "06:00",
+        day_of_week: str = "sun",
+    ) -> None:
+        """
+        Schedule weekly fundamentals time-series ingestion.
+
+        Args:
+            fundamentals_time: Time to run job (HH:MM format)
+            day_of_week: Day of week (mon, tue, wed, thu, fri, sat, sun)
+        """
+        from hrp.agents.jobs import FundamentalsTimeSeriesJob
+
+        # Parse and validate time
+        hour, minute = _parse_time(fundamentals_time, "fundamentals_time")
+
+        # Validate day of week
+        valid_days = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+        day_lower = day_of_week.lower()
+        if day_lower not in valid_days:
+            raise ValueError(
+                f"day_of_week must be one of {valid_days}, got '{day_of_week}'"
+            )
+
+        # Create job instance
+        job = FundamentalsTimeSeriesJob(
+            symbols=None,  # All universe symbols
+            lookback_days=90,
+        )
+
+        # Schedule job
+        self.add_job(
+            func=job.run,
+            job_id="fundamentals_timeseries",
+            trigger=CronTrigger(
+                day_of_week=day_lower,
+                hour=hour,
+                minute=minute,
+                timezone=ET_TIMEZONE,
+            ),
+            name="Weekly Fundamentals Time-Series",
+        )
+        logger.info(
+            f"Scheduled fundamentals time-series at {fundamentals_time} ET "
+            f"on {day_of_week.upper()}"
+        )
+
     def setup_weekly_signal_scan(
         self,
         scan_time: str = "19:00",

@@ -883,3 +883,81 @@ class SnapshotFundamentalsJob(IngestionJob):
             "symbols_failed": result["symbols_failed"],
             "failed_symbols": result.get("failed_symbols", []),
         }
+
+
+class FundamentalsTimeSeriesJob(IngestionJob):
+    """
+    Scheduled job for daily fundamentals time-series ingestion.
+
+    Runs weekly to update fundamental time-series with latest quarterly data.
+    Recommended schedule: Sunday 6 AM ET (before market open).
+    """
+
+    def __init__(
+        self,
+        symbols: list[str] | None = None,
+        as_of_date: date | None = None,
+        lookback_days: int = 90,
+        job_id: str = "fundamentals_timeseries",
+        max_retries: int = 3,
+        retry_backoff: float = 2.0,
+        dependencies: list[str] | None = None,
+    ):
+        """
+        Initialize fundamentals time-series job.
+
+        Args:
+            symbols: List of stock tickers (None = all universe symbols)
+            as_of_date: Date to compute time-series as of (default: today)
+            lookback_days: Days to backfill for point-in-time correctness
+            job_id: Unique identifier for this job
+            max_retries: Maximum number of retry attempts
+            retry_backoff: Exponential backoff multiplier (seconds)
+            dependencies: List of job IDs that must complete before this job runs
+        """
+        super().__init__(job_id, max_retries, retry_backoff, dependencies or [])
+        self.symbols = symbols
+        self.as_of_date = as_of_date or date.today()
+        self.lookback_days = lookback_days
+
+    def execute(self) -> dict[str, Any]:
+        """
+        Execute fundamentals time-series ingestion.
+
+        Returns:
+            Dictionary with job execution stats
+        """
+        from hrp.data.ingestion.fundamentals_timeseries import backfill_fundamentals_timeseries
+        from hrp.data.universe import UniverseManager
+
+        # Get symbols from universe if not specified
+        symbols = self.symbols
+        if symbols is None:
+            manager = UniverseManager()
+            symbols = manager.get_universe_at_date(date.today())
+            if not symbols:
+                symbols = ["AAPL", "MSFT", "GOOGL"]
+            logger.info(f"Using {len(symbols)} symbols from universe")
+
+        # Compute time-series for lookback period
+        start = self.as_of_date - timedelta(days=self.lookback_days)
+
+        logger.info(
+            f"Computing fundamentals time-series for {len(symbols)} symbols "
+            f"from {start} to {self.as_of_date}"
+        )
+
+        result = backfill_fundamentals_timeseries(
+            symbols=symbols,
+            start=start,
+            end=self.as_of_date,
+            batch_size=10,
+        )
+
+        return {
+            "records_fetched": result["rows_inserted"],
+            "records_inserted": result["rows_inserted"],
+            "symbols_success": result["symbols_success"],
+            "symbols_failed": result["symbols_failed"],
+            "failed_symbols": result.get("failed_symbols", []),
+        }
