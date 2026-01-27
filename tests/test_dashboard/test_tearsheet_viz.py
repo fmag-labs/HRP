@@ -576,6 +576,9 @@ class TestRenderTearSheet:
             mock_tab1.__enter__ = Mock(return_value=mock_tab1)
             mock_tab1.__exit__ = Mock(return_value=False)
             mock_st.tabs.return_value = [mock_tab1, MagicMock(), MagicMock(), MagicMock()]
+            # Mock st.columns for render_tear_sheet's layout (2 columns for 3:1 split)
+            mock_cols_2 = [MagicMock() for _ in range(2)]
+            mock_st.columns.return_value = mock_cols_2
 
             with patch('hrp.dashboard.components.tearsheet_viz.render_returns_distribution') as mock_render:
                 with patch('hrp.dashboard.components.tearsheet_viz.render_monthly_returns_heatmap'):
@@ -593,6 +596,9 @@ class TestRenderTearSheet:
             mock_tab1.__enter__ = Mock(return_value=mock_tab1)
             mock_tab1.__exit__ = Mock(return_value=False)
             mock_st.tabs.return_value = [mock_tab1, MagicMock(), MagicMock(), MagicMock()]
+            # Mock st.columns for render_tear_sheet's layout (2 columns for 3:1 split)
+            mock_cols_2 = [MagicMock() for _ in range(2)]
+            mock_st.columns.return_value = mock_cols_2
 
             with patch('hrp.dashboard.components.tearsheet_viz.render_returns_distribution'):
                 with patch('hrp.dashboard.components.tearsheet_viz.render_monthly_returns_heatmap') as mock_render:
@@ -610,6 +616,9 @@ class TestRenderTearSheet:
             mock_tab2.__enter__ = Mock(return_value=mock_tab2)
             mock_tab2.__exit__ = Mock(return_value=False)
             mock_st.tabs.return_value = [MagicMock(), mock_tab2, MagicMock(), MagicMock()]
+            # Mock st.columns for render_tear_sheet's layout (2 columns for 3:1 split)
+            mock_cols_2 = [MagicMock() for _ in range(2)]
+            mock_st.columns.return_value = mock_cols_2
 
             with patch('hrp.dashboard.components.tearsheet_viz.render_returns_distribution'):
                 with patch('hrp.dashboard.components.tearsheet_viz.render_monthly_returns_heatmap'):
@@ -627,6 +636,9 @@ class TestRenderTearSheet:
             mock_tab3.__enter__ = Mock(return_value=mock_tab3)
             mock_tab3.__exit__ = Mock(return_value=False)
             mock_st.tabs.return_value = [MagicMock(), MagicMock(), mock_tab3, MagicMock()]
+            # Mock st.columns for render_tear_sheet's layout (2 columns for 3:1 split)
+            mock_cols_2 = [MagicMock() for _ in range(2)]
+            mock_st.columns.return_value = mock_cols_2
 
             with patch('hrp.dashboard.components.tearsheet_viz.render_returns_distribution'):
                 with patch('hrp.dashboard.components.tearsheet_viz.render_monthly_returns_heatmap'):
@@ -644,6 +656,9 @@ class TestRenderTearSheet:
             mock_tab4.__enter__ = Mock(return_value=mock_tab4)
             mock_tab4.__exit__ = Mock(return_value=False)
             mock_st.tabs.return_value = [MagicMock(), MagicMock(), MagicMock(), mock_tab4]
+            # Mock st.columns for render_tear_sheet's layout (2 columns for 3:1 split)
+            mock_cols_2 = [MagicMock() for _ in range(2)]
+            mock_st.columns.return_value = mock_cols_2
 
             with patch('hrp.dashboard.components.tearsheet_viz.render_returns_distribution'):
                 with patch('hrp.dashboard.components.tearsheet_viz.render_monthly_returns_heatmap'):
@@ -669,30 +684,57 @@ class TestTearsheetVizIntegration:
 
     def test_functions_return_none(self, sample_returns):
         """All render functions return None (they render directly to UI)."""
+        # Test individual render functions
         with patch('hrp.dashboard.components.tearsheet_viz.st') as mock_st:
             mock_cols_4 = [MagicMock() for _ in range(4)]
             mock_cols_3 = [MagicMock() for _ in range(3)]
-            mock_cols_2 = [MagicMock() for _ in range(2)]
-            mock_st.columns.side_effect = [
-                mock_cols_4,  # returns_distribution needs 4
-                mock_cols_3,  # drawdown_analysis needs 3
-                mock_cols_3,  # tail_risk_metrics needs 3
-            ]
+            mock_st.columns.return_value = mock_cols_4
             mock_st.plotly_chart.return_value = None
 
             with patch('hrp.dashboard.components.tearsheet_viz.go'):
                 assert render_returns_distribution(sample_returns) is None
 
+        with patch('hrp.dashboard.components.tearsheet_viz.st') as mock_st:
+            mock_cols_3 = [MagicMock() for _ in range(3)]
+            mock_st.columns.return_value = mock_cols_3
+            mock_st.plotly_chart.return_value = None
+
+            with patch('hrp.dashboard.components.tearsheet_viz.go'):
+                assert render_drawdown_analysis(sample_returns) is None
+
+        with patch('hrp.dashboard.components.tearsheet_viz.st') as mock_st:
+            mock_st.plotly_chart.return_value = None
+
+            with patch('hrp.dashboard.components.tearsheet_viz.go'):
+                assert render_monthly_returns_heatmap(sample_returns) is None
+
+        with patch('hrp.dashboard.components.tearsheet_viz.st') as mock_st:
+            mock_cols_3 = [MagicMock() for _ in range(3)]
+            mock_st.columns.return_value = mock_cols_3
+            mock_st.plotly_chart.return_value = None
+
+            with patch('hrp.dashboard.components.tearsheet_viz.go'):
+                assert render_tail_risk_metrics(sample_returns) is None
+
+        # Test render_rolling_metrics
+        with patch('hrp.dashboard.components.tearsheet_viz.st') as mock_st:
+            mock_st.plotly_chart.return_value = None
+
             with patch('hrp.dashboard.components.tearsheet_viz.make_subplots'):
                 assert render_rolling_metrics(sample_returns) is None
 
-            assert render_drawdown_analysis(sample_returns) is None
+        # Test render_tear_sheet with all nested functions mocked
+        with patch('hrp.dashboard.components.tearsheet_viz.st') as mock_st:
+            mock_cols_2 = [MagicMock() for _ in range(2)]
+            mock_st.columns.return_value = mock_cols_2
+            # Set up tab mocks with proper context manager support
+            from unittest.mock import Mock
+            mock_tabs = [Mock() for _ in range(4)]
+            for tab in mock_tabs:
+                tab.__enter__ = Mock(return_value=tab)
+                tab.__exit__ = Mock(return_value=False)
+            mock_st.tabs.return_value = mock_tabs
 
-            assert render_monthly_returns_heatmap(sample_returns) is None
-
-            assert render_tail_risk_metrics(sample_returns) is None
-
-            # For render_tear_sheet, we need to mock all the nested render functions
             with patch('hrp.dashboard.components.tearsheet_viz.render_returns_distribution'):
                 with patch('hrp.dashboard.components.tearsheet_viz.render_monthly_returns_heatmap'):
                     with patch('hrp.dashboard.components.tearsheet_viz.render_rolling_metrics'):
