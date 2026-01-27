@@ -174,6 +174,18 @@ def log_backtest(
             except Exception as e:
                 logger.warning(f"Could not save trades: {e}")
 
+        # Log equity curve data as CSV for tear sheet analysis
+        if result.equity_curve is not None and len(result.equity_curve) > 0:
+            try:
+                equity_data_path = MLFLOW_DIR / "temp_equity_data.csv"
+                equity_df = result.equity_curve.to_frame(name="equity")
+                equity_df.index.name = "date"
+                equity_df.to_csv(equity_data_path)
+                mlflow.log_artifact(str(equity_data_path), "data")
+                equity_data_path.unlink()
+            except Exception as e:
+                logger.warning(f"Could not save equity curve data: {e}")
+
         run_id = run.info.run_id
         logger.info(f"Logged backtest to MLflow run: {run_id}")
 

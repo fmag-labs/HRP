@@ -1,5 +1,27 @@
 ## [Unreleased]
 
+### Added
+- **Empyrical Integration (F-014)**: Replaced custom metrics with battle-tested `empyrical-reloaded` library:
+  - 5 new metrics: `omega_ratio`, `value_at_risk`, `conditional_value_at_risk`, `tail_ratio`, `stability`
+  - Replaced custom numpy implementations with Empyrical calls (CAGR, Sortino, max_drawdown)
+  - Backward-compatible API (`calculate_metrics()`, `format_metrics()`)
+- **PyFolio-Inspired Tear Sheets** (`hrp/dashboard/components/tearsheet_viz.py`):
+  - Returns distribution with normal overlay
+  - Monthly returns heatmap (year × month grid)
+  - Rolling Sharpe ratio and volatility charts (configurable window)
+  - Drawdown analysis (underwater plot, max drawdown duration)
+  - Tail risk analysis with VaR/CVaR visualization
+  - Integrated into Experiments page run details
+- **Tail Risk Validation**: Added VaR/CVaR thresholds to strategy validation criteria:
+  - `max_var=0.05` (5% daily loss at 95% confidence)
+  - `max_cvar=0.08` (8% expected shortfall threshold)
+  - Confidence scoring includes tail risk factors
+- **Equity Curve Artifacts**: MLflow now saves equity curve data as CSV for tear sheet analysis
+
+### Testing
+- 15 new tests (9 Empyrical metrics + 6 VaR/CVaR validation)
+- 2,115 tests passing (100% pass rate)
+
 ### Documentation
 - **Agent Definition Files**: Created standalone definition files for all 4 implemented research agents:
   - `docs/plans/2026-01-26-signal-scientist-agent.md`: IC analysis, signal discovery, hypothesis creation

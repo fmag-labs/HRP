@@ -21,13 +21,16 @@ class TestValidationCriteria:
     def test_default_criteria(self):
         """Test default validation criteria."""
         criteria = ValidationCriteria()
-        
+
         assert criteria.min_sharpe == 0.5
         assert criteria.min_trades == 100
         assert criteria.max_drawdown == 0.25
         assert criteria.min_win_rate == 0.40
         assert criteria.min_profit_factor == 1.2
         assert criteria.min_oos_period_days == 730  # 2 years
+        # Tail risk thresholds
+        assert criteria.max_var == 0.05  # 5% daily loss at 95% confidence
+        assert criteria.max_cvar == 0.08  # 8% expected shortfall
 
 
 class TestSignificanceTest:
@@ -113,6 +116,8 @@ class TestValidateStrategy:
             "win_rate": 0.52,
             "profit_factor": 1.5,
             "oos_period_days": 800,
+            "value_at_risk": -0.03,  # 3% VaR (within 5% threshold)
+            "conditional_value_at_risk": -0.05,  # 5% CVaR (within 8% threshold)
         }
 
     @pytest.fixture
@@ -125,6 +130,8 @@ class TestValidateStrategy:
             "win_rate": 0.35,  # Below threshold
             "profit_factor": 1.0,  # Below threshold
             "oos_period_days": 365,  # Below threshold
+            "value_at_risk": -0.08,  # 8% VaR (above 5% threshold)
+            "conditional_value_at_risk": -0.12,  # 12% CVaR (above 8% threshold)
         }
 
     def test_validate_passing_strategy(self, passing_metrics):
@@ -144,9 +151,9 @@ class TestValidateStrategy:
     def test_validation_result_details(self, failing_metrics):
         """Test ValidationResult contains details."""
         result = validate_strategy(failing_metrics)
-        
+
         assert result.metrics == failing_metrics
-        assert len(result.failed_criteria) == 6  # All criteria fail
+        assert len(result.failed_criteria) == 8  # All criteria fail (6 original + 2 tail risk)
 
     def test_custom_criteria(self):
         """Test validation with custom criteria."""
@@ -173,9 +180,95 @@ class TestValidateStrategy:
     def test_confidence_score_calculated(self, passing_metrics):
         """Test confidence score is calculated."""
         result = validate_strategy(passing_metrics)
-        
+
         assert result.confidence_score is not None
         assert 0 <= result.confidence_score <= 1.0
+
+    def test_var_validation_pass(self):
+        """Test VaR validation passes when within threshold."""
+        metrics = {
+            "sharpe": 0.8,
+            "num_trades": 200,
+            "max_drawdown": 0.15,
+            "win_rate": 0.52,
+            "profit_factor": 1.5,
+            "oos_period_days": 800,
+            "value_at_risk": -0.03,  # 3% VaR (within 5% threshold)
+        }
+        result = validate_strategy(metrics)
+
+        assert result.passed
+        assert not any("VaR" in f for f in result.failed_criteria)
+
+    def test_var_validation_fail(self):
+        """Test VaR validation fails when exceeds threshold."""
+        metrics = {
+            "sharpe": 0.8,
+            "num_trades": 200,
+            "max_drawdown": 0.15,
+            "win_rate": 0.52,
+            "profit_factor": 1.5,
+            "oos_period_days": 800,
+            "value_at_risk": -0.07,  # 7% VaR (exceeds 5% threshold)
+        }
+        result = validate_strategy(metrics)
+
+        assert not result.passed
+        assert any("VaR" in f for f in result.failed_criteria)
+
+    def test_cvar_validation_pass(self):
+        """Test CVaR validation passes when within threshold."""
+        metrics = {
+            "sharpe": 0.8,
+            "num_trades": 200,
+            "max_drawdown": 0.15,
+            "win_rate": 0.52,
+            "profit_factor": 1.5,
+            "oos_period_days": 800,
+            "conditional_value_at_risk": -0.06,  # 6% CVaR (within 8% threshold)
+        }
+        result = validate_strategy(metrics)
+
+        assert result.passed
+        assert not any("CVaR" in f for f in result.failed_criteria)
+
+    def test_cvar_validation_fail(self):
+        """Test CVaR validation fails when exceeds threshold."""
+        metrics = {
+            "sharpe": 0.8,
+            "num_trades": 200,
+            "max_drawdown": 0.15,
+            "win_rate": 0.52,
+            "profit_factor": 1.5,
+            "oos_period_days": 800,
+            "conditional_value_at_risk": -0.10,  # 10% CVaR (exceeds 8% threshold)
+        }
+        result = validate_strategy(metrics)
+
+        assert not result.passed
+        assert any("CVaR" in f for f in result.failed_criteria)
+
+    def test_custom_var_cvar_criteria(self):
+        """Test validation with custom VaR/CVaR thresholds."""
+        metrics = {
+            "sharpe": 0.8,
+            "num_trades": 200,
+            "max_drawdown": 0.15,
+            "win_rate": 0.52,
+            "profit_factor": 1.5,
+            "oos_period_days": 800,
+            "value_at_risk": -0.04,  # 4% VaR
+            "conditional_value_at_risk": -0.06,  # 6% CVaR
+        }
+
+        # Strict criteria
+        strict_criteria = ValidationCriteria(max_var=0.02, max_cvar=0.04)
+        result = validate_strategy(metrics, strict_criteria)
+
+        # Should fail both VaR and CVaR
+        assert not result.passed
+        assert any("VaR" in f for f in result.failed_criteria)
+        assert any("CVaR" in f for f in result.failed_criteria)
 
 
 class TestMultipleHypothesisCorrection:

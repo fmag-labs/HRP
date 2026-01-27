@@ -46,6 +46,7 @@ from hrp.dashboard.components.sharpe_decay_viz import (
     render_parameter_sensitivity_chart,
     render_top_bottom_params,
 )
+from hrp.dashboard.components.tearsheet_viz import render_tear_sheet
 
 
 # MLflow configuration
@@ -338,6 +339,33 @@ def render_run_details(run_id: str, row: pd.Series) -> None:
                 use_container_width=True,
                 hide_index=True
             )
+
+    # Tear Sheet Analysis
+    with st.expander("📊 Tear Sheet Analysis"):
+        try:
+            # Get artifact URI and download equity data
+            client = mlflow.tracking.MlflowClient()
+            artifact_path = "data/temp_equity_data.csv"
+
+            # Try to download the artifact
+            local_path = client.download_artifacts(run_id, artifact_path)
+            equity_df = pd.read_csv(local_path, index_col="date", parse_dates=True)
+
+            # Calculate returns from equity curve
+            returns = equity_df["equity"].pct_change().dropna()
+            returns.name = "returns"
+
+            if len(returns) > 30:
+                render_tear_sheet(returns)
+            else:
+                st.warning("Insufficient data for tear sheet (need > 30 days of returns)")
+
+        except Exception as e:
+            st.info(
+                "No equity curve data available for tear sheet analysis. "
+                "Tear sheets require runs with saved equity curve data."
+            )
+            logger.debug(f"Could not load equity data for tear sheet: {e}")
 
     # Links and actions
     col1, col2, col3 = st.columns(3)

@@ -17,20 +17,24 @@ from scipy import stats
 class ValidationCriteria:
     """
     Criteria for strategy validation.
-    
+
     A strategy must meet ALL criteria to be validated.
     """
-    
+
     # Performance thresholds
     min_sharpe: float = 0.5
     min_trades: int = 100
     max_drawdown: float = 0.25
     min_win_rate: float = 0.40
     min_profit_factor: float = 1.2
-    
+
+    # Tail risk thresholds (new - VaR/CVaR)
+    max_var: float = 0.05  # Maximum 5% daily loss at 95% confidence
+    max_cvar: float = 0.08  # Maximum 8% expected shortfall
+
     # Time requirements
     min_oos_period_days: int = 730  # 2 years minimum
-    
+
     # Statistical requirements
     significance_level: float = 0.05
 
@@ -198,21 +202,45 @@ def validate_strategy(
             f"OOS period {metrics.get('oos_period_days')} days < "
             f"{criteria.min_oos_period_days} days"
         )
-    
+
+    # Tail risk checks (VaR and CVaR are negative values representing losses)
+    var = metrics.get("value_at_risk", 0)
+    if var != 0 and abs(var) > criteria.max_var:
+        failed.append(
+            f"VaR {abs(var):.2%} > {criteria.max_var:.2%} (tail risk too high)"
+        )
+
+    cvar = metrics.get("conditional_value_at_risk", 0)
+    if cvar != 0 and abs(cvar) > criteria.max_cvar:
+        failed.append(
+            f"CVaR {abs(cvar):.2%} > {criteria.max_cvar:.2%} (expected shortfall too high)"
+        )
+
     # Calculate confidence score (0-1)
     # Higher = more confident in validation
     confidence_factors = []
-    
+
     if metrics.get("sharpe"):
         confidence_factors.append(
             min(1.0, metrics["sharpe"] / (criteria.min_sharpe * 2))
         )
-    
+
     if metrics.get("num_trades"):
         confidence_factors.append(
             min(1.0, metrics["num_trades"] / (criteria.min_trades * 2))
         )
-    
+
+    # Tail risk confidence: lower VaR/CVaR = higher confidence
+    if var != 0:
+        # VaR confidence: how much buffer below threshold (inverted)
+        var_ratio = abs(var) / criteria.max_var
+        confidence_factors.append(max(0.0, min(1.0, 1.0 - var_ratio + 0.5)))
+
+    if cvar != 0:
+        # CVaR confidence: how much buffer below threshold (inverted)
+        cvar_ratio = abs(cvar) / criteria.max_cvar
+        confidence_factors.append(max(0.0, min(1.0, 1.0 - cvar_ratio + 0.5)))
+
     confidence_score = float(np.mean(confidence_factors)) if confidence_factors else 0.0
     
     passed = len(failed) == 0

@@ -534,7 +534,28 @@ print(f"Regime stability: {'PASS' if stability.passed else 'FAIL'}")
 
 ```bash
 pytest tests/ -v
-# Pass rate: 100% (2,101 passed, 18 skipped)
+# Pass rate: 100% (2,115 passed, 18 skipped)
+```
+
+## Performance Metrics (Empyrical-powered)
+
+Backtests return comprehensive metrics via `calculate_metrics()`:
+
+| Category | Metrics |
+|----------|---------|
+| **Returns** | `total_return`, `cagr` |
+| **Risk** | `volatility`, `downside_volatility`, `max_drawdown` |
+| **Risk-Adjusted** | `sharpe_ratio`, `sortino_ratio`, `calmar_ratio` |
+| **Trade Stats** | `win_rate`, `avg_win`, `avg_loss`, `profit_factor` |
+| **Benchmark** | `alpha`, `beta`, `tracking_error`, `information_ratio` |
+| **Tail Risk** | `value_at_risk`, `conditional_value_at_risk` |
+| **Advanced** | `omega_ratio`, `tail_ratio`, `stability` |
+
+```python
+from hrp.research.metrics import calculate_metrics, format_metrics
+
+metrics = calculate_metrics(returns, benchmark_returns, risk_free_rate=0.05)
+print(format_metrics(metrics))
 ```
 
 ## Services

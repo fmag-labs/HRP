@@ -312,11 +312,12 @@ class TestCAGRCalculation:
         assert cagr == 0.0
 
     def test_cagr_total_loss(self):
-        """Test CAGR when total value goes to zero or negative."""
-        # Returns that would make total return <= 0
+        """Test CAGR when total value goes to zero (complete loss)."""
+        # Returns that would make total return = 0 (complete loss)
         returns = pd.Series([-1.0])  # Complete loss
         cagr = _calculate_cagr(returns, periods_per_year=252)
-        assert cagr == 0.0  # Should return 0 for invalid total return
+        # Mathematically correct: -100% loss means -100% CAGR
+        assert cagr == pytest.approx(-1.0, rel=0.01)
 
 
 class TestSharpeRatio:
@@ -604,6 +605,98 @@ class TestFormatMetrics:
         assert "total_return" in lines[0]
         assert "sharpe_ratio" in lines[1]
         assert "max_drawdown" in lines[2]
+
+
+# =============================================================================
+# TestEmpyricalMetrics - Tests for new Empyrical-based metrics
+# =============================================================================
+
+
+class TestEmpyricalMetrics:
+    """Tests for new Empyrical-based metrics (omega, VaR, CVaR, tail_ratio, stability)."""
+
+    def test_new_metrics_present(self, mixed_returns):
+        """Test that new Empyrical metrics are calculated."""
+        metrics = calculate_metrics(mixed_returns)
+
+        expected_new_metrics = [
+            "omega_ratio",
+            "value_at_risk",
+            "conditional_value_at_risk",
+            "tail_ratio",
+            "stability",
+        ]
+
+        for key in expected_new_metrics:
+            assert key in metrics, f"Missing new metric: {key}"
+
+    def test_omega_ratio_positive_returns(self, all_positive_returns):
+        """Test omega ratio for positive returns - should be infinite or very high."""
+        metrics = calculate_metrics(all_positive_returns)
+        # Omega = inf for all positive returns (no losses to weight against)
+        assert metrics["omega_ratio"] == float("inf") or metrics["omega_ratio"] > 10, \
+            "Omega should be inf or very high for all positive returns"
+
+    def test_omega_ratio_negative_returns(self, all_negative_returns):
+        """Test omega ratio for negative returns - should be low."""
+        metrics = calculate_metrics(all_negative_returns)
+        # Omega < 1 indicates more downside than upside
+        assert metrics["omega_ratio"] < 1.0, "Omega should be < 1 for all negative returns"
+
+    def test_value_at_risk_is_negative(self, mixed_returns):
+        """Test that VaR is typically negative (represents loss)."""
+        metrics = calculate_metrics(mixed_returns)
+        # VaR at 95% confidence represents the 5th percentile of returns
+        # For mixed returns with some losses, this should be negative
+        assert metrics["value_at_risk"] <= 0, "VaR should be <= 0 (worst 5%)"
+
+    def test_cvar_worse_than_var(self, mixed_returns):
+        """Test that CVaR (expected shortfall) is worse than VaR."""
+        metrics = calculate_metrics(mixed_returns)
+        # CVaR is the average of returns below VaR, so should be <= VaR
+        assert metrics["conditional_value_at_risk"] <= metrics["value_at_risk"], \
+            "CVaR should be <= VaR (it's the average of worst cases)"
+
+    def test_tail_ratio_positive_returns(self, all_positive_returns):
+        """Test tail ratio for positive returns - should be meaningful."""
+        metrics = calculate_metrics(all_positive_returns)
+        # Tail ratio = |95th percentile| / |5th percentile|
+        # For all positive returns, this is just the ratio of good to less-good returns
+        assert metrics["tail_ratio"] > 0, "Tail ratio should be positive"
+
+    def test_stability_range(self, mixed_returns):
+        """Test stability is in valid range."""
+        metrics = calculate_metrics(mixed_returns)
+        # Stability is R-squared, so should be in [-inf, 1] but typically [0, 1]
+        # Can be negative for very unstable series
+        assert metrics["stability"] <= 1.0, "Stability should be <= 1 (R-squared)"
+
+    def test_stability_trending_returns(self):
+        """Test stability for consistently trending returns."""
+        # Create returns that consistently trend upward
+        np.random.seed(42)
+        trending = pd.Series([0.001] * 252 + np.random.normal(0, 0.0001, 252))
+        metrics = calculate_metrics(trending)
+        # Stable upward trend should have high stability (R-squared close to 1)
+        assert metrics["stability"] > 0.5, "Stable trending returns should have high stability"
+
+    def test_new_metrics_format(self):
+        """Test that new metrics are properly formatted."""
+        metrics = {
+            "omega_ratio": 1.5,
+            "value_at_risk": -0.03,
+            "conditional_value_at_risk": -0.05,
+            "tail_ratio": 1.2,
+            "stability": 0.85,
+        }
+
+        formatted = format_metrics(metrics)
+
+        assert "omega_ratio" in formatted
+        assert "value_at_risk" in formatted
+        assert "-3.00%" in formatted  # VaR formatted as percentage
+        assert "-5.00%" in formatted  # CVaR formatted as percentage
+        assert "0.8500" in formatted  # stability with 4 decimal places
 
 
 # =============================================================================
