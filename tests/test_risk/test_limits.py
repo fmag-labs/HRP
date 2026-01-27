@@ -256,3 +256,129 @@ class TestPreTradeValidator:
         assert validated["AAPL"].iloc[0] == pytest.approx(0.10)
         # But warnings recorded
         assert len(report.warnings) >= 3
+
+    def test_sector_exposure_clipping(self, sample_signals, sample_prices, sample_adv, sample_sectors):
+        """Sector exposure above max is pro-rata reduced."""
+        from hrp.risk.limits import PreTradeValidator
+        from hrp.risk.costs import MarketImpactModel
+
+        # Technology sector: AAPL (10%) + MSFT (8%) + GOOGL (6%) + META (2%) = 26%
+        limits = RiskLimits(max_sector_pct=0.20, max_position_pct=0.15)
+        validator = PreTradeValidator(limits=limits, cost_model=MarketImpactModel())
+
+        validated, report = validator.validate(
+            signals=sample_signals,
+            prices=sample_prices,
+            sectors=sample_sectors,
+            adv=sample_adv,
+        )
+
+        # Technology should be reduced to 20% total
+        tech_symbols = ["AAPL", "MSFT", "GOOGL", "META"]
+        tech_exposure = sum(validated[s].iloc[0] for s in tech_symbols)
+        assert tech_exposure == pytest.approx(0.20, abs=0.01)
+
+        # Consumer Discretionary (AMZN) unchanged
+        assert validated["AMZN"].iloc[0] == pytest.approx(0.04)
+
+    def test_concentration_limit_clipping(self, sample_prices, sample_adv, sample_sectors):
+        """Top N concentration is reduced when exceeded."""
+        from hrp.risk.limits import PreTradeValidator
+        from hrp.risk.costs import MarketImpactModel
+
+        # Create concentrated signals: top 3 = 70%
+        dates = pd.date_range("2023-01-01", periods=5, freq="D")
+        signals = pd.DataFrame(
+            {
+                "AAPL": [0.30] * 5,
+                "MSFT": [0.25] * 5,
+                "GOOGL": [0.15] * 5,
+                "AMZN": [0.05] * 5,
+                "META": [0.05] * 5,
+            },
+            index=dates,
+        )
+
+        limits = RiskLimits(
+            max_top_n_concentration=0.50,
+            top_n_for_concentration=3,
+            max_position_pct=0.35,
+            max_sector_pct=1.0,  # Disable sector limit
+        )
+        validator = PreTradeValidator(limits=limits, cost_model=MarketImpactModel())
+
+        validated, report = validator.validate(
+            signals=signals,
+            prices=sample_prices,
+            sectors=sample_sectors,
+            adv=sample_adv,
+        )
+
+        # Top 3 should be <= 50%
+        top_3 = validated.iloc[0].nlargest(3).sum()
+        assert top_3 <= 0.51  # Allow small tolerance
+
+    def test_gross_exposure_scaling(self, sample_prices, sample_adv, sample_sectors):
+        """Gross exposure above max is scaled down."""
+        from hrp.risk.limits import PreTradeValidator
+        from hrp.risk.costs import MarketImpactModel
+
+        dates = pd.date_range("2023-01-01", periods=5, freq="D")
+        # Total exposure = 120%
+        signals = pd.DataFrame(
+            {
+                "AAPL": [0.30] * 5,
+                "MSFT": [0.30] * 5,
+                "GOOGL": [0.25] * 5,
+                "AMZN": [0.20] * 5,
+                "META": [0.15] * 5,
+            },
+            index=dates,
+        )
+
+        limits = RiskLimits(
+            max_gross_exposure=1.00,
+            max_position_pct=0.35,
+            max_sector_pct=1.0,
+        )
+        validator = PreTradeValidator(limits=limits, cost_model=MarketImpactModel())
+
+        validated, report = validator.validate(
+            signals=signals,
+            prices=sample_prices,
+            sectors=sample_sectors,
+            adv=sample_adv,
+        )
+
+        # Total exposure should be <= 100%
+        total = validated.iloc[0].sum()
+        assert total <= 1.01  # Allow small tolerance
+
+    def test_liquidity_filter(self, sample_signals, sample_prices, sample_sectors):
+        """Symbols below min ADV are filtered out."""
+        from hrp.risk.limits import PreTradeValidator
+        from hrp.risk.costs import MarketImpactModel
+
+        dates = pd.date_range("2023-01-01", periods=5, freq="D")
+        # META has low ADV
+        adv = pd.DataFrame(
+            {
+                "AAPL": [50_000_000] * 5,
+                "MSFT": [30_000_000] * 5,
+                "GOOGL": [20_000_000] * 5,
+                "AMZN": [40_000_000] * 5,
+                "META": [100] * 5,  # Very low volume: 100 shares * $200 = $20,000
+            },
+            index=dates,
+        )
+
+        limits = RiskLimits(min_adv_dollars=1_000_000)
+        validator = PreTradeValidator(limits=limits, cost_model=MarketImpactModel())
+
+        validated, report = validator.validate(
+            signals=sample_signals,
+            prices=sample_prices,
+            sectors=sample_sectors,
+            adv=adv,
+        )
+        assert validated["META"].iloc[0] == 0.0

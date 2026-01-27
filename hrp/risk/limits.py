@@ -108,6 +108,14 @@ class PreTradeValidator:
         """
         Validate signals against risk limits.
 
+        Checks applied in order:
+        1. Liquidity filter (remove illiquid symbols)
+        2. Position sizing (max)
+        3. Position sizing (min)
+        4. Sector exposure
+        5. Concentration (top N)
+        6. Gross exposure
+
         Args:
             signals: Raw signals (weights per symbol per date)
             prices: Price data for position sizing
@@ -120,11 +128,23 @@ class PreTradeValidator:
         validated = signals.copy()
         report = ValidationReport()
 
-        # Check 1: Position sizing (max)
+        # Check 1: Liquidity filter
+        validated, report = self._check_liquidity(validated, prices, adv, report)
+
+        # Check 2: Position sizing (max)
         validated, report = self._check_max_position(validated, report)
 
-        # Check 2: Position sizing (min)
+        # Check 3: Position sizing (min)
         validated, report = self._check_min_position(validated, report)
+
+        # Check 4: Sector exposure
+        validated, report = self._check_sector_exposure(validated, sectors, report)
+
+        # Check 5: Concentration
+        validated, report = self._check_concentration(validated, report)
+
+        # Check 6: Gross exposure
+        validated, report = self._check_gross_exposure(validated, report)
 
         # In strict mode, raise if any violations
         if self.mode == "strict" and (report.clips or report.warnings):
@@ -190,5 +210,172 @@ class PreTradeValidator:
                 else:  # warn mode
                     report.warnings.append(violation)
                     logger.warning(f"{col} below min position: {violation.actual_value:.2%} < {min_pct:.2%}")
+
+        return signals, report
+
+    def _check_liquidity(
+        self,
+        signals: pd.DataFrame,
+        prices: pd.DataFrame,
+        adv: pd.DataFrame,
+        report: ValidationReport,
+    ) -> tuple[pd.DataFrame, ValidationReport]:
+        """Filter out symbols below minimum ADV threshold."""
+        min_adv = self.limits.min_adv_dollars
+
+        for col in signals.columns:
+            if col not in adv.columns or col not in prices.columns:
+                continue
+
+            # ADV in dollars = shares * price
+            adv_dollars = adv[col] * prices[col]
+
+            mask = adv_dollars < min_adv
+            if mask.any() and (signals.loc[mask, col] > 0).any():
+                actual_adv = float(adv_dollars[mask].mean())
+                violation = LimitViolation(
+                    limit_name="min_adv_dollars",
+                    symbol=col,
+                    limit_value=min_adv,
+                    actual_value=actual_adv,
+                    action="clipped" if self.mode == "clip" else "warned",
+                    details=f"ADV ${actual_adv:,.0f} below minimum ${min_adv:,.0f}",
+                )
+
+                if self.mode == "clip":
+                    signals.loc[mask, col] = 0.0
+                    report.clips.append(violation)
+                    logger.debug(f"Filtered {col}: ADV ${actual_adv:,.0f} < ${min_adv:,.0f}")
+                else:
+                    report.warnings.append(violation)
+
+        return signals, report
+
+    def _check_sector_exposure(
+        self,
+        signals: pd.DataFrame,
+        sectors: pd.Series,
+        report: ValidationReport,
+    ) -> tuple[pd.DataFrame, ValidationReport]:
+        """Pro-rata reduce sector exposure above max."""
+        max_sector = self.limits.max_sector_pct
+
+        for idx in signals.index:
+            row = signals.loc[idx]
+
+            # Group by sector
+            sector_exposure = {}
+            for symbol in row.index:
+                sector = sectors.get(symbol, "Unknown")
+                sector_exposure[sector] = sector_exposure.get(sector, 0) + row[symbol]
+
+            # Check each sector
+            for sector, exposure in sector_exposure.items():
+                limit = (
+                    self.limits.max_unknown_sector_pct
+                    if sector == "Unknown"
+                    else max_sector
+                )
+
+                if exposure > limit:
+                    # Calculate scale factor
+                    scale = limit / exposure
+
+                    # Apply to all symbols in this sector
+                    for symbol in row.index:
+                        if sectors.get(symbol, "Unknown") == sector:
+                            old_weight = signals.loc[idx, symbol]
+                            if old_weight > 0:
+                                new_weight = old_weight * scale
+                                violation = LimitViolation(
+                                    limit_name="max_sector_pct",
+                                    symbol=symbol,
+                                    limit_value=limit,
+                                    actual_value=exposure,
+                                    action="clipped" if self.mode == "clip" else "warned",
+                                    details=f"{sector} sector: {exposure:.2%} -> {limit:.2%}",
+                                )
+
+                                if self.mode == "clip":
+                                    signals.loc[idx, symbol] = new_weight
+                                    report.clips.append(violation)
+                                else:
+                                    report.warnings.append(violation)
+
+        return signals, report
+
+    def _check_concentration(
+        self,
+        signals: pd.DataFrame,
+        report: ValidationReport,
+    ) -> tuple[pd.DataFrame, ValidationReport]:
+        """Reduce top N concentration if exceeded."""
+        max_conc = self.limits.max_top_n_concentration
+        top_n = self.limits.top_n_for_concentration
+
+        for idx in signals.index:
+            row = signals.loc[idx]
+            sorted_weights = row.sort_values(ascending=False)
+            top_n_exposure = sorted_weights.head(top_n).sum()
+
+            if top_n_exposure > max_conc:
+                # Scale down top N positions
+                scale = max_conc / top_n_exposure
+                top_symbols = sorted_weights.head(top_n).index
+
+                for symbol in top_symbols:
+                    old_weight = signals.loc[idx, symbol]
+                    new_weight = old_weight * scale
+
+                    violation = LimitViolation(
+                        limit_name="max_top_n_concentration",
+                        symbol=symbol,
+                        limit_value=max_conc,
+                        actual_value=top_n_exposure,
+                        action="clipped" if self.mode == "clip" else "warned",
+                        details=f"Top {top_n}: {top_n_exposure:.2%} -> {max_conc:.2%}",
+                    )
+
+                    if self.mode == "clip":
+                        signals.loc[idx, symbol] = new_weight
+                        report.clips.append(violation)
+                    else:
+                        report.warnings.append(violation)
+
+        return signals, report
+
+    def _check_gross_exposure(
+        self,
+        signals: pd.DataFrame,
+        report: ValidationReport,
+    ) -> tuple[pd.DataFrame, ValidationReport]:
+        """Scale down all positions if gross exposure exceeded."""
+        max_gross = self.limits.max_gross_exposure
+
+        for idx in signals.index:
+            gross = signals.loc[idx].sum()
+
+            if gross > max_gross:
+                scale = max_gross / gross
+
+                for symbol in signals.columns:
+                    old_weight = signals.loc[idx, symbol]
+                    if old_weight > 0:
+                        new_weight = old_weight * scale
+
+                        violation = LimitViolation(
+                            limit_name="max_gross_exposure",
+                            symbol=symbol,
+                            limit_value=max_gross,
+                            actual_value=gross,
+                            action="clipped" if self.mode == "clip" else "warned",
+                            details=f"Gross: {gross:.2%} -> {max_gross:.2%}",
+                        )
+
+                        if self.mode == "clip":
+                            signals.loc[idx, symbol] = new_weight
+                            report.clips.append(violation)
+                        else:
+                            report.warnings.append(violation)
 
         return signals, report
