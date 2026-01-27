@@ -935,6 +935,11 @@ Examples:
         help="Backfill corporate actions",
     )
     parser.add_argument(
+        "--ema-vwap",
+        action="store_true",
+        help="Backfill EMA and VWAP features for historical dates",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Backfill all data types",
@@ -1016,12 +1021,13 @@ Examples:
     do_prices = args.prices or args.all
     do_features = args.features or args.all
     do_corporate_actions = args.corporate_actions or args.all
+    do_ema_vwap = args.ema_vwap
     do_validate = args.validate
 
     # If no action specified, show info
-    if not any([do_prices, do_features, do_corporate_actions, do_validate]):
+    if not any([do_prices, do_features, do_corporate_actions, do_ema_vwap, do_validate]):
         parser.print_help()
-        print("\nNo action specified. Use --prices, --features, --corporate-actions, --all, or --validate.")
+        print("\nNo action specified. Use --prices, --features, --corporate-actions, --ema-vwap, --all, or --validate.")
         return 0
 
     print(f"\nBackfill Configuration:")
@@ -1029,7 +1035,7 @@ Examples:
     print(f"  Date range: {start} to {end}")
     print(f"  Batch size: {args.batch_size}")
     print(f"  Actions: prices={do_prices}, features={do_features}, "
-          f"corporate_actions={do_corporate_actions}, validate={do_validate}")
+          f"corporate_actions={do_corporate_actions}, ema_vwap={do_ema_vwap}, validate={do_validate}")
     print()
 
     # Create progress file if not resuming
@@ -1066,6 +1072,22 @@ Examples:
         )
         print(f"  Success: {result['symbols_success']}/{result['symbols_requested']}")
         print(f"  Rows inserted: {result['rows_inserted']}")
+        print()
+
+    if do_ema_vwap:
+        print("=== Backfilling EMA/VWAP Features ===")
+        result = backfill_features_ema_vwap(
+            symbols=symbols,
+            start=start,
+            end=end,
+            batch_size=args.batch_size,
+            progress_file=progress_file,
+            db_path=args.db_path,
+        )
+        print(f"  Success: {result['symbols_success']}/{result['symbols_requested']}")
+        print(f"  Rows inserted: {result['rows_inserted']}")
+        if result["failed_symbols"]:
+            print(f"  Failed: {', '.join(result['failed_symbols'][:10])}...")
         print()
 
     if do_features:
