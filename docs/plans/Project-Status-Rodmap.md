@@ -10,7 +10,7 @@
 | **Trading** | Live Execution | 0% | 🔮 Future |
 
 **Codebase:** ~24,000 lines of production code across 90+ modules
-**Test Suite:** 2,357 tests (99.7% pass rate)
+**Test Suite:** 2,510 tests (99.7% pass rate)
 
 ## Current Progress
 
@@ -408,7 +408,27 @@ Complete feature tracking with spec links.
 
 ## Document History
 
-**Last Updated:** January 26, 2026
+**Last Updated:** January 27, 2026
+
+**Changes (January 27, 2026 - Data Management Improvements):**
+- Implemented EMA/VWAP feature backfill (`hrp/data/backfill.py`)
+  - Added `backfill_features_ema_vwap()` for ema_12d, ema_26d, vwap_20d features
+  - CLI interface with `--ema-vwap` flag
+  - Backfilled ~286K rows per feature (2020-2026)
+  - Addresses P2-4 from data management health check
+- Implemented time-series fundamentals (`hrp/data/ingestion/fundamentals_timeseries.py`)
+  - Daily forward-fill from quarterly data (ts_revenue, ts_eps, ts_book_value)
+  - Point-in-time correctness for backtesting (uses report_date to determine data availability)
+  - Scheduled job: `FundamentalsTimeSeriesJob` (Sunday 6 AM ET, 90-day lookback)
+  - Addresses P2-5 from data management health check
+- Enhanced quality monitoring via PlatformAPI (`hrp/api/platform.py`)
+  - Added `run_quality_checks()`, `get_quality_trend()`, `get_data_health_summary()` methods
+  - Real-time dashboard alerts on Data Health page
+  - Addresses P2-6 from data management health check
+- Test count updated: 2,510 tests (99.7% pass rate)
+- Added 8 new tests for data management features
+
+**Changes (January 26, 2026 - CIO Agent Design):**
 
 **Changes (January 26, 2026 - CIO Agent Design):**
 - Created comprehensive design specification for CIO Agent (`docs/plans/2026-01-26-cio-agent-design.md`)

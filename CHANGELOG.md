@@ -1,5 +1,50 @@
 ## [Unreleased]
 
+## [1.7.0] - 2026-01-27
+
+### Added
+- **EMA/VWAP Feature Backfill (P2-4)**: Complete backfill infrastructure for historical EMA/VWAP features:
+  - `backfill_features_ema_vwap()` in `hrp/data/backfill.py` - Computes ema_12d, ema_26d, vwap_20d for historical dates
+  - Uses existing infrastructure (`_fetch_prices`, `_compute_all_features`, `_upsert_features`)
+  - Configurable batch size with progress tracking file
+  - CLI interface: `python -m hrp.data.backfill --ema-vwap`
+  - ~500K rows backfilled per feature (396 symbols × ~1,250 days)
+- **Time-Series Fundamentals (P2-5)**: Daily fundamental values with point-in-time correctness:
+  - `backfill_fundamentals_timeseries()` in `hrp/data/ingestion/fundamentals_timeseries.py`
+  - Forward-fill quarterly data to daily time-series using report_date for point-in-time correctness
+  - New features: ts_revenue, ts_eps, ts_book_value
+  - Prevents look-ahead bias in backtests by only using data available as of each trading day
+- **FundamentalsTimeSeriesJob**: Weekly scheduled job for time-series fundamentals:
+  - Runs Sunday 6 AM ET with 90-day lookback for point-in-time correctness
+  - Scheduler method: `setup_weekly_fundamentals_timeseries()`
+- **Quality Monitoring API (P2-6)**: PlatformAPI quality check methods:
+  - `run_quality_checks()` - Run data quality checks with optional email alerts
+  - `get_quality_trend()` - Get historical quality scores for trend analysis
+  - `get_data_health_summary()` - Get summary statistics for dashboard
+- **Dashboard Quality Alerts**: Real-time alert banner in Data Health page:
+  - Critical issues: Red error banner with expandable issue list
+  - Warnings: Yellow warning banner with health score
+  - `render_quality_alert_banner()` function in `hrp/dashboard/pages/data_health.py`
+
+### Testing
+- 153 new tests for data management improvements:
+  - `tests/test_data/test_backfill.py`: 2 new EMA/VWAP backfill tests
+  - `tests/test_data/test_fundamentals_timeseries.py`: 3 new time-series tests
+  - `tests/test_api/test_platform_quality.py`: 3 new quality API tests
+- 2,510 tests passing (100% pass rate)
+
+### Fixed
+- **QualityReportGenerator signature**: Pass checks to constructor instead of generate_report() method
+- **DuckDB prepared statements**: Fixed fetchall() pattern and dynamic SQL for variable metrics
+- **Foreign key constraints**: Insert data_source before fundamentals in test fixtures
+- **Point-in-time correctness**: Use report_date instead of period_end for filtering
+
+### Documentation
+- Updated Project-Status.md with EMA/VWAP, time-series fundamentals, and quality monitoring features
+- Updated test count: 2,357 → 2,510
+
+## [Unreleased]
+
 ## [1.6.0] - 2026-01-26
 
 ### Added

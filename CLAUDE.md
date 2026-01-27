@@ -100,8 +100,60 @@ print(f"Inserted {result['records_inserted']} fundamental records")
 
 ### Run data quality checks
 ```python
+# Run quality checks via PlatformAPI
 result = api.run_quality_checks(as_of_date=date.today(), send_alerts=True)
 # Returns: health_score, critical_issues, warning_issues, passed
+
+# Get quality trend for analysis
+trend = api.get_quality_trend(days=30)
+# Returns: dates, health_scores, critical_issues, warning_issues
+
+# Get data health summary for dashboard
+summary = api.get_data_health_summary()
+# Returns: symbol_count, date_range, total_records, data_freshness, ingestion_summary
+```
+
+### Backfill EMA/VWAP features
+```python
+from hrp.data.backfill import backfill_features_ema_vwap
+
+# Backfill historical EMA/VWAP features
+result = backfill_features_ema_vwap(
+    symbols=['AAPL', 'MSFT'],
+    start=date(2020, 1, 1),
+    end=date(2026, 1, 24),
+    batch_size=10,
+    progress_file=Path("~/hrp-data/backfill_ema_vwap_progress.json"),
+)
+# Returns: symbols_success, symbols_failed, failed_symbols, rows_inserted
+
+# Or use CLI
+python -m hrp.data.backfill --ema-vwap --universe --start 2020-01-01 --end 2026-01-24
+```
+
+### Generate time-series fundamentals
+```python
+from hrp.data.ingestion.fundamentals_timeseries import backfill_fundamentals_timeseries
+
+# Create daily fundamental time-series with point-in-time correctness
+result = backfill_fundamentals_timeseries(
+    symbols=['AAPL', 'MSFT'],
+    start=date(2023, 10, 1),
+    end=date(2023, 12, 31),
+    metrics=['revenue', 'eps', 'book_value'],
+    source='yfinance',
+)
+# Returns: symbols_success, symbols_failed, failed_symbols, rows_inserted
+# Features created: ts_revenue, ts_eps, ts_book_value
+
+# Schedule weekly time-series fundamentals (Sunday 6 AM ET)
+from hrp.agents.scheduler import IngestionScheduler
+scheduler = IngestionScheduler()
+scheduler.setup_weekly_fundamentals_timeseries(
+    fundamentals_time='06:00',
+    day_of_week='sun',
+)
+scheduler.start()
 ```
 
 ### Validate data before operations
@@ -759,7 +811,7 @@ print(f"Regime stability: {'PASS' if stability.passed else 'FAIL'}")
 
 ```bash
 pytest tests/ -v
-# Pass rate: 100% (2,115 passed, 18 skipped)
+# Pass rate: 100% (2,510 passed, 18 skipped)
 ```
 
 ## Performance Metrics (Empyrical-powered)
