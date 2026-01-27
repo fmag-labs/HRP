@@ -955,6 +955,68 @@ class IngestionScheduler:
         )
         logger.info(f"Scheduled weekly research report on Sunday at {report_time} ET")
 
+    def setup_weekly_cleanup(
+        self,
+        cleanup_time: str = "02:00",
+        data_types: list[str] | None = None,
+        dry_run: bool = True,
+    ) -> None:
+        """
+        Schedule weekly data cleanup based on retention policies.
+
+        Cleans up old data according to retention policies:
+        - Prices: 90d hot, 1y warm, 3y cold, 5y archive
+        - Features: 90d hot, 1y warm, 3y cold, 5y archive
+        - Fundamentals: 1y hot, 5y warm, 10y cold, never archive
+        - Lineage: 30d hot, 90d warm, 1y cold, 2y archive
+        - Ingestion Log: 30d hot, 90d warm, 1y cold, 2y archive
+
+        Args:
+            cleanup_time: Time to run cleanup (HH:MM format, default 02:00)
+            data_types: List of data types to clean (defaults to all)
+            dry_run: If True, only report what would be deleted (default True)
+        """
+        from datetime import date
+
+        from hrp.data.retention import DataCleanupJob
+
+        # Parse and validate time
+        hour, minute = _parse_time(cleanup_time, "cleanup_time")
+
+        # Create a wrapper function that runs cleanup
+        def run_cleanup():
+            job = DataCleanupJob(
+                data_types=data_types,
+                dry_run=dry_run,
+                require_confirmation=False,
+            )
+            results = job.run(as_of_date=date.today())
+
+            # Log results
+            total_deleted = sum(r.records_deleted for r in results.values())
+            total_errors = sum(len(r.errors) for r in results.values())
+            logger.info(
+                f"Weekly cleanup completed: deleted={total_deleted} records, "
+                f"errors={total_errors}, dry_run={dry_run}"
+            )
+
+        # Schedule weekly cleanup job (Sunday early morning)
+        self.add_job(
+            func=run_cleanup,
+            job_id="weekly_cleanup",
+            trigger=CronTrigger(
+                day_of_week="sun",
+                hour=hour,
+                minute=minute,
+                timezone=ET_TIMEZONE,
+            ),
+            name="Weekly Data Cleanup",
+        )
+        logger.info(
+            f"Scheduled weekly data cleanup on Sunday at {cleanup_time} ET "
+            f"(dry_run={dry_run})"
+        )
+
     def setup_research_agent_triggers(
         self,
         poll_interval_seconds: int = 60,

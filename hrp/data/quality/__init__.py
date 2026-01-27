@@ -6,9 +6,10 @@ Provides comprehensive data quality monitoring including:
 - Daily quality report generation
 - Health score tracking over time
 - Email alerts for critical issues
+- Data validation utilities for pre-operation checks
 
 Usage:
-    from hrp.data.quality import generate_daily_report, run_quality_check_with_alerts
+    from hrp.data.quality import generate_daily_report, run_quality_check_with_alerts, DataValidator
 
     # Generate a report
     report = generate_daily_report(as_of_date=date.today())
@@ -16,6 +17,11 @@ Usage:
 
     # Run checks with alerts
     result = run_quality_check_with_alerts()
+
+    # Validate data before operation
+    validation = DataValidator.validate_price_data(prices_df)
+    if not validation.is_valid:
+        print(f"Validation failed: {validation.errors}")
 """
 
 from hrp.data.quality.alerts import (
@@ -38,6 +44,11 @@ from hrp.data.quality.report import (
     QualityReportGenerator,
     generate_daily_report,
 )
+from hrp.data.quality.validation import (
+    DataValidator,
+    ValidationResult,
+    validate_before_operation,
+)
 
 __all__ = [
     # Checks
@@ -57,4 +68,8 @@ __all__ = [
     # Alerts
     "QualityAlertManager",
     "run_quality_check_with_alerts",
+    # Validation
+    "DataValidator",
+    "ValidationResult",
+    "validate_before_operation",
 ]

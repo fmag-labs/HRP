@@ -104,6 +104,176 @@ result = api.run_quality_checks(as_of_date=date.today(), send_alerts=True)
 # Returns: health_score, critical_issues, warning_issues, passed
 ```
 
+### Validate data before operations
+```python
+from hrp.data.quality.validation import DataValidator, validate_before_operation
+
+# Validate price data before ingestion
+prices_df = pd.DataFrame({
+    "open": [180.0],
+    "high": [182.0],
+    "low": [178.0],
+    "close": [180.5],
+    "volume": [10000000],
+})
+
+validation = DataValidator.validate_price_data(prices_df)
+if not validation.is_valid:
+    print(f"Validation failed: {validation.errors}")
+
+# Or use context manager for automatic validation
+with validate_before_operation(
+    DataValidator.validate_price_data,
+    on_failure="raise",
+    prices_df=prices_df,
+):
+    # Operation only executes if validation passes
+    ingest_prices(...)
+
+# Validate feature computation inputs
+result = DataValidator.validate_feature_computation_inputs(
+    prices_df=price_data,
+    feature_name="momentum_20d",
+    min_history_days=20,
+)
+
+# Validate universe health
+result = DataValidator.validate_universe_data(
+    symbols=['AAPL', 'MSFT'],
+    as_of_date=date.today(),
+    db_path=db_path,
+    require_prices=True,
+    max_staleness_days=3,
+)
+```
+
+### Data retention policy
+```python
+from hrp.data.retention import RetentionEngine, DataCleanupJob
+
+# Get retention tier for a date
+engine = RetentionEngine()
+tier = engine.get_tier_for_date('prices', date(2023, 1, 1))
+# Returns: RetentionTier.COLD
+
+# Get cleanup candidates
+candidates = engine.get_cleanup_candidates(
+    data_type='prices',
+    as_of_date=date.today(),
+)
+
+# Estimate cleanup impact
+impact = engine.estimate_cleanup_impact('prices')
+print(f"Records to clean: {impact['total_records']}")
+
+# Run cleanup job (dry-run mode first!)
+job = DataCleanupJob(dry_run=True)
+results = job.run()
+print(f"Would delete: {sum(r.records_deleted for r in results.values())} records")
+
+# Schedule weekly cleanup
+from hrp.agents.scheduler import IngestionScheduler
+
+scheduler = IngestionScheduler()
+scheduler.setup_weekly_cleanup(
+    cleanup_time='02:00',  # 2 AM ET Sunday
+    dry_run=True,  # Always start with dry_run=True
+)
+
+# Retention tiers:
+# - HOT (90d): Frequently accessed active data
+# - WARM (1y): Recent historical data
+# - COLD (3y): Long-term storage for backtesting
+# - ARCHIVE (5y+): Compressed archival
+```
+
+### Track data lineage
+```python
+from hrp.data.lineage import FeatureLineage, DataProvenance, get_data_flow, get_feature_dependencies, get_impact_analysis
+
+# Track feature computation
+lineage = FeatureLineage()
+lineage_id = lineage.track_computation(
+    feature_name="momentum_20d",
+    symbols=['AAPL', 'MSFT'],
+    computation_date=date.today(),
+    computation_source="batch",
+    input_features=["close"],
+    input_symbols=["AAPL", "MSFT"],
+    computation_params={"window": 20},
+    rows_computed=500,
+    duration_ms=150.0,
+)
+
+# Get computation history
+history = lineage.get_computation_history(feature_name="momentum_20d")
+for record in history:
+    print(f"{record.symbol}: {record.date} - {record.computation_source}")
+
+# Get feature statistics
+stats = lineage.get_feature_statistics("momentum_20d")
+print(f"Unique symbols: {stats['unique_symbols']}")
+print(f"Computation days: {stats['computation_days']}")
+
+# Trace computation dependencies
+chain = lineage.get_computation_chain(
+    feature_name="momentum_20d",
+    symbol="AAPL",
+    computation_date=date.today(),
+)
+for step in chain:
+    print(f"{step['feature']} <- {step['input_features']}")
+
+# Track data provenance
+provenance = DataProvenance()
+provenance_id = provenance.track_source(
+    data_type="prices",
+    record_identifier="prices_AAPL_2024-01-15",
+    source_system="yfinance",
+    source_timestamp=datetime.now(),
+    data_content={"close": 180.5, "volume": 10000000},
+)
+
+# Add transformation to history
+provenance.add_transformation(
+    provenance_id=provenance_id,
+    transformation_type="outlier_removal",
+    transformation_params={"method": "sigma_clip", "threshold": 3.0},
+)
+
+# Add quality check results
+provenance.add_quality_check(
+    provenance_id=provenance_id,
+    check_name="validation",
+    check_result={"passed": True, "checks_performed": 5},
+)
+
+# Verify data integrity with SHA-256 hash
+is_valid = provenance.verify_integrity(
+    provenance_id,
+    data_content={"close": 180.5, "volume": 10000000},
+)
+print(f"Data integrity: {is_valid}")
+
+# Query utilities
+flow = get_data_flow("prices_AAPL_2024-01-15")
+for step in flow:
+    print(f"{step['source_system']} -> {step['transformations']}")
+
+deps = get_feature_dependencies("momentum_20d")
+print(f"Inputs: {deps['inputs']}")
+print(f"Derived features: {deps['derived']}")
+
+impact = get_impact_analysis({
+    "symbol": "AAPL",
+    "date": date(2024, 1, 15),
+    "issue_type": "missing_data",
+    "data_type": "prices",
+})
+print(f"Affected features: {impact['affected_features']}")
+print(f"Remediation: {impact['remediation']}")
+```
+
 ### Schedule daily data ingestion
 ```python
 from hrp.agents.scheduler import IngestionScheduler
