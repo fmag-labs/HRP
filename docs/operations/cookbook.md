@@ -75,6 +75,29 @@ NOTIFICATION_EMAIL=your@email.com
 NOTIFICATION_FROM_EMAIL=hrp@yourdomain.com
 ```
 
+### 1.4 Start the System
+
+Once your environment is configured, you can start all HRP services:
+
+```bash
+# Start all core services (dashboard, MLflow UI, scheduler)
+./scripts/startup.sh start
+
+# Check service status
+./scripts/startup.sh status
+
+# Stop all services
+./scripts/startup.sh stop
+```
+
+**Access Points:**
+- Dashboard: http://localhost:8501
+- MLflow UI: http://localhost:5000
+
+**Note:** The startup script does **not** initialize the database. The database is created automatically on first access. For fresh installations, ensure you've completed section 1.1 (Initial Setup) before starting services.
+
+For more advanced startup options (full research agent pipeline, individual services, custom ports), see [Section 7.7: System Startup Script](#77-system-startup-script).
+
 ---
 
 ## 2. Data Operations
@@ -1717,14 +1740,122 @@ python -m hrp.agents.cli run-now --job report_generator --report-type daily
 python -m hrp.agents.cli run-now --job report_generator --report-type weekly
 ```
 
+### 7.7 System Startup Script
+
+The `startup.sh` script provides a convenient way to manage all HRP services from a single interface.
+
+**Available Services:**
+- **Dashboard** (Streamlit) - http://localhost:8501
+- **MLflow UI** - http://localhost:5000
+- **Scheduler** - Background data ingestion and research agents
+
+**Start All Services:**
+
+```bash
+# Start all core services (dashboard, MLflow, scheduler)
+./scripts/startup.sh start
+
+# Start with all research agents enabled
+./scripts/startup.sh start --full
+
+# Start in minimal mode (ingestion only, no backup/fundamentals)
+./scripts/startup.sh start --minimal
+```
+
+**Start Individual Services:**
+
+```bash
+# Dashboard only
+./scripts/startup.sh start --dashboard-only
+
+# MLflow UI only
+./scripts/startup.sh start --mlflow-only
+
+# Scheduler only
+./scripts/startup.sh start --scheduler-only
+```
+
+**Service Management:**
+
+```bash
+# Check service status
+./scripts/startup.sh status
+
+# Stop all services
+./scripts/startup.sh stop
+
+# Restart all services
+./scripts/startup.sh restart
+
+# Show help
+./scripts/startup.sh --help
+```
+
+**Environment Variables:**
+
+```bash
+# Custom ports
+HRP_DASHBOARD_PORT=8080 ./scripts/startup.sh start
+HRP_MLFLOW_PORT=5001 ./scripts/startup.sh start
+
+# Custom scheduler times
+HRP_PRICE_TIME=17:30 ./scripts/startup.sh start
+HRP_UNIVERSE_TIME=17:35 ./scripts/startup.sh start
+HRP_FEATURE_TIME=17:40 ./scripts/startup.sh start
+
+# Disable backup or fundamentals
+HRP_NO_BACKUP=true ./scripts/startup.sh start
+HRP_NO_FUNDAMENTALS=true ./scripts/startup.sh start
+```
+
+**Full Mode (--full):**
+
+Enables the complete research agent pipeline:
+- Event-driven triggers (Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel)
+- Weekly signal scan (Monday 7 PM ET)
+- Daily ML Quality Sentinel (6 AM ET)
+- Daily research reports (7 AM ET)
+- Weekly research reports (Sunday 8 PM ET)
+
+**Status Output Example:**
+
+```
+========================================
+  HRP System Manager
+========================================
+
+  Dashboard:      RUNNING (PID: 12345, Port: 8501)
+  MLflow UI:      RUNNING (PID: 12346, Port: 5000)
+  Scheduler:      RUNNING (PID: 12347)
+
+  Total: 3 running, 0 stopped
+
+  Logs directory: /Users/your-username/hrp-data/logs
+  PID directory:  /Users/fer/Documents/GitHub/HRP/.hrp_pids
+```
+
+**Note:** The startup script does **not** initialize the database. The database is created automatically on first access by the services. For fresh installations, run the initial setup first (see Section 1.1).
+
 ---
 
 ## 8. Using the Dashboard
 
 ### 8.1 Start the Dashboard
 
+**Option A: Using the startup script (recommended)**
+
 ```bash
-# Start Streamlit dashboard
+# Start dashboard along with MLflow and scheduler
+./scripts/startup.sh start
+
+# Or start dashboard only
+./scripts/startup.sh start --dashboard-only
+```
+
+**Option B: Manual start**
+
+```bash
+# Start Streamlit dashboard manually
 streamlit run hrp/dashboard/app.py
 
 # Access at http://localhost:8501
@@ -1741,6 +1872,18 @@ streamlit run hrp/dashboard/app.py
 | **Experiments** | Backtest results | View metrics, compare experiments, MLflow link |
 
 ### 8.3 Start MLflow UI
+
+**Option A: Using the startup script (recommended)**
+
+```bash
+# Start MLflow along with dashboard and scheduler
+./scripts/startup.sh start
+
+# Or start MLflow only
+./scripts/startup.sh start --mlflow-only
+```
+
+**Option B: Manual start**
 
 ```bash
 # Start MLflow UI for detailed experiment tracking
