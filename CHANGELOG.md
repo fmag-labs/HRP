@@ -1,6 +1,14 @@
 ## [Unreleased]
 
 ### Added
+- **Event-Driven Scheduler with Auto-Recovery**: Enhanced `run_scheduler.py` with full autonomous operation:
+  - New CLI flags: `--with-research-triggers`, `--with-signal-scan`, `--with-quality-sentinel`
+  - `--trigger-poll-interval` for configurable lineage event polling (default: 60s)
+  - `--signal-scan-time`, `--signal-scan-day`, `--ic-threshold` for signal scan configuration
+  - `--sentinel-time` for ML Quality Sentinel scheduling
+  - Updated launchd plist with `KeepAlive.Crashed: true` for auto-restart on failure
+  - `ThrottleInterval: 30` to prevent rapid restart loops
+  - Full event-driven pipeline: Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel
 - **Empyrical Integration (F-014)**: Replaced custom metrics with battle-tested `empyrical-reloaded` library:
   - 5 new metrics: `omega_ratio`, `value_at_risk`, `conditional_value_at_risk`, `tail_ratio`, `stability`
   - Replaced custom numpy implementations with Empyrical calls (CAGR, Sortino, max_drawdown)

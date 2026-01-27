@@ -1405,11 +1405,48 @@ python run_scheduler.py --symbols AAPL MSFT GOOGL
 02:00 ET → Backup (next day)
 ```
 
+**Event-Driven Research Pipeline:**
+
+```bash
+# Enable full autonomous research pipeline
+python -m hrp.agents.run_scheduler \
+    --with-research-triggers \
+    --with-signal-scan \
+    --with-quality-sentinel
+
+# This enables:
+# - Lineage event polling (every 60s by default)
+# - Weekly signal scan (Monday 7 PM ET)
+# - Daily ML Quality Sentinel audit (6 AM ET)
+# - Automatic agent chaining:
+#   Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel
+```
+
+**Research Agent CLI Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--with-research-triggers` | off | Enable event-driven agent pipeline |
+| `--trigger-poll-interval` | 60 | Lineage event poll interval (seconds) |
+| `--with-signal-scan` | off | Enable weekly signal scan |
+| `--signal-scan-time` | 19:00 | Time for signal scan (HH:MM) |
+| `--signal-scan-day` | mon | Day for signal scan |
+| `--ic-threshold` | 0.03 | Minimum IC to create hypothesis |
+| `--with-quality-sentinel` | off | Enable daily ML Quality Sentinel |
+| `--sentinel-time` | 06:00 | Time for quality sentinel |
+
 **Advanced Options:**
 
 ```bash
 # Keep 60 days of backups
 python run_scheduler.py --backup-keep-days 60
+
+# Custom signal scan schedule (Tuesday 8 PM, IC > 0.05)
+python -m hrp.agents.run_scheduler \
+    --with-signal-scan \
+    --signal-scan-day tue \
+    --signal-scan-time 20:00 \
+    --ic-threshold 0.05
 ```
 
 #### Option C: Terminal Session (Alternative Background)
@@ -2018,7 +2055,7 @@ pytest tests/test_api/ -v  # Specific module
 After mastering these recipes, consider:
 
 1. **Explore the Dashboard** - Visual interface for monitoring
-2. **Read the Spec** - `docs/plans/2025-01-19-hrp-spec.md` for architecture details
+2. **Read the Spec** - `docs/plans/2026-01-19-hrp-spec.md` for architecture details
 3. **Review the Roadmap** - `docs/plans/Roadmap.md` for implementation status
 4. **Run Tests** - `pytest tests/ -v` to understand test coverage
 5. **Check MLflow** - Deep dive into experiment tracking

@@ -8,10 +8,13 @@ This script starts the background scheduler that runs:
 - Daily feature computation at 6:10 PM ET
 - Daily backup at 2:00 AM ET
 - Weekly fundamentals ingestion (Saturday 10 AM ET)
+- Weekly signal scan (Monday 7 PM ET) [optional]
+- Event-driven research agent pipeline [optional]
 
 Usage:
     python -m hrp.agents.run_scheduler
-    python -m hrp.agents.run_scheduler --price-time 18:00 --universe-time 18:05 --feature-time 18:10
+    python -m hrp.agents.run_scheduler --with-research-triggers
+    python -m hrp.agents.run_scheduler --with-signal-scan --with-research-triggers
 """
 
 import argparse
@@ -55,8 +58,8 @@ def main():
     parser.add_argument(
         "--backup-keep-days",
         type=int,
-        default=30,
-        help="Days of backups to retain (default: 30)",
+        default=5,
+        help="Days of backups to retain (default: 5)",
     )
     parser.add_argument(
         "--no-backup",
@@ -94,6 +97,53 @@ def main():
         help="Disable weekly fundamentals ingestion job",
     )
 
+    # Research agent options
+    parser.add_argument(
+        "--with-research-triggers",
+        action="store_true",
+        help="Enable event-driven research agent pipeline (Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel)",
+    )
+    parser.add_argument(
+        "--trigger-poll-interval",
+        type=int,
+        default=60,
+        help="Lineage event poll interval in seconds (default: 60)",
+    )
+    parser.add_argument(
+        "--with-signal-scan",
+        action="store_true",
+        help="Enable weekly signal scan (Monday 7 PM ET by default)",
+    )
+    parser.add_argument(
+        "--signal-scan-time",
+        type=str,
+        default="19:00",
+        help="Time to run signal scan (HH:MM format, default: 19:00)",
+    )
+    parser.add_argument(
+        "--signal-scan-day",
+        type=str,
+        default="mon",
+        help="Day of week for signal scan (mon-sun, default: mon)",
+    )
+    parser.add_argument(
+        "--ic-threshold",
+        type=float,
+        default=0.03,
+        help="Minimum IC to create hypothesis (default: 0.03)",
+    )
+    parser.add_argument(
+        "--with-quality-sentinel",
+        action="store_true",
+        help="Enable daily ML Quality Sentinel audit (6 AM ET by default)",
+    )
+    parser.add_argument(
+        "--sentinel-time",
+        type=str,
+        default="06:00",
+        help="Time to run ML Quality Sentinel (HH:MM format, default: 06:00)",
+    )
+
     args = parser.parse_args()
 
     # Create scheduler
@@ -126,9 +176,39 @@ def main():
             source=args.fundamentals_source,
         )
 
+    # Setup weekly signal scan
+    if args.with_signal_scan:
+        logger.info("Setting up weekly signal scan job...")
+        scheduler.setup_weekly_signal_scan(
+            scan_time=args.signal_scan_time,
+            day_of_week=args.signal_scan_day,
+            ic_threshold=args.ic_threshold,
+            create_hypotheses=True,
+        )
+
+    # Setup daily ML Quality Sentinel
+    if args.with_quality_sentinel:
+        logger.info("Setting up daily ML Quality Sentinel audit...")
+        scheduler.setup_quality_sentinel(
+            audit_time=args.sentinel_time,
+            audit_window_days=1,
+            send_alerts=True,
+        )
+
+    # Setup research agent triggers (event-driven pipeline)
+    if args.with_research_triggers:
+        logger.info("Setting up event-driven research agent pipeline...")
+        scheduler.setup_research_agent_triggers(
+            poll_interval_seconds=args.trigger_poll_interval,
+        )
+
     # Start scheduler
-    logger.info("Starting scheduler...")
-    scheduler.start()
+    if args.with_research_triggers:
+        logger.info("Starting scheduler with research agent triggers...")
+        scheduler.start_with_triggers()
+    else:
+        logger.info("Starting scheduler...")
+        scheduler.start()
 
     # List scheduled jobs
     jobs = scheduler.list_jobs()

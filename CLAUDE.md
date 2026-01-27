@@ -564,7 +564,41 @@ print(format_metrics(metrics))
 |---------|---------|------|
 | Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
 | MLflow UI | `mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db` | 5000 |
-| Scheduler | `python -m hrp.agents.run_scheduler` (or use launchd - see cookbook) | - |
+| Scheduler | `python -m hrp.agents.run_scheduler` | - |
+| Scheduler (full) | `python -m hrp.agents.run_scheduler --with-research-triggers --with-signal-scan --with-quality-sentinel` | - |
+
+### Scheduler CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--with-research-triggers` | off | Enable event-driven agent pipeline |
+| `--trigger-poll-interval` | 60 | Lineage event poll interval (seconds) |
+| `--with-signal-scan` | off | Enable weekly signal scan (Monday 7 PM ET) |
+| `--signal-scan-time` | 19:00 | Time for signal scan (HH:MM) |
+| `--signal-scan-day` | mon | Day for signal scan |
+| `--ic-threshold` | 0.03 | Minimum IC to create hypothesis |
+| `--with-quality-sentinel` | off | Enable daily ML Quality Sentinel (6 AM ET) |
+| `--sentinel-time` | 06:00 | Time for quality sentinel |
+
+### Scheduler Management (launchd)
+
+```bash
+# Check status
+launchctl list | grep hrp
+
+# View logs
+tail -f ~/hrp-data/logs/scheduler.error.log
+
+# Stop scheduler
+launchctl unload ~/Library/LaunchAgents/com.hrp.scheduler.plist
+
+# Start scheduler
+launchctl load ~/Library/LaunchAgents/com.hrp.scheduler.plist
+
+# Restart after config changes
+launchctl unload ~/Library/LaunchAgents/com.hrp.scheduler.plist && \
+launchctl load ~/Library/LaunchAgents/com.hrp.scheduler.plist
+```
 
 ## Environment Variables
 
