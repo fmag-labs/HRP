@@ -161,14 +161,24 @@ ML capabilities, statistical rigor, and agent integration.
 | **LineageEventWatcher** | ✅ | Event-driven agent coordination (`hrp/agents/scheduler.py`) |
 | **Validation Analyst** | ✅ | Parameter sensitivity, regime stress tests (`hrp/agents/research_agents.py`) |
 | **Report Generator** | ✅ | Daily/weekly research summaries (`hrp/agents/report_generator.py`) |
+| **CIO Agent** | ⏳ | Strategic decision-making + paper portfolio (`docs/plans/2026-01-26-cio-agent-design.md`) |
 
 **Research Agent Pipeline:**
 ```
-Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst → Report Generator
+Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst → CIO Agent
      ↓                    ↓                 ↓                ↓                   ↓                    ↓
-  IC analysis         Review drafts     Walk-forward      Audit for        Stress test          Daily/weekly
-  Create drafts       Promote/defer     validation        overfitting      Pre-deployment       research summaries
+  IC analysis         Review drafts     Walk-forward      Audit for        Stress test          CONTINUE/PIVOT/KILL
+  Create drafts       Promote/defer     validation        overfitting      Pre-deployment       Paper portfolio
 ```
+
+**CIO Agent (Designed - Awaiting Implementation):**
+- **Purpose:** Strategic decision-making authority at top of research pipeline
+- **Decisions:** CONTINUE/CONDITIONAL/KILL/PIVOT for validated hypotheses
+- **Scoring:** Balanced 4-dimension framework (Statistical, Risk, Economic, Cost)
+- **Paper Portfolio:** $1M simulated portfolio with equal-risk weighting
+- **Interaction:** Advisory mode via structured reports + MCP chat + email
+- **Scheduling:** Weekly (Sunday 8 PM) + event-driven critical alerts
+- **Spec:** `docs/plans/2026-01-26-cio-agent-design.md`
 
 **Event-Driven Coordination:**
 - `LineageEventWatcher` polls lineage table for events
@@ -324,6 +334,7 @@ Complete feature tracking with spec links.
 | F-046 | ML Quality Sentinel Agent | 2 | ✅ done | — |
 | F-047 | SDKAgent Base Class | 2 | ✅ done | — |
 | F-048 | LineageEventWatcher | 2 | ✅ done | — |
+| F-049 | CIO Agent | 2 | ⏳ designed | 2026-01-26-cio-agent-design.md |
 | F-027 | Dashboard Authentication | 3 | ❌ planned | — |
 | F-028 | Security Hardening | 3 | ❌ planned | — |
 | F-029 | Health Checks & Monitoring | 3 | ❌ planned | — |
@@ -394,6 +405,19 @@ Complete feature tracking with spec links.
 ## Document History
 
 **Last Updated:** January 26, 2026
+
+**Changes (January 26, 2026 - CIO Agent Design):**
+- Created comprehensive design specification for CIO Agent (`docs/plans/2026-01-26-cio-agent-design.md`)
+- Strategic decision-making agent at top of research pipeline
+- Balanced 4-dimension scoring framework (Statistical, Risk, Economic, Cost)
+- Decision logic: CONTINUE/CONDITIONAL/KILL/PIVOT with adaptive thresholds
+- Paper portfolio management ($1M simulated, equal-risk weighting)
+- Advisory mode interaction: structured reports + MCP chat + email
+- Weekly scheduled reviews (Sunday 8 PM) + event-driven critical alerts
+- Full implementation details: class structure, MCP server, database schema, scheduler integration
+- Added F-049 (CIO Agent) to Feature Registry with ⏳ designed status
+- Updated Research Agents table with CIO Agent entry
+- Research Agent Pipeline updated to show CIO as final decision authority
 
 **Changes (January 26, 2026 - Report Generator Implementation - Tier 2 Complete):**
 - Implemented Report Generator agent (`hrp/agents/report_generator.py`)
