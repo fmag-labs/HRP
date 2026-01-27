@@ -68,6 +68,10 @@ Everything needed for a working research platform with reliable data.
 | Email notifications | ✅ | Via Resend for failures and summaries |
 | Rate limiting | ✅ | Token bucket algorithm (`hrp/utils/rate_limiter.py`) |
 | Historical backfill | ✅ | Progress tracking, resumability (`hrp/data/backfill.py`) |
+| **EMA/VWAP backfill** | ✅ NEW | `backfill_features_ema_vwap()` for ema_12d, ema_26d, vwap_20d (Jan 2027) |
+| **Time-series fundamentals** | ✅ NEW | Daily forward-fill from quarterly data (ts_revenue, ts_eps, ts_book_value) |
+| **Quality API** | ✅ NEW | PlatformAPI methods: run_quality_checks(), get_quality_trend(), get_data_health_summary() |
+| **Dashboard alerts** | ✅ NEW | Real-time quality alert banner on Data Health page |
 
 ### Dashboard ✅
 
