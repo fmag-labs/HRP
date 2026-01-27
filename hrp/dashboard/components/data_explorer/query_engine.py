@@ -364,6 +364,8 @@ class QueryEngine:
         """
         Get list of universe symbols.
 
+        Gets the most recent snapshot of universe symbols.
+
         Args:
             _active_only: Only include active symbols - underscored for cache
 
@@ -372,13 +374,23 @@ class QueryEngine:
         """
         db = get_db()
         active_only = _active_only
-        where_clause = "WHERE active = TRUE" if active_only else ""
-        query = f"""
-            SELECT symbol
-            FROM universe
-            {where_clause}
-            ORDER BY symbol
-        """
+
+        if active_only:
+            # Get symbols that are currently in the universe (most recent date)
+            query = """
+                SELECT DISTINCT symbol
+                FROM universe
+                WHERE date = (SELECT MAX(date) FROM universe)
+                  AND in_universe = TRUE
+                ORDER BY symbol
+            """
+        else:
+            # Get all distinct symbols that have ever been in the universe
+            query = """
+                SELECT DISTINCT symbol
+                FROM universe
+                ORDER BY symbol
+            """
 
         result = db.fetchdf(query)
         return result["symbol"].tolist() if not result.empty else []
