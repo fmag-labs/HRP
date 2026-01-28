@@ -625,3 +625,43 @@ Criteria:
         uniqueness_score = self._score_uniqueness(economic_data.get("uniqueness", "related"))
 
         return (thesis_score + regime_score + interpretability_score + uniqueness_score) / 4
+
+    def score_hypothesis(
+        self,
+        hypothesis_id: str,
+        experiment_data: dict,
+        risk_data: dict,
+        economic_data: dict,
+        cost_data: dict,
+    ) -> CIOScore:
+        """
+        Score a hypothesis across all 4 dimensions.
+
+        Args:
+            hypothesis_id: The hypothesis to score
+            experiment_data: Statistical metrics from MLflow
+            risk_data: Risk metrics (max_dd, volatility, etc.)
+            economic_data: Economic rationale data (thesis, regime, etc.)
+            cost_data: Cost realism data (turnover, capacity, etc.)
+
+        Returns:
+            CIOScore with all dimension scores and decision
+        """
+        # Score each dimension
+        statistical = self._score_statistical_dimension(hypothesis_id, experiment_data)
+        risk = self._score_risk_dimension(hypothesis_id, risk_data)
+        economic = self._score_economic_dimension(hypothesis_id, economic_data)
+        cost = self._score_cost_dimension(hypothesis_id, cost_data)
+
+        # Check for critical failures
+        critical_failure = self._check_critical_failures_risk(risk_data)
+
+        # Create score object
+        return CIOScore(
+            hypothesis_id=hypothesis_id,
+            statistical=statistical,
+            risk=risk,
+            economic=economic,
+            cost=cost,
+            critical_failure=critical_failure,
+        )

@@ -321,3 +321,137 @@ class TestEconomicScoring:
 
         assert result["thesis_strength"] == "strong"
         assert result["regime_alignment"] == "aligned"
+
+
+class TestFullScoring:
+    """Test complete scoring orchestration."""
+
+    @pytest.fixture
+    def agent(self):
+        """Create a CIOAgent for testing."""
+        with patch("hrp.agents.cio.PlatformAPI"):
+            return CIOAgent(job_id="test-job", actor="agent:cio-test")
+
+    def test_score_hypothesis_continue(self, agent):
+        """Test scoring a hypothesis that should get CONTINUE."""
+        # Mock data for a strong hypothesis
+        experiment_data = {
+            "sharpe": 1.5,
+            "stability_score": 0.6,
+            "mean_ic": 0.045,
+            "fold_cv": 1.2,
+        }
+        risk_data = {
+            "max_drawdown": 0.12,
+            "volatility": 0.11,
+            "regime_stable": True,
+            "sharpe_decay": 0.30,
+        }
+        economic_data = {
+            "thesis": "Strong momentum effect persists",
+            "current_regime": "Bull Market",
+            "black_box_count": 2,
+            "uniqueness": "novel",
+            "agent_reports": {},
+        }
+        cost_data = {
+            "slippage_survival": "stable",
+            "turnover": 0.25,
+            "capacity": "high",
+            "execution_complexity": "low",
+        }
+
+        with patch.object(agent, "_assess_thesis_with_claude") as mock_claude:
+            mock_claude.return_value = {
+                "thesis_strength": "strong",
+                "regime_alignment": "aligned",
+            }
+
+            score = agent.score_hypothesis(
+                hypothesis_id="HYP-2026-001",
+                experiment_data=experiment_data,
+                risk_data=risk_data,
+                economic_data=economic_data,
+                cost_data=cost_data,
+            )
+
+            # Should get CONTINUE decision
+            assert score.decision == "CONTINUE"
+            assert score.total >= 0.75
+
+    def test_score_hypothesis_kill(self, agent):
+        """Test scoring a hypothesis that should get KILL."""
+        experiment_data = {
+            "sharpe": 0.4,
+            "stability_score": 2.5,
+            "mean_ic": 0.01,
+            "fold_cv": 3.2,
+        }
+        risk_data = {
+            "max_drawdown": 0.28,
+            "volatility": 0.22,
+            "regime_stable": False,
+            "sharpe_decay": 0.55,
+        }
+        economic_data = {
+            "thesis": "Weak effect without clear mechanism",
+            "current_regime": "Bull Market",
+            "black_box_count": 7,
+            "uniqueness": "duplicate",
+            "agent_reports": {},
+        }
+        cost_data = {
+            "slippage_survival": "degraded",
+            "turnover": 0.90,
+            "capacity": "low",
+            "execution_complexity": "high",
+        }
+
+        with patch.object(agent, "_assess_thesis_with_claude") as mock_claude:
+            mock_claude.return_value = {
+                "thesis_strength": "weak",
+                "regime_alignment": "mismatch",
+            }
+
+            score = agent.score_hypothesis(
+                hypothesis_id="HYP-2026-003",
+                experiment_data=experiment_data,
+                risk_data=risk_data,
+                economic_data=economic_data,
+                cost_data=cost_data,
+            )
+
+            # Should get KILL decision
+            assert score.decision == "KILL"
+            assert score.total < 0.50
+
+    def test_score_hypothesis_pivot_critical_failure(self, agent):
+        """Test PIVOT decision on critical failure (target leakage)."""
+        # Good scores but with critical failure
+        experiment_data = {
+            "sharpe": 1.5,
+            "stability_score": 0.6,
+            "mean_ic": 0.045,
+            "fold_cv": 1.2,
+        }
+        risk_data = {
+            "max_drawdown": 0.40,  # CRITICAL: > 35%
+            "volatility": 0.12,
+            "regime_stable": True,
+            "sharpe_decay": 0.30,
+        }
+        economic_data = {"thesis": "...", "current_regime": "...", "agent_reports": {}}
+        cost_data = {"slippage_survival": "stable", "turnover": 0.30, "capacity": "high"}
+
+        with patch.object(agent, "_assess_thesis_with_claude"):
+            score = agent.score_hypothesis(
+                hypothesis_id="HYP-2026-005",
+                experiment_data=experiment_data,
+                risk_data=risk_data,
+                economic_data=economic_data,
+                cost_data=cost_data,
+            )
+
+            # Should get PIVOT despite good score
+            assert score.decision == "PIVOT"
+            assert score.critical_failure is True
