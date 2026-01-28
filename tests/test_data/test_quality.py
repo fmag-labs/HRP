@@ -212,6 +212,111 @@ class TestGapDetectionCheck:
         gap_issues = [i for i in result.issues if i.symbol == "GAPS"]
         assert len(gap_issues) > 0
 
+    def test_ignores_weekends_and_holidays(self, test_db):
+        """Should not flag gaps for weekends, NYSE holidays, or last trading day."""
+        from hrp.data.db import get_db
+        from hrp.utils.calendar import get_trading_days
+
+        db = get_db(test_db)
+
+        # Use a range that includes a weekend and a known NYSE holiday
+        # January 15, 2024 (Martin Luther King Jr. Day) is a NYSE holiday
+        # January 13-14, 2024 is Saturday-Sunday
+        with db.connection() as conn:
+            # Insert symbol first (required for foreign key)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, exchange, name)
+                VALUES ('COMPLETE', 'NYSE', 'Complete Test Corp')
+                """
+            )
+
+            # Insert prices for all weekdays EXCEPT the holiday and last trading day
+            # Trading days in range: Jan 8-12, Jan 16-19 (holiday on Jan 15, weekend Jan 13-14)
+            trading_days_to_insert = [
+                date(2024, 1, 8),   # Monday
+                date(2024, 1, 9),   # Tuesday
+                date(2024, 1, 10),  # Wednesday
+                date(2024, 1, 11),  # Thursday
+                date(2024, 1, 12),  # Friday
+                # Jan 13-14: weekend (skipped)
+                # Jan 15: MLK Day holiday (skipped)
+                date(2024, 1, 16),  # Tuesday
+                date(2024, 1, 17),  # Wednesday
+                date(2024, 1, 18),  # Thursday
+                # Jan 19: Friday - this is the last trading day, exclude from expected
+            ]
+
+            for dt in trading_days_to_insert:
+                conn.execute(
+                    """
+                    INSERT INTO prices (symbol, date, close, source)
+                    VALUES ('COMPLETE', ?, 100.00, 'test')
+                    """,
+                    (dt,),
+                )
+
+        # Get expected NYSE trading days (excluding last one)
+        expected_trading_days = get_trading_days(date(2024, 1, 8), date(2024, 1, 19))
+        # Exclude the last trading day from expectations
+        if len(expected_trading_days) > 0:
+            expected_trading_days = expected_trading_days[:-1]
+
+        check = GapDetectionCheck(test_db, lookback_days=12)
+        result = check.run(date(2024, 1, 19))
+
+        # Should not flag gaps for COMPLETE symbol
+        complete_issues = [i for i in result.issues if i.symbol == "COMPLETE"]
+        assert len(complete_issues) == 0, (
+            f"Should not flag gaps when all expected trading days have data. "
+            f"Expected {len(expected_trading_days)} trading days, got issues: {complete_issues}"
+        )
+
+    def test_flags_missing_trading_day(self, test_db):
+        """Should flag a symbol with significant gaps in actual trading day data."""
+        from hrp.data.db import get_db
+
+        db = get_db(test_db)
+
+        # Use a date range with known trading days
+        with db.connection() as conn:
+            # Insert symbol first (required for foreign key)
+            conn.execute(
+                """
+                INSERT INTO symbols (symbol, exchange, name)
+                VALUES ('MISSING', 'NYSE', 'Missing Test Corp')
+                """
+            )
+
+            # Insert for only 3 out of ~6 expected trading days
+            # This should be flagged since 3/6 = 50% < 80% threshold
+            trading_days = [
+                date(2024, 1, 8),   # Monday
+                date(2024, 1, 9),   # Tuesday
+                # Skip Wednesday Jan 10
+                # Skip Thursday Jan 11
+                # Skip Friday Jan 12
+                # Jan 13-14: weekend
+                # Jan 15: MLK Day holiday
+                date(2024, 1, 16),  # Tuesday
+            ]
+
+            for dt in trading_days:
+                conn.execute(
+                    """
+                    INSERT INTO prices (symbol, date, close, source)
+                    VALUES ('MISSING', ?, 100.00, 'test')
+                    """,
+                    (dt,),
+                )
+
+        check = GapDetectionCheck(test_db, lookback_days=10)
+        result = check.run(date(2024, 1, 17))
+
+        # Should flag the missing trading days (only has 2 out of ~6 expected)
+        missing_issues = [i for i in result.issues if i.symbol == "MISSING"]
+        assert len(missing_issues) > 0, "Should flag missing trading days"
+
 
 class TestStaleDataCheck:
     """Tests for stale data detection."""

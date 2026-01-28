@@ -23,6 +23,7 @@ import pandas as pd
 from loguru import logger
 
 from hrp.data.db import get_db
+from hrp.utils.calendar import get_trading_days
 
 
 class IssueSeverity(Enum):
@@ -340,15 +341,15 @@ class GapDetectionCheck(QualityCheck):
 
         start_date = as_of_date - timedelta(days=self.lookback_days)
 
-        # Get all trading dates (dates where we have ANY prices)
-        trading_dates_query = """
-            SELECT DISTINCT date
-            FROM prices
-            WHERE date BETWEEN ? AND ?
-            ORDER BY date
-        """
-        trading_dates_result = self._db.fetchall(trading_dates_query, (start_date, as_of_date))
-        trading_dates = {row[0] for row in trading_dates_result}
+        # Get NYSE trading days using the calendar (excludes weekends and holidays)
+        trading_days_index = get_trading_days(start_date, as_of_date)
+
+        # Exclude the last trading day from expected days
+        # (data may not be available yet for the most recent trading day)
+        if len(trading_days_index) > 1:
+            trading_days_index = trading_days_index[:-1]
+
+        trading_dates = {d.date() for d in trading_days_index}
 
         if len(trading_dates) < 2:
             elapsed_ms = (time.time() - start_time) * 1000
@@ -359,30 +360,18 @@ class GapDetectionCheck(QualityCheck):
                 run_time_ms=elapsed_ms,
             )
 
-        # Get price coverage per symbol
-        coverage_query = """
-            SELECT
-                symbol,
-                COUNT(DISTINCT date) as price_days,
-                MIN(date) as first_date,
-                MAX(date) as last_date
+        # Get symbols that might have gaps
+        # First get all symbols with prices in the date range
+        symbols_query = """
+            SELECT DISTINCT symbol
             FROM prices
             WHERE date BETWEEN ? AND ?
-            GROUP BY symbol
-            HAVING COUNT(DISTINCT date) < ?
         """
+        symbols_result = self._db.fetchall(symbols_query, (start_date, as_of_date))
+        all_symbols = [row[0] for row in symbols_result]
 
-        # Expect at least 80% of trading days
-        expected_days = int(len(trading_dates) * 0.8)
-        coverage_result = self._db.fetchall(
-            coverage_query, (start_date, as_of_date, expected_days)
-        )
-
-        for row in coverage_result:
-            symbol, price_days, first_date, last_date = row
-            missing_days = len(trading_dates) - price_days
-
-            # Get the actual missing dates for this symbol
+        for symbol in all_symbols:
+            # Get the actual dates this symbol has data for
             symbol_dates_query = """
                 SELECT DISTINCT date FROM prices
                 WHERE symbol = ? AND date BETWEEN ? AND ?
@@ -391,25 +380,42 @@ class GapDetectionCheck(QualityCheck):
                 symbol_dates_query, (symbol, start_date, as_of_date)
             )
             symbol_dates = {row[0] for row in symbol_dates_result}
-            missing_dates = sorted(trading_dates - symbol_dates)[:5]  # First 5 missing
 
-            severity = IssueSeverity.CRITICAL if missing_days > 10 else IssueSeverity.WARNING
+            # Count only NYSE trading days (exclude weekends and holidays)
+            symbol_nyse_dates = symbol_dates & trading_dates
+            price_days = len(symbol_nyse_dates)
 
-            issues.append(
-                QualityIssue.create(
-                    check_name=self.name,
-                    severity=severity,
-                    symbol=symbol,
-                    date=as_of_date,
-                    description=f"Missing {missing_days} trading days in last {self.lookback_days} days",
-                    details={
-                        "price_days": price_days,
-                        "expected_days": len(trading_dates),
-                        "missing_days": missing_days,
-                        "sample_missing_dates": [str(d) for d in missing_dates],
-                    },
+            # Count missing NYSE trading days
+            missing_nyse_days = trading_dates - symbol_dates
+            missing_days = len(missing_nyse_days)
+
+            # Expect at least 80% of trading days
+            expected_days = int(len(trading_dates) * 0.8)
+
+            # Expect at least 80% of trading days
+            expected_days = int(len(trading_dates) * 0.8)
+
+            if price_days < expected_days and missing_days > 0:
+                # Get sample of missing dates
+                missing_dates = sorted(list(missing_nyse_days))[:5]  # First 5 missing
+
+                severity = IssueSeverity.CRITICAL if missing_days > 10 else IssueSeverity.WARNING
+
+                issues.append(
+                    QualityIssue.create(
+                        check_name=self.name,
+                        severity=severity,
+                        symbol=symbol,
+                        date=as_of_date,
+                        description=f"Missing {missing_days} trading days in last {self.lookback_days} days",
+                        details={
+                            "price_days": price_days,
+                            "expected_days": len(trading_dates),
+                            "missing_days": missing_days,
+                            "sample_missing_dates": [str(d) for d in missing_dates],
+                        },
+                    )
                 )
-            )
 
         elapsed_ms = (time.time() - start_time) * 1000
 
