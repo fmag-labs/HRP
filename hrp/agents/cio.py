@@ -1,0 +1,103 @@
+"""
+CIO Agent - Chief Investment Officer Agent.
+
+Makes strategic decisions about research lines and manages paper portfolio.
+Advisory mode: presents recommendations, awaits user approval.
+"""
+
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Literal, Optional
+
+
+@dataclass
+class CIOScore:
+    """
+    Balanced score across 4 dimensions for a hypothesis.
+
+    Attributes:
+        hypothesis_id: The hypothesis being scored
+        statistical: Statistical quality score (0-1)
+        risk: Risk profile score (0-1)
+        economic: Economic rationale score (0-1)
+        cost: Cost realism score (0-1)
+        critical_failure: Whether a critical failure was detected
+    """
+
+    hypothesis_id: str
+    statistical: float
+    risk: float
+    economic: float
+    cost: float
+    critical_failure: bool = False
+
+    @property
+    def total(self) -> float:
+        """Calculate total score as average of 4 dimensions."""
+        return (self.statistical + self.risk + self.economic + self.cost) / 4
+
+    @property
+    def decision(self) -> Literal["CONTINUE", "CONDITIONAL", "KILL", "PIVOT"]:
+        """
+        Map score to decision.
+
+        Returns:
+            CONTINUE: Score >= 0.75, no critical failure
+            CONDITIONAL: Score 0.50-0.74, no critical failure
+            KILL: Score < 0.50, no critical failure
+            PIVOT: Critical failure detected (overrides score)
+        """
+        if self.critical_failure:
+            return "PIVOT"
+
+        if self.total >= 0.75:
+            return "CONTINUE"
+        if self.total >= 0.50:
+            return "CONDITIONAL"
+        return "KILL"
+
+
+@dataclass
+class CIODecision:
+    """
+    Single decision for a hypothesis.
+
+    Attributes:
+        hypothesis_id: The hypothesis this decision is for
+        decision: One of CONTINUE, CONDITIONAL, KILL, PIVOT
+        score: The CIOScore that led to this decision
+        rationale: Human-readable explanation
+        evidence: Supporting data (MLflow runs, reports, metrics)
+        paper_allocation: For CONTINUE decisions, portfolio weight (0-1)
+        pivot_direction: For PIVOT decisions, suggested redirect
+    """
+
+    hypothesis_id: str
+    decision: Literal["CONTINUE", "CONDITIONAL", "KILL", "PIVOT"]
+    score: CIOScore
+    rationale: str
+    evidence: dict
+    paper_allocation: Optional[float] = None
+    pivot_direction: Optional[str] = None
+
+
+@dataclass
+class CIOReport:
+    """
+    Complete weekly CIO report.
+
+    Attributes:
+        report_date: When the report was generated
+        decisions: All decisions made in this review cycle
+        portfolio_state: Current paper portfolio state
+        market_regime: Current market regime context
+        next_actions: Prioritized action items
+        report_path: Path to the generated markdown report
+    """
+
+    report_date: date
+    decisions: list[CIODecision]
+    portfolio_state: dict
+    market_regime: str
+    next_actions: list[dict]
+    report_path: str
