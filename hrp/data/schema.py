@@ -280,6 +280,49 @@ TABLES = {
             estimated_cost DECIMAL(10,6)
         )
     """,
+    # === ML Drift Monitoring tables ===
+    "model_drift_checks": """
+        CREATE TABLE IF NOT EXISTS model_drift_checks (
+            check_id INTEGER PRIMARY KEY,
+            model_name VARCHAR NOT NULL,
+            model_version VARCHAR,
+            check_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            drift_type VARCHAR NOT NULL,
+            feature_name VARCHAR,
+            metric_value DECIMAL(10,4),
+            is_drift_detected BOOLEAN,
+            threshold_value DECIMAL(10,4),
+            details JSON,
+            CHECK (drift_type IN ('prediction', 'feature', 'concept'))
+        )
+    """,
+    "model_performance_history": """
+        CREATE TABLE IF NOT EXISTS model_performance_history (
+            history_id INTEGER PRIMARY KEY,
+            model_name VARCHAR NOT NULL,
+            model_version VARCHAR,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            metric_name VARCHAR NOT NULL,
+            metric_value DECIMAL(10,4),
+            sample_size INTEGER
+        )
+    """,
+    "model_deployments": """
+        CREATE TABLE IF NOT EXISTS model_deployments (
+            deployment_id INTEGER PRIMARY KEY,
+            model_name VARCHAR NOT NULL,
+            model_version VARCHAR NOT NULL,
+            environment VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            deployed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            deployed_by VARCHAR NOT NULL,
+            deployment_config JSON,
+            validation_results JSON,
+            rollback_reason VARCHAR,
+            CHECK (environment IN ('staging', 'production', 'shadow')),
+            CHECK (status IN ('pending', 'active', 'rolled_back'))
+        )
+    """,
 }
 
 # Indexes for performance
@@ -293,6 +336,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_hypotheses_status ON hypotheses(status)",
     "CREATE INDEX IF NOT EXISTS idx_symbols_exchange ON symbols(exchange)",
     "CREATE INDEX IF NOT EXISTS idx_hp_trials_hypothesis ON hyperparameter_trials(hypothesis_id)",
+    # ML Drift Monitoring indexes
+    "CREATE INDEX IF NOT EXISTS idx_drift_checks_model_timestamp ON model_drift_checks(model_name, check_timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_drift_checks_drift_type ON model_drift_checks(drift_type, is_drift_detected)",
+    "CREATE INDEX IF NOT EXISTS idx_perf_history_model_timestamp ON model_performance_history(model_name, timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_deployments_model_env ON model_deployments(model_name, environment, status)",
 ]
 
 

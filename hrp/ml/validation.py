@@ -87,6 +87,8 @@ class WalkForwardConfig:
         hyperparameters: Model-specific hyperparameters
         feature_selection: Whether to apply feature selection per fold
         max_features: Maximum features to select per fold
+        purge_days: Days between train and test (prevents temporal leakage)
+        embargo_days: Days excluded from test after training period
     """
 
     model_type: str
@@ -101,6 +103,8 @@ class WalkForwardConfig:
     feature_selection: bool = True
     max_features: int = 20
     n_jobs: int = 1  # Number of parallel jobs (-1 = use all cores)
+    purge_days: int = 0  # Days between train and test (gap after training)
+    embargo_days: int = 0  # Days excluded from test metrics
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -117,10 +121,20 @@ class WalkForwardConfig:
             )
         if self.n_folds < 2:
             raise ValueError(f"n_folds must be >= 2, got {self.n_folds}")
+        if self.purge_days < 0:
+            raise ValueError(f"purge_days must be >= 0, got {self.purge_days}")
+        if self.embargo_days < 0:
+            raise ValueError(f"embargo_days must be >= 0, got {self.embargo_days}")
+        if self.purge_days + self.embargo_days > self.min_train_periods:
+            raise ValueError(
+                f"purge_days + embargo_days ({self.purge_days + self.embargo_days}) "
+                f"cannot exceed min_train_periods ({self.min_train_periods})"
+            )
 
         logger.debug(
             f"WalkForwardConfig created: {self.model_type}, "
-            f"{self.n_folds} folds, {self.window_type} window"
+            f"{self.n_folds} folds, {self.window_type} window, "
+            f"purge={self.purge_days}d, embargo={self.embargo_days}d"
         )
 
 
@@ -189,41 +203,67 @@ def generate_folds(
     """
     Generate train/test date ranges for walk-forward validation.
 
+    Respects purge_days and embargo_days to prevent temporal leakage:
+    - Purge: Gap between end of training and start of test (execution lag)
+    - Embargo: Initial test period excluded from metrics (implementation delay)
+
+    Example with purge=5, embargo=10:
+        Train: [2020-01-01 to 2020-12-31]
+        Purge: [2021-01-01 to 2021-01-05] (excluded)
+        Test:  [2021-01-06 to 2021-01-15] (embargo, excluded from metrics)
+        Eval:  [2021-01-16 to ...] (included in metrics)
+
     Args:
         config: Walk-forward configuration
         available_dates: List of available dates in the data (sorted)
 
     Returns:
         List of tuples: (train_start, train_end, test_start, test_end)
+        Note: test_start includes embargo period if specified
     """
     # Filter dates to config range
     dates = [d for d in available_dates if config.start_date <= d <= config.end_date]
 
-    if len(dates) < config.min_train_periods + config.n_folds:
+    # Account for purge/embargo periods in validation
+    required_dates = (
+        config.min_train_periods
+        + config.purge_days
+        + config.embargo_days
+        + config.n_folds
+    )
+    if len(dates) < required_dates:
         raise ValueError(
             f"Insufficient data: {len(dates)} dates available, "
-            f"need at least {config.min_train_periods + config.n_folds}"
+            f"need at least {required_dates} "
+            f"(min_train={config.min_train_periods}, purge={config.purge_days}, "
+            f"embargo={config.embargo_days}, min_folds={config.n_folds})"
         )
 
     n_dates = len(dates)
     n_folds = config.n_folds
 
-    # Calculate test period size (divide remaining dates after min_train equally)
-    # Reserve min_train_periods for the first fold's training
-    test_dates_total = n_dates - config.min_train_periods
+    # Calculate test period size (divide remaining dates after min_train + purge + embargo)
+    reserved_dates = config.min_train_periods + config.purge_days + config.embargo_days
+    test_dates_total = n_dates - reserved_dates
     test_period_size = test_dates_total // n_folds
 
     if test_period_size < 1:
         raise ValueError(
             f"Test period too small: {test_period_size} dates. "
-            f"Reduce n_folds or min_train_periods."
+            f"Reduce n_folds, min_train_periods, purge_days, or embargo_days."
         )
 
     folds = []
 
     for fold_idx in range(n_folds):
         # Test period: fixed size, non-overlapping
-        test_start_idx = config.min_train_periods + fold_idx * test_period_size
+        # Add purge_days and embargo_days gap before test
+        test_start_idx = (
+            config.min_train_periods
+            + config.purge_days
+            + config.embargo_days
+            + fold_idx * test_period_size
+        )
         test_end_idx = test_start_idx + test_period_size - 1
 
         # Handle last fold: include remaining dates
@@ -238,18 +278,20 @@ def generate_folds(
             # Expanding: always start from the beginning
             train_start = dates[0]
         else:
-            # Rolling: fixed window size ending just before test
-            train_start_idx = max(0, test_start_idx - config.min_train_periods)
+            # Rolling: fixed window size ending just before purge period
+            train_start_idx = max(0, test_start_idx - config.purge_days - config.min_train_periods)
             train_start = dates[train_start_idx]
 
-        # Train ends one day before test starts
-        train_end_idx = test_start_idx - 1
+        # Train ends before purge period
+        # Purge creates gap between train_end and test_start
+        train_end_idx = test_start_idx - config.purge_days - 1
         train_end = dates[train_end_idx]
 
         folds.append((train_start, train_end, test_start, test_end))
 
         logger.debug(
             f"Fold {fold_idx}: train [{train_start} to {train_end}], "
+            f"purge={config.purge_days}d, "
             f"test [{test_start} to {test_end}]"
         )
 

@@ -736,6 +736,142 @@ print(f"Best params: {result.best_params}")
 # result.sharpe_diff_median: aggregated across folds
 ```
 
+### ML Model Registry & Deployment
+```python
+from hrp.api.platform import PlatformAPI
+from datetime import date
+
+api = PlatformAPI()
+
+# Register a trained model in the Model Registry
+model_version = api.register_model(
+    model=trained_model,
+    model_name="momentum_strategy",
+    model_type="ridge",
+    features=["momentum_20d", "volatility_60d"],
+    target="returns_20d",
+    metrics={"sharpe": 0.85, "ic": 0.07},
+    hyperparameters={"alpha": 1.0},
+    training_date=date.today(),
+    hypothesis_id="HYP-2026-001",
+)
+# Returns: "1" (model version)
+
+# Get current production model
+prod_model = api.get_production_model("momentum_strategy")
+print(f"Production version: {prod_model['model_version']}")
+
+# Deploy model to staging (with validation checks)
+result = api.deploy_model(
+    model_name="momentum_strategy",
+    model_version="1",
+    validation_data=validation_df,
+    environment="staging",
+    actor="user",
+)
+# Returns: {"status": "success", "validation_passed": True, ...}
+
+# Promote to production (with shadow mode)
+result = api.deploy_model(
+    model_name="momentum_strategy",
+    model_version="1",
+    validation_data=validation_df,
+    environment="production",
+)
+# Returns: {"status": "success", ...}
+
+# Rollback if needed
+api.rollback_model(
+    model_name="momentum_strategy",
+    to_version="1",
+    actor="user",
+    reason="Performance degradation",
+)
+```
+
+### ML Production Drift Monitoring
+```python
+from hrp.api.platform import PlatformAPI
+
+api = PlatformAPI()
+
+# Check for model drift (KL divergence, PSI, IC decay)
+drift_results = api.check_model_drift(
+    model_name="momentum_strategy",
+    current_data=current_features_df,
+    reference_data=historical_features_df,
+    predictions_col="prediction",
+    target_col="returns_20d",
+    reference_ic=0.07,  # IC from training
+)
+
+# Check summary
+print(f"Drift detected: {drift_results['summary']['drift_detected']}")
+print(f"Checks performed: {drift_results['summary']['total_checks']}")
+
+# Individual drift results
+for check_name, result in drift_results.items():
+    if check_name != "summary":
+        print(f"{check_name}: drift={result['is_drift_detected']}, value={result['metric_value']:.4f}")
+
+# Alert thresholds:
+# - KL divergence > 0.2 (prediction drift)
+# - PSI > 0.2 (feature drift)
+# - IC decay > 0.2 (concept drift)
+```
+
+### ML Model Inference
+```python
+from hrp.api.platform import PlatformAPI
+from datetime import date
+
+api = PlatformAPI()
+
+# Generate predictions using deployed model
+predictions = api.predict_model(
+    model_name="momentum_strategy",
+    symbols=["AAPL", "MSFT", "GOOGL"],
+    as_of_date=date.today(),
+    # model_version=None  # None for production model
+)
+# Returns DataFrame: symbol, date, prediction, model_name, model_version
+
+# Retrieve historical predictions
+history = api.get_model_predictions(
+    model_name="momentum_strategy",
+    start_date=date(2026, 1, 1),
+    end_date=date(2026, 1, 31),
+)
+# Returns DataFrame with prediction metrics over time
+```
+
+### Purge/Embargo Periods in Walk-Forward Validation
+```python
+from hrp.ml import WalkForwardConfig, walk_forward_validate
+from datetime import date
+
+# Add purge/embargo to prevent temporal leakage
+config = WalkForwardConfig(
+    model_type='ridge',
+    target='returns_20d',
+    features=['momentum_20d', 'volatility_60d'],
+    start_date=date(2015, 1, 1),
+    end_date=date(2023, 12, 31),
+    n_folds=5,
+    purge_days=5,      # Gap between train and test (execution lag)
+    embargo_days=10,   # Initial test period excluded (implementation delay)
+)
+
+result = walk_forward_validate(
+    config=config,
+    symbols=['AAPL', 'MSFT', 'GOOGL'],
+)
+
+# Purge: prevents look-ahead bias from execution lag
+# Embargo: accounts for implementation delay
+# Both default to 0 (backward compatible with existing behavior)
+```
+
 ### Configure ATR trailing stops
 ```python
 from hrp.research.config import BacktestConfig, StopLossConfig
@@ -946,17 +1082,62 @@ hrp/
 
 See `docs/plans/Project-Status.md` for detailed tier-based status
 
-# Project Instructions
+# Project Specific Guidelines
 
-## Always run tests after edits
-after making any code changes, run 'pytest tests/ -v'
+1. Think Before Coding
+Don't assume. Don't hide confusion. Surface tradeoffs.
 
-## Things to Remember
-Before writing any code:
-1. state how you will verify this change works (test, bash command, browser check, etc.)
-2. Write the test or verification step first
-3. Then implement the code
-4. Run verification and iterate until it passes
+Before implementing:
+
+State your assumptions explicitly. If uncertain, ask.
+If multiple interpretations exist, present them - don't pick silently.
+If a simpler approach exists, say so. Push back when warranted.
+If something is unclear, stop. Name what's confusing. Ask.
+2. Simplicity First
+Minimum code that solves the problem. Nothing speculative.
+
+No features beyond what was asked.
+No abstractions for single-use code.
+No "flexibility" or "configurability" that wasn't requested.
+No error handling for impossible scenarios.
+If you write 200 lines and it could be 50, rewrite it.
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+3. Surgical Changes
+Touch only what you must. Clean up only your own mess.
+
+When editing existing code:
+
+Don't "improve" adjacent code, comments, or formatting.
+Don't refactor things that aren't broken.
+Match existing style, even if you'd do it differently.
+If you notice unrelated dead code, mention it - don't delete it.
+When your changes create orphans:
+
+Remove imports/variables/functions that YOUR changes made unused.
+Don't remove pre-existing dead code unless asked.
+The test: Every changed line should trace directly to the user's request.
+
+4. Goal-Driven Execution
+Define success criteria. Loop until verified.
+
+Transform tasks into verifiable goals:
+
+"Add validation" → "Write tests for invalid inputs, then make them pass"
+"Fix the bug" → "Write a test that reproduces it, then make it pass"
+"Refactor X" → "Ensure tests pass before and after"
+For multi-step tasks, state a brief plan:
+
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+
+
+
+
+
 
 
 

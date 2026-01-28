@@ -1403,3 +1403,419 @@ class PlatformAPI:
             )
         except Exception as e:
             logger.error(f"Failed to send quality alerts: {e}")
+
+    # === ML Model Registry Methods ===
+
+    def register_model(
+        self,
+        model: Any,
+        model_name: str,
+        model_type: str,
+        features: list[str],
+        target: str,
+        metrics: dict[str, float],
+        hyperparameters: dict[str, Any],
+        training_date: date,
+        hypothesis_id: str | None = None,
+        experiment_id: str | None = None,
+    ) -> str:
+        """
+        Register a trained model in the Model Registry.
+
+        Args:
+            model: Trained model object
+            model_name: Name for the registered model
+            model_type: Type of model (e.g., "ridge", "lightgbm")
+            features: List of feature names used for training
+            target: Target variable name
+            metrics: Dictionary of performance metrics
+            hyperparameters: Model hyperparameters
+            training_date: Date when model was trained
+            hypothesis_id: Associated hypothesis ID if applicable
+            experiment_id: MLflow experiment ID for the run
+
+        Returns:
+            model_version: Version string of the registered model
+        """
+        from hrp.ml.registry import ModelRegistry
+
+        registry = ModelRegistry()
+        model_version = registry.register_model(
+            model=model,
+            model_name=model_name,
+            model_type=model_type,
+            features=features,
+            target=target,
+            metrics=metrics,
+            hyperparameters=hyperparameters,
+            training_date=training_date,
+            hypothesis_id=hypothesis_id,
+            experiment_id=experiment_id,
+        )
+
+        # Log to lineage
+        self.log_event(
+            event_type="experiment_linked" if hypothesis_id else "experiment_run",
+            actor="user",
+            details={
+                "model_name": model_name,
+                "model_version": model_version,
+                "model_type": model_type,
+                "features": features,
+                "target": target,
+                "metrics": metrics,
+            },
+            hypothesis_id=hypothesis_id,
+            experiment_id=experiment_id,
+        )
+
+        return model_version
+
+    def get_production_model(self, model_name: str) -> dict[str, Any] | None:
+        """
+        Get the current production model version.
+
+        Args:
+            model_name: Name of the registered model
+
+        Returns:
+            Dict with model details or None if no production model
+        """
+        from hrp.ml.registry import ModelRegistry
+
+        registry = ModelRegistry()
+        model = registry.get_production_model(model_name)
+
+        if model is None:
+            return None
+
+        return {
+            "model_name": model.model_name,
+            "model_version": model.model_version,
+            "model_type": model.model_type,
+            "stage": model.stage,
+            "run_id": model.run_id,
+            "registered_at": model.registered_at,
+        }
+
+    def promote_model_to_production(
+        self,
+        model_name: str,
+        model_version: str,
+        actor: str = "user",
+    ) -> None:
+        """
+        Promote a staging model to production.
+
+        Args:
+            model_name: Name of the registered model
+            model_version: Version string to promote
+            actor: Who is promoting (default: "user")
+        """
+        from hrp.ml.registry import ModelRegistry
+
+        registry = ModelRegistry()
+        registry.promote_to_production(
+            model_name=model_name,
+            model_version=model_version,
+            actor=actor,
+        )
+
+        # Log to lineage
+        self.log_event(
+            event_type="deployment_approved",
+            actor=actor,
+            details={
+                "model_name": model_name,
+                "model_version": model_version,
+                "stage": "production",
+            },
+        )
+
+    def rollback_model(
+        self,
+        model_name: str,
+        to_version: str,
+        actor: str = "user",
+        reason: str = "Manual rollback",
+    ) -> None:
+        """
+        Rollback production model to a previous version.
+
+        Args:
+            model_name: Name of the registered model
+            to_version: Version string to rollback to
+            actor: Who is rolling back
+            reason: Reason for rollback
+        """
+        from hrp.ml.registry import ModelRegistry
+
+        registry = ModelRegistry()
+        registry.rollback_production(
+            model_name=model_name,
+            to_version=to_version,
+            actor=actor,
+            reason=reason,
+        )
+
+        # Log to lineage
+        self.log_event(
+            event_type="validation_failed",
+            actor=actor,
+            details={
+                "model_name": model_name,
+                "to_version": to_version,
+                "reason": reason,
+            },
+        )
+
+    # === ML Drift Monitoring Methods ===
+
+    def check_model_drift(
+        self,
+        model_name: str,
+        current_data: pd.DataFrame,
+        reference_data: pd.DataFrame | None = None,
+        model_version: str | None = None,
+        predictions_col: str = "prediction",
+        target_col: str | None = None,
+        reference_ic: float | None = None,
+    ) -> dict[str, Any]:
+        """
+        Check for model drift and send alerts if detected.
+
+        Args:
+            model_name: Name of the model
+            current_data: Current feature/prediction DataFrame
+            reference_data: Reference DataFrame (None for auto-detect)
+            model_version: Optional model version
+            predictions_col: Column name for predictions
+            target_col: Column name for target (for concept drift)
+            reference_ic: Reference IC for concept drift check
+
+        Returns:
+            Dict with drift results and alerts
+        """
+        from hrp.monitoring.drift_monitor import DriftMonitor
+
+        monitor = DriftMonitor()
+        drift_results = monitor.run_drift_check(
+            model_name=model_name,
+            current_data=current_data,
+            reference_data=reference_data,
+            model_version=model_version,
+            predictions_col=predictions_col,
+            target_col=target_col,
+            reference_ic=reference_ic,
+        )
+
+        # Convert to dict for JSON response
+        results_dict = {
+            name: result.to_dict() for name, result in drift_results.items()
+        }
+
+        # Add summary
+        results_dict["summary"] = {
+            "total_checks": len(drift_results),
+            "drift_detected": any(r.is_drift_detected for r in drift_results.values()),
+            "num_drifts": sum(1 for r in drift_results.values() if r.is_drift_detected),
+        }
+
+        # Log to lineage
+        self.log_event(
+            event_type="validation_passed"
+            if not results_dict["summary"]["drift_detected"]
+            else "validation_failed",
+            actor="system",
+            details={
+                "model_name": model_name,
+                "model_version": model_version,
+                "drift_check_type": "full",
+                **results_dict["summary"],
+            },
+        )
+
+        return results_dict
+
+    # === ML Deployment Methods ===
+
+    def deploy_model(
+        self,
+        model_name: str,
+        model_version: str,
+        validation_data: pd.DataFrame,
+        actor: str = "user",
+        environment: str = "staging",
+    ) -> dict[str, Any]:
+        """
+        Deploy a model to staging or production.
+
+        Args:
+            model_name: Name of the model
+            model_version: Version of the model
+            validation_data: Data for validation checks
+            actor: Who is deploying
+            environment: Target environment ("staging" or "production")
+
+        Returns:
+            Dict with deployment result
+        """
+        from hrp.ml.deployment import DeploymentPipeline
+
+        pipeline = DeploymentPipeline()
+
+        if environment == "staging":
+            result = pipeline.deploy_to_staging(
+                model_name=model_name,
+                model_version=model_version,
+                validation_data=validation_data,
+                actor=actor,
+            )
+        elif environment == "production":
+            result = pipeline.promote_to_production(
+                model_name=model_name,
+                actor=actor,
+                model_version=model_version,
+            )
+        else:
+            raise ValueError(f"Invalid environment: {environment}")
+
+        # Log to lineage
+        self.log_event(
+            event_type="deployment_approved" if result.status == "success" else "deployment_rejected",
+            actor=actor,
+            details={
+                "model_name": model_name,
+                "model_version": model_version,
+                "environment": environment,
+                "status": result.status,
+                "validation_passed": result.validation_passed,
+            },
+        )
+
+        return result.to_dict()
+
+    def rollback_deployment(
+        self,
+        model_name: str,
+        to_version: str,
+        actor: str = "user",
+        reason: str = "Manual rollback",
+    ) -> dict[str, Any]:
+        """
+        Rollback a deployment to a previous version.
+
+        Args:
+            model_name: Name of the model
+            to_version: Version to rollback to
+            actor: Who is rolling back
+            reason: Reason for rollback
+
+        Returns:
+            Dict with rollback result
+        """
+        from hrp.ml.deployment import DeploymentPipeline
+
+        pipeline = DeploymentPipeline()
+        result = pipeline.rollback_production(
+            model_name=model_name,
+            to_version=to_version,
+            actor=actor,
+            reason=reason,
+        )
+
+        return result.to_dict()
+
+    # === ML Inference Methods ===
+
+    def predict_model(
+        self,
+        model_name: str,
+        symbols: list[str],
+        as_of_date: date,
+        model_version: str | None = None,
+        feature_names: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """
+        Generate predictions using a deployed model.
+
+        Args:
+            model_name: Name of the registered model
+            symbols: List of symbols to predict
+            as_of_date: Date to generate predictions for
+            model_version: Specific version (None for production)
+            feature_names: Optional list of feature names
+
+        Returns:
+            DataFrame with columns: symbol, date, prediction, model_name, model_version
+        """
+        from hrp.ml.inference import ModelPredictor
+
+        predictor = ModelPredictor(
+            model_name=model_name,
+            model_version=model_version,
+        )
+
+        predictions = predictor.predict_batch(
+            symbols=symbols,
+            as_of_date=as_of_date,
+            feature_names=feature_names,
+        )
+
+        # Log to lineage
+        self.log_event(
+            event_type="experiment_run",
+            actor="user",
+            details={
+                "model_name": model_name,
+                "model_version": predictor.model_version,
+                "num_predictions": len(predictions),
+                "as_of_date": str(as_of_date),
+            },
+        )
+
+        return predictions
+
+    def get_model_predictions(
+        self,
+        model_name: str,
+        start_date: date,
+        end_date: date,
+        model_version: str | None = None,
+    ) -> pd.DataFrame:
+        """
+        Retrieve historical predictions from performance history.
+
+        Args:
+            model_name: Name of the model
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+            model_version: Optional model version filter
+
+        Returns:
+            DataFrame with historical predictions
+        """
+        query = """
+            SELECT
+                timestamp,
+                metric_name,
+                metric_value,
+                sample_size
+            FROM model_performance_history
+            WHERE model_name = ?
+              AND timestamp >= ?
+              AND timestamp <= ?
+        """
+
+        params = [model_name, start_date, end_date]
+
+        if model_version:
+            query += " AND model_version = ?"
+            params.append(model_version)
+
+        query += " ORDER BY timestamp DESC"
+
+        try:
+            return self._db.fetchdf(query, params)
+        except Exception:
+            return pd.DataFrame()
