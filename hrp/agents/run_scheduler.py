@@ -170,6 +170,23 @@ def main():
         default="20:00",
         help="Time to generate weekly report (HH:MM format, default: 20:00)",
     )
+    parser.add_argument(
+        "--with-quality-monitoring",
+        action="store_true",
+        help="Enable daily quality monitoring with threshold-based alerting (6 AM ET by default)",
+    )
+    parser.add_argument(
+        "--quality-monitor-time",
+        type=str,
+        default="06:00",
+        help="Time to run quality monitoring (HH:MM format, default: 06:00)",
+    )
+    parser.add_argument(
+        "--health-threshold",
+        type=float,
+        default=90.0,
+        help="Health score threshold for warnings (default: 90.0)",
+    )
 
     args = parser.parse_args()
 
@@ -231,6 +248,15 @@ def main():
     if args.with_weekly_report:
         logger.info("Setting up weekly research report generation...")
         scheduler.setup_weekly_report(report_time=args.weekly_report_time)
+
+    # Setup quality monitoring
+    if args.with_quality_monitoring:
+        logger.info("Setting up daily quality monitoring...")
+        scheduler.setup_quality_monitoring(
+            check_time=args.quality_monitor_time,
+            health_threshold=args.health_threshold,
+            send_alerts=True,
+        )
 
     # Setup research agent triggers (event-driven pipeline)
     if args.with_research_triggers:

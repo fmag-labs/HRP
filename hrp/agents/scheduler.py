@@ -1155,6 +1155,65 @@ class IngestionScheduler:
 
         return watcher
 
+    def setup_quality_monitoring(
+        self,
+        check_time: str = "06:00",
+        health_threshold: float = 90.0,
+        send_alerts: bool = True,
+    ) -> None:
+        """
+        Configure daily data quality monitoring with threshold-based alerting.
+
+        Schedules automated quality checks that:
+        - Generate daily quality reports
+        - Track health score trends
+        - Send email alerts for critical issues
+        - Monitor data freshness
+        - Detect anomaly spikes
+
+        Args:
+            check_time: Time to run quality check (HH:MM format, default: 06:00)
+            health_threshold: Health score below this triggers warning (default: 90.0)
+            send_alerts: Whether to send email alerts (default: True)
+        """
+        from hrp.monitoring.quality_monitor import DataQualityMonitor, MonitoringThresholds
+
+        # Parse and validate time
+        hour, minute = _parse_time(check_time, "check_time")
+
+        # Create thresholds
+        thresholds = MonitoringThresholds(health_score_warning=health_threshold)
+
+        # Create monitoring job function
+        def run_quality_monitor():
+            monitor = DataQualityMonitor(
+                thresholds=thresholds,
+                send_alerts=send_alerts,
+            )
+            result = monitor.run_daily_check()
+
+            # Log results
+            logger.info(
+                f"Quality monitor: score={result.health_score:.0f}/100, "
+                f"trend={result.trend}, alerts={sum(result.alerts_sent.values())}"
+            )
+
+            # Store result for dashboard
+            if result.recommendations:
+                logger.info(f"Recommendations: {'; '.join(result.recommendations[:3])}")
+
+        # Schedule quality monitoring job
+        self.add_job(
+            func=run_quality_monitor,
+            job_id="quality_monitoring",
+            trigger=CronTrigger(hour=hour, minute=minute, timezone=ET_TIMEZONE),
+            name="Daily Quality Monitoring",
+        )
+        logger.info(
+            f"Scheduled quality monitoring at {check_time} ET "
+            f"(health_threshold: {health_threshold}, send_alerts: {send_alerts})"
+        )
+
     def start_with_triggers(self) -> None:
         """Start the scheduler with research agent triggers enabled."""
         if not hasattr(self, "_event_watcher"):
