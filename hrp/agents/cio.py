@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Literal, Optional
 
+from hrp.agents.sdk_agent import SDKAgent
+from hrp.api.platform import PlatformAPI
+
 
 @dataclass
 class CIOScore:
@@ -101,3 +104,65 @@ class CIOReport:
     market_regime: str
     next_actions: list[dict]
     report_path: str
+
+
+class CIOAgent(SDKAgent):
+    """
+    Chief Investment Officer Agent.
+
+    Makes strategic decisions about research lines and manages paper portfolio.
+    Advisory mode: presents recommendations, awaits user approval.
+    """
+
+    agent_name = "cio"
+    agent_version = "1.0.0"
+
+    DEFAULT_THRESHOLDS = {
+        "min_sharpe": 1.0,
+        "max_drawdown": 0.20,
+        "sharpe_decay_limit": 0.50,
+        "min_ic": 0.03,
+        "max_turnover": 0.50,
+        "critical_sharpe_decay": 0.75,
+        "critical_target_leakage": 0.95,
+        "critical_max_drawdown": 0.35,
+        "min_profitable_regimes": 2,
+    }
+
+    def __init__(
+        self,
+        job_id: str,
+        actor: str,
+        api: PlatformAPI | None = None,
+        thresholds: dict | None = None,
+        dependencies: list[str] | None = None,
+    ):
+        """
+        Initialize CIO Agent.
+
+        Args:
+            job_id: Unique job identifier
+            actor: Actor identity (e.g., "agent:cio")
+            api: PlatformAPI instance (created if None)
+            thresholds: Custom decision thresholds
+            dependencies: List of data requirements
+        """
+        super().__init__(
+            job_id=job_id,
+            actor=actor,
+            dependencies=dependencies or [],
+        )
+        self.api = api or PlatformAPI()
+        self.thresholds = {**self.DEFAULT_THRESHOLDS, **(thresholds or {})}
+
+    def execute(self) -> dict[str, any]:
+        """
+        Execute CIO Agent logic.
+
+        This is a placeholder implementation to satisfy the abstract base class.
+        The actual weekly review logic will be implemented in later tasks.
+
+        Returns:
+            Empty dict for now
+        """
+        return {}
