@@ -55,8 +55,8 @@ streamlit run hrp/dashboard/app.py
 ### Running MLflow UI
 
 ```bash
-mlflow ui --backend-store-uri sqlite:///$HOME/hrp-data/mlflow/mlflow.db
-# Open http://localhost:5000
+mlflow ui --backend-store-uri sqlite:///$HOME/hrp-data/mlflow/mlflow.db --port 5010
+# Open http://localhost:5010
 ```
 
 ### Running the Scheduler

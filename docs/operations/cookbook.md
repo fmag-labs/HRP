@@ -92,7 +92,7 @@ Once your environment is configured, you can start all HRP services:
 
 **Access Points:**
 - Dashboard: http://localhost:8501
-- MLflow UI: http://localhost:5000
+- MLflow UI: http://localhost:5010
 
 **Note:** The startup script does **not** initialize the database. The database is created automatically on first access. For fresh installations, ensure you've completed section 1.1 (Initial Setup) before starting services.
 
@@ -1746,7 +1746,7 @@ The `startup.sh` script provides a convenient way to manage all HRP services fro
 
 **Available Services:**
 - **Dashboard** (Streamlit) - http://localhost:8501
-- **MLflow UI** - http://localhost:5000
+- **MLflow UI** - http://localhost:5010
 - **Scheduler** - Background data ingestion and research agents
 
 **Start All Services:**
@@ -1825,7 +1825,7 @@ Enables the complete research agent pipeline:
 ========================================
 
   Dashboard:      RUNNING (PID: 12345, Port: 8501)
-  MLflow UI:      RUNNING (PID: 12346, Port: 5000)
+  MLflow UI:      RUNNING (PID: 12346, Port: 5010)
   Scheduler:      RUNNING (PID: 12347)
 
   Total: 3 running, 0 stopped
@@ -1839,22 +1839,23 @@ Enables the complete research agent pipeline:
 The startup script automatically detects port conflicts and provides helpful error messages:
 
 ```
-[ERROR] Port 5000 is already in use (PID: 419)
-[INFO] Try: HRP_MLFLOW_PORT=5001 ./scripts/startup.sh start --mlflow-only
+[ERROR] Port 5010 is already in use (PID: 419)
+[INFO] Try: HRP_MLFLOW_PORT=5011 ./scripts/startup.sh start --mlflow-only
 ```
 
 **Common Port Conflicts:**
 
 | Port | Typical Conflict | Solution |
 |------|------------------|----------|
-| 5000 | macOS ControlCenter (AirPlay Receiver) | Use port 5001: `HRP_MLFLOW_PORT=5001 ./scripts/startup.sh start` |
+| 5000 | macOS ControlCenter (AirPlay Receiver) | Default changed to 5010, or use `HRP_MLFLOW_PORT=5011` |
 | 8501 | Previous dashboard instance | Run `./scripts/startup.sh stop` first, or kill old process |
+| 5010 | Another MLflow instance | Use `HRP_MLFLOW_PORT=5011 ./scripts/startup.sh start` |
 
 **Check what's using a port:**
 
 ```bash
 # See which process is using a port
-lsof -i :5000
+lsof -i :5010
 
 # Kill a process by PID
 kill <PID>
