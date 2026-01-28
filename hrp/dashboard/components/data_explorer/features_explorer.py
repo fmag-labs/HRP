@@ -88,9 +88,13 @@ def render_features_explorer() -> None:
 
         # Get feature data
         with st.spinner("Loading feature distribution..."):
+            # Calculate as_of_date from recent_days
+            from datetime import date, timedelta
+            as_of = date.today() - timedelta(days=days or 252)
+
             df = QueryEngine.get_feature_values(
                 _features=(hist_feature,),
-                _recent_days=days or 252,
+                _as_of_date=as_of,
                 _limit=100000,
             )
 
@@ -214,9 +218,13 @@ def render_features_explorer() -> None:
         st.subheader(f"{x_feature} vs {y_feature}")
 
         with st.spinner("Loading feature data..."):
+            # Calculate as_of_date from recent_days
+            from datetime import date, timedelta
+            as_of = date.today() - timedelta(days=days or 252)
+
             df = QueryEngine.get_feature_values(
                 _features=(x_feature, y_feature),
-                _recent_days=days or 252,
+                _as_of_date=as_of,
                 _limit=100000,
             )
 
