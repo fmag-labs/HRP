@@ -10,6 +10,7 @@ from hrp.agents.alpha_researcher import (
     AlphaResearcherReport,
     HypothesisAnalysis,
 )
+from hrp.agents.cio import CIOAgent, CIODecision, CIOReport, CIOScore
 from hrp.agents.jobs import (
     FeatureComputationJob,
     FundamentalsIngestionJob,
@@ -84,6 +85,11 @@ __all__ = [
     "AlphaResearcherConfig",
     "AlphaResearcherReport",
     "HypothesisAnalysis",
+    # CIO Agent
+    "CIOAgent",
+    "CIOScore",
+    "CIODecision",
+    "CIOReport",
     # Scheduler
     "IngestionScheduler",
     "LineageEventWatcher",
