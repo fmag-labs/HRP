@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "hrp-research": {
+      "command": "python",
+      "args": ["-m", "hrp.mcp"],
+      "env": {
+        "PYTHONPATH": "/home/user/HRP"
+      }
+    }
+  }
+}
