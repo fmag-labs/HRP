@@ -525,6 +525,58 @@ scheduler.setup_weekly_report(report_time='20:00')
 scheduler.start()
 ```
 
+### Use CIO Agent for hypothesis decision-making
+```python
+from hrp.agents import CIOAgent
+from unittest.mock import patch
+
+with patch("hrp.agents.cio.PlatformAPI"):
+    agent = CIOAgent(job_id="cio-weekly-001", actor="agent:cio")
+
+# Score a hypothesis across all 4 dimensions
+experiment_data = {
+    "sharpe": 1.5,
+    "stability_score": 0.6,
+    "mean_ic": 0.045,
+    "fold_cv": 1.2,
+}
+risk_data = {
+    "max_drawdown": 0.12,
+    "volatility": 0.11,
+    "regime_stable": True,
+    "sharpe_decay": 0.30,
+}
+economic_data = {
+    "thesis": "Strong momentum effect persists",
+    "current_regime": "Bull Market",
+    "black_box_count": 2,
+    "uniqueness": "novel",
+    "agent_reports": {},
+}
+cost_data = {
+    "slippage_survival": "stable",
+    "turnover": 0.25,
+    "capacity": "high",
+    "execution_complexity": "low",
+}
+
+score = agent.score_hypothesis(
+    hypothesis_id="HYP-2026-001",
+    experiment_data=experiment_data,
+    risk_data=risk_data,
+    economic_data=economic_data,
+    cost_data=cost_data,
+)
+
+print(f"Decision: {score.decision}")  # CONTINUE, CONDITIONAL, KILL, or PIVOT
+print(f"Total Score: {score.total:.2f}")  # 0.75+ for CONTINUE
+print(f"Statistical: {score.statistical:.2f}")
+print(f"Risk: {score.risk:.2f}")
+print(f"Economic: {score.economic:.2f}")
+print(f"Cost: {score.cost:.2f}")
+```
+
+
 ### Run a multi-factor strategy backtest
 ```python
 from hrp.research.strategies import generate_multifactor_signals
@@ -947,7 +999,7 @@ print(f"Regime stability: {'PASS' if stability.passed else 'FAIL'}")
 
 ```bash
 pytest tests/ -v
-# Pass rate: 99.9% (2,548 passed, 1 skipped)
+# Pass rate: 99.85% (2,642 passed, 4 failed, 1 skipped)
 ```
 
 ## Performance Metrics (Empyrical-powered)

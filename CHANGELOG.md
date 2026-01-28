@@ -1,5 +1,34 @@
 ## [Unreleased]
 
+## [1.7.2] - 2026-01-27
+
+### Added
+- **CIO Agent (T1-Core)**: Chief Investment Officer Agent for strategic hypothesis decision-making:
+  - 4-dimension scoring framework: statistical, risk, economic, cost
+  - Decision logic: CONTINUE (≥0.75), CONDITIONAL (0.50-0.74), KILL (<0.50), PIVOT (critical failure)
+  - Statistical dimension: Linear scoring for Sharpe, stability, IC, fold CV
+  - Risk dimension: Max DD, volatility (linear), regime stability, Sharpe decay (binary)
+  - Cost dimension: Turnover (linear), slippage survival, capacity, execution complexity (ordinal)
+  - Economic dimension: Thesis strength, regime alignment (ordinal), feature interpretability (linear), uniqueness (ordinal)
+  - Claude API integration for economic assessment with fallback to moderate/neutral
+  - Equal-risk portfolio allocation: weight = target_risk / volatility with proportional cap scaling
+  - Database schema: 6 tables for paper portfolio tracking (paper_portfolio, paper_portfolio_history, paper_portfolio_trades, cio_decisions, model_cemetery, cio_threshold_history)
+  - Portfolio constraints: 100% gross exposure, 30% sector concentration, 50% annual turnover, 15% max drawdown
+
+### Testing
+- 94 new tests for CIO Agent functionality:
+  - tests/test_agents/test_cio_dataclasses.py: CIOScore, CIODecision, CIOReport dataclass tests
+  - tests/test_agents/test_cio_agent.py: CIOAgent initialization tests
+  - tests/test_agents/test_cio_scoring.py: Statistical, Risk, Cost, Economic, Full scoring tests
+  - tests/test_agents/test_cio_portfolio.py: Portfolio allocation and constraint tests
+  - tests/test_agents/test_cio_exports.py: Package export tests
+  - tests/test_data/test_cio_schema.py: Database schema tests
+- 2,642 tests passing (99.85% pass rate, 4 pre-existing ML deployment failures unrelated to CIO Agent)
+
+### Documentation
+- docs/plans/2026-01-27-cio-agent-tdd.md: CIO Agent TDD implementation plan
+- docs/plans/2026-01-27-cio-agent-implementation.md: CIO Agent implementation summary
+
 ## [1.7.1] - 2026-01-27
 
 ### Changed
