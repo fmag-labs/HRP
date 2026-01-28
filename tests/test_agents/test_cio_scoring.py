@@ -182,3 +182,67 @@ class TestRiskScoring:
         risk_data["max_drawdown"] = 0.20
         risk_data["sharpe_decay"] = 0.80
         assert agent._check_critical_failures_risk(risk_data) is True
+
+
+class TestCostScoring:
+    """Test cost realism dimension scoring."""
+
+    @pytest.fixture
+    def agent(self):
+        """Create a CIOAgent for testing."""
+        with patch("hrp.agents.cio.PlatformAPI"):
+            return CIOAgent(job_id="test-job", actor="agent:cio-test")
+
+    def test_score_cost_perfect(self, agent):
+        """Test perfect cost score (all metrics at target)."""
+        cost_data = {
+            "slippage_survival": "stable",  # Survives 2x slippage
+            "turnover": 0.20,  # Below 50% target (good)
+            "capacity": "high",  # >$10M (good)
+            "execution_complexity": "low",  # Low complexity (good)
+        }
+
+        score = agent._score_cost_dimension("HYP-2026-001", cost_data)
+
+        assert score >= 0.9
+
+    def test_score_cost_linear_turnover(self, agent):
+        """Test turnover scoring: 100%->0, 50%->0.5, 20%->1.0."""
+        # At bad threshold (100%)
+        assert agent._score_turnover(1.00) == pytest.approx(0.0, abs=0.01)
+        # At target (50%)
+        assert agent._score_turnover(0.50) == pytest.approx(0.5, abs=0.01)
+        # At good threshold (20%)
+        assert agent._score_turnover(0.20) == pytest.approx(1.0, abs=0.01)
+
+    def test_score_cost_ordinal_capacity(self, agent):
+        """Test capacity scoring is ordinal."""
+        assert agent._score_capacity("low") == pytest.approx(0.0, abs=0.01)   # <$1M
+        assert agent._score_capacity("medium") == pytest.approx(0.5, abs=0.01)  # $1-10M
+        assert agent._score_capacity("high") == pytest.approx(1.0, abs=0.01)    # >$10M
+
+    def test_score_cost_ordinal_slippage(self, agent):
+        """Test slippage survival scoring is ordinal."""
+        assert agent._score_slippage_survival("collapse") == pytest.approx(0.0, abs=0.01)
+        assert agent._score_slippage_survival("degraded") == pytest.approx(0.5, abs=0.01)
+        assert agent._score_slippage_survival("stable") == pytest.approx(1.0, abs=0.01)
+
+    def test_score_cost_ordinal_complexity(self, agent):
+        """Test execution complexity scoring is ordinal."""
+        assert agent._score_execution_complexity("high") == pytest.approx(0.0, abs=0.01)
+        assert agent._score_execution_complexity("medium") == pytest.approx(0.5, abs=0.01)
+        assert agent._score_execution_complexity("low") == pytest.approx(1.0, abs=0.01)
+
+    def test_score_cost_dimension(self, agent):
+        """Test full cost dimension scoring."""
+        cost_data = {
+            "slippage_survival": "stable",
+            "turnover": 0.35,  # Between target and good
+            "capacity": "medium",
+            "execution_complexity": "medium",
+        }
+
+        score = agent._score_cost_dimension("HYP-2026-001", cost_data)
+
+        # Should be middle score
+        assert 0.4 <= score <= 0.7

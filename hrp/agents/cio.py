@@ -386,3 +386,90 @@ class CIOAgent(SDKAgent):
             decay_score = self._score_sharpe_decay(risk_data.get("sharpe_decay", 0.60))
 
         return (max_dd_score + vol_score + regime_score + decay_score) / 4
+
+    def _score_turnover(self, turnover: float) -> float:
+        """
+        Score annual turnover: 100%->0, 50%->0.5, 20%->1.0.
+
+        Lower is better for turnover (less trading = lower costs).
+
+        Args:
+            turnover: Annual turnover rate (as decimal, e.g., 0.50 for 50%)
+
+        Returns:
+            Score 0-1, clamped
+        """
+        bad, target, good = 1.00, 0.50, 0.20
+        if turnover >= bad:
+            return 0.0
+        if turnover <= good:
+            return 1.0
+        if turnover >= target:
+            # Between bad and target: scale 0 to 0.5
+            return 0.5 * (bad - turnover) / (bad - target)
+        else:
+            # Between target and good: scale 0.5 to 1.0
+            return 0.5 + 0.5 * (target - turnover) / (target - good)
+
+    def _score_capacity(self, capacity: str) -> float:
+        """
+        Score capacity estimate (ordinal).
+
+        Args:
+            capacity: One of "low" (<$1M), "medium" ($1-10M), "high" (>$10M)
+
+        Returns:
+            Score 0-1
+        """
+        scores = {"low": 0.0, "medium": 0.5, "high": 1.0}
+        return scores.get(capacity.lower(), 0.5)
+
+    def _score_slippage_survival(self, survival: str) -> float:
+        """
+        Score slippage survival (ordinal).
+
+        Args:
+            survival: One of "collapse", "degraded", "stable"
+
+        Returns:
+            Score 0-1
+        """
+        scores = {"collapse": 0.0, "degraded": 0.5, "stable": 1.0}
+        return scores.get(survival.lower(), 0.5)
+
+    def _score_execution_complexity(self, complexity: str) -> float:
+        """
+        Score execution complexity (ordinal).
+
+        Args:
+            complexity: One of "high", "medium", "low"
+
+        Returns:
+            Score 0-1
+        """
+        scores = {"high": 0.0, "medium": 0.5, "low": 1.0}
+        return scores.get(complexity.lower(), 0.5)
+
+    def _score_cost_dimension(self, hypothesis_id: str, cost_data: dict) -> float:
+        """
+        Score cost realism dimension.
+
+        Averages scores for: Slippage survival, turnover, capacity, complexity.
+
+        Args:
+            hypothesis_id: The hypothesis being scored
+            cost_data: Dict with slippage_survival, turnover, capacity, execution_complexity
+
+        Returns:
+            Score 0-1
+        """
+        slippage_score = self._score_slippage_survival(
+            cost_data.get("slippage_survival", "degraded")
+        )
+        turnover_score = self._score_turnover(cost_data.get("turnover", 1.00))
+        capacity_score = self._score_capacity(cost_data.get("capacity", "medium"))
+        complexity_score = self._score_execution_complexity(
+            cost_data.get("execution_complexity", "medium")
+        )
+
+        return (slippage_score + turnover_score + capacity_score + complexity_score) / 4
