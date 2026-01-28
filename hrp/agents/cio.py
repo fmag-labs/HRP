@@ -267,3 +267,122 @@ class CIOAgent(SDKAgent):
         fold_cv_score = self._score_fold_cv(experiment_data.get("fold_cv", 3.0))
 
         return (sharpe_score + stability_score + ic_score + fold_cv_score) / 4
+
+    def _score_max_drawdown(self, max_dd: float) -> float:
+        """
+        Score max drawdown: 30%->0, 20%->0.5, 10%->1.0.
+
+        Lower is better for drawdown.
+
+        Args:
+            max_dd: Maximum drawdown (as decimal, e.g., 0.20 for 20%)
+
+        Returns:
+            Score 0-1, clamped
+        """
+        bad, target, good = 0.30, 0.20, 0.10
+        if max_dd >= bad:
+            return 0.0
+        if max_dd <= good:
+            return 1.0
+        return (bad - max_dd) / (bad - good)
+
+    def _score_volatility(self, vol: float) -> float:
+        """
+        Score annual volatility: 25%->0, 15%->0.5, 10%->1.0.
+
+        Lower is better for volatility.
+
+        Args:
+            vol: Annualized volatility (as decimal)
+
+        Returns:
+            Score 0-1, clamped
+        """
+        bad, target, good = 0.25, 0.15, 0.10
+        if vol >= bad:
+            return 0.0
+        if vol <= good:
+            return 1.0
+        if vol >= target:
+            # Between bad and target: scale 0 to 0.5
+            return 0.5 * (bad - vol) / (bad - target)
+        else:
+            # Between target and good: scale 0.5 to 1.0
+            return 0.5 + 0.5 * (target - vol) / (target - good)
+
+    def _score_regime_stability(self, stable: bool) -> float:
+        """
+        Score regime stability (binary).
+
+        Args:
+            stable: Whether >= 2/3 regimes are profitable
+
+        Returns:
+            1.0 if stable, 0.0 if not
+        """
+        return 1.0 if stable else 0.0
+
+    def _score_sharpe_decay(self, decay: float) -> float:
+        """
+        Score Sharpe decay (binary).
+
+        Decay <= 50% is good (no overfitting).
+
+        Args:
+            decay: Sharpe decay ratio (train_sharpe - test_sharpe) / train_sharpe
+
+        Returns:
+            1.0 if decay <= 0.50, 0.0 if > 0.50
+        """
+        limit = self.thresholds["sharpe_decay_limit"]
+        return 1.0 if decay <= limit else 0.0
+
+    def _check_critical_failures_risk(self, risk_data: dict) -> bool:
+        """
+        Check for critical failures in risk dimension.
+
+        Critical:
+        - Max drawdown > 35%
+        - Sharpe decay > 75%
+
+        Args:
+            risk_data: Dict with max_drawdown, sharpe_decay
+
+        Returns:
+            True if critical failure detected
+        """
+        max_dd = risk_data.get("max_drawdown", 0)
+        sharpe_decay = risk_data.get("sharpe_decay", 0)
+
+        if max_dd > self.thresholds["critical_max_drawdown"]:
+            return True
+        if sharpe_decay > self.thresholds["critical_sharpe_decay"]:
+            return True
+
+        return False
+
+    def _score_risk_dimension(self, hypothesis_id: str, risk_data: dict) -> float:
+        """
+        Score risk profile dimension.
+
+        Averages scores for: Max DD, volatility, regime stability, Sharpe decay.
+
+        Args:
+            hypothesis_id: The hypothesis being scored
+            risk_data: Dict with max_drawdown, volatility, regime_stable, sharpe_decay_ok
+
+        Returns:
+            Score 0-1
+        """
+        max_dd_score = self._score_max_drawdown(risk_data.get("max_drawdown", 0.30))
+        vol_score = self._score_volatility(risk_data.get("volatility", 0.25))
+        regime_score = self._score_regime_stability(risk_data.get("regime_stable", False))
+
+        # Handle both sharpe_decay_ok (boolean) and sharpe_decay (float)
+        if "sharpe_decay_ok" in risk_data:
+            decay_score = 1.0 if risk_data["sharpe_decay_ok"] else 0.0
+        else:
+            decay_score = self._score_sharpe_decay(risk_data.get("sharpe_decay", 0.60))
+
+        return (max_dd_score + vol_score + regime_score + decay_score) / 4

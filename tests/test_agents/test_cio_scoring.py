@@ -99,3 +99,86 @@ class TestStatisticalScoring:
         assert agent._score_fold_cv(3.0) == pytest.approx(0.0, abs=0.01)
         assert agent._score_fold_cv(2.0) == pytest.approx(0.5, abs=0.01)
         assert agent._score_fold_cv(1.0) == pytest.approx(1.0, abs=0.01)
+
+
+class TestRiskScoring:
+    """Test risk dimension scoring."""
+
+    @pytest.fixture
+    def agent(self):
+        """Create a CIOAgent for testing."""
+        with patch("hrp.agents.cio.PlatformAPI"):
+            return CIOAgent(job_id="test-job", actor="agent:cio-test")
+
+    def test_score_risk_perfect(self, agent):
+        """Test perfect risk score (all metrics at target)."""
+        risk_data = {
+            "max_drawdown": 0.10,  # Below 20% target (good)
+            "volatility": 0.10,  # Below 15% target (good)
+            "regime_stable": True,  # Binary good
+            "sharpe_decay_ok": True,  # Binary good
+        }
+
+        score = agent._score_risk_dimension("HYP-2026-001", risk_data)
+
+        assert score >= 0.9
+
+    def test_score_risk_mixed(self, agent):
+        """Test mixed risk score."""
+        risk_data = {
+            "max_drawdown": 0.18,  # Near target
+            "volatility": 0.14,  # Near target
+            "regime_stable": True,
+            "sharpe_decay_ok": False,  # Bad
+        }
+
+        score = agent._score_risk_dimension("HYP-2026-001", risk_data)
+
+        # 3 good (including 2 linear near target) + 1 bad = middle score
+        assert 0.4 <= score <= 0.7
+
+    def test_score_risk_linear_max_dd(self, agent):
+        """Test max drawdown scoring: 30%->0, 20%->0.5, 10%->1.0."""
+        # At bad threshold (30%)
+        assert agent._score_max_drawdown(0.30) == pytest.approx(0.0, abs=0.01)
+        # At target (20%)
+        assert agent._score_max_drawdown(0.20) == pytest.approx(0.5, abs=0.01)
+        # At good threshold (10%)
+        assert agent._score_max_drawdown(0.10) == pytest.approx(1.0, abs=0.01)
+
+    def test_score_risk_linear_volatility(self, agent):
+        """Test volatility scoring: 25%->0, 15%->0.5, 10%->1.0."""
+        assert agent._score_volatility(0.25) == pytest.approx(0.0, abs=0.01)
+        assert agent._score_volatility(0.15) == pytest.approx(0.5, abs=0.01)
+        assert agent._score_volatility(0.10) == pytest.approx(1.0, abs=0.01)
+
+    def test_score_risk_binary_regime(self, agent):
+        """Test regime stability is binary."""
+        assert agent._score_regime_stability(True) == 1.0
+        assert agent._score_regime_stability(False) == 0.0
+
+    def test_score_risk_binary_sharpe_decay(self, agent):
+        """Test Sharpe decay is binary (<= 50% is good)."""
+        assert agent._score_sharpe_decay(0.40) == 1.0  # Below limit
+        assert agent._score_sharpe_decay(0.50) == 1.0  # At limit
+        assert agent._score_sharpe_decay(0.60) == 0.0  # Above limit
+
+    def test_check_critical_failure_risk(self, agent):
+        """Test critical failure detection in risk dimension."""
+        # No critical failure
+        risk_data = {
+            "max_drawdown": 0.20,
+            "volatility": 0.15,
+            "regime_stable": True,
+            "sharpe_decay": 0.40,
+        }
+        assert agent._check_critical_failures_risk(risk_data) is False
+
+        # Critical: Max DD > 35%
+        risk_data["max_drawdown"] = 0.40
+        assert agent._check_critical_failures_risk(risk_data) is True
+
+        # Critical: Sharpe decay > 75%
+        risk_data["max_drawdown"] = 0.20
+        risk_data["sharpe_decay"] = 0.80
+        assert agent._check_critical_failures_risk(risk_data) is True
