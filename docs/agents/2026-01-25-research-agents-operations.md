@@ -8,7 +8,18 @@
 
 ## Overview
 
-This document projects how the 8-agent research team would operate day-to-day, leveraging HRP platform capabilities. It covers the ML experimentation pipeline, timeline from cold start to presented strategies, and the CIO's role.
+This document projects how the **9-agent research team** would operate day-to-day, leveraging HRP platform capabilities. It covers the ML experimentation pipeline, timeline from cold start to presented strategies, and the CIO Agent's autonomous decision-making role.
+
+**Agents:**
+1. Signal Scientist - Feature discovery and hypothesis creation
+2. Alpha Researcher - Hypothesis refinement and regime analysis
+3. ML Scientist - Model training and walk-forward validation
+4. ML Quality Sentinel - Experiment auditing (overfitting, leakage)
+5. Quant Developer - Strategy backtesting
+6. Validation Analyst - Stress testing and robustness checks
+7. Risk Manager - Portfolio-level risk review
+8. Report Generator - Research synthesis and reporting
+9. **CIO Agent** - Autonomous hypothesis scoring and deployment decisions
 
 ---
 
@@ -56,7 +67,7 @@ IngestionScheduler triggers:
 | **Monday** | Alpha Researcher reviews draft hypotheses, refines falsification criteria, promotes to `testing` |
 | **Tuesday-Wednesday** | ML Scientist runs walk-forward validation on `testing` hypotheses |
 | **Thursday** | Validation Analyst stress tests + Risk Manager reviews |
-| **Friday** | Report Generator compiles weekly summary for CIO review |
+| **Friday** | **CIO Agent scores validated hypotheses** + Report Generator compiles weekly summary |
 | **Saturday** | Fundamentals ingestion (weekly job) |
 | **Sunday** | System idle |
 
@@ -95,7 +106,26 @@ IngestionScheduler triggers:
 - Checks portfolio-level impact if strategy deployed
 - Can flag concerns or veto, but **cannot approve**
 
-### Friday - Report Generator + CIO
+### Friday - Report Generator + CIO Agent
+
+**CIO Agent runs autonomous scoring:**
+```python
+# Score all validated hypotheses
+for hypothesis in validated_hypotheses:
+    score = cio_agent.score_hypothesis(
+        hypothesis_id=hypothesis.id,
+        experiment_data=extract_ml_metrics(hypothesis),
+        risk_data=extract_risk_metrics(hypothesis),
+        economic_data=extract_economic_context(hypothesis),
+        cost_data=extract_execution_costs(hypothesis),
+    )
+
+    # Log decision to lineage
+    if score.decision == "CONTINUE":
+        mark_for_deployment(hypothesis.id)
+    elif score.decision == "KILL":
+        update_hypothesis_status(hypothesis.id, "rejected")
+```
 
 **Report Generator produces:**
 ```
@@ -108,13 +138,21 @@ HYPOTHESES SUMMARY
 - 1 passed validation (Validation Analyst)
 - 0 vetoed by Risk Manager
 
-AWAITING CIO DECISION
+CIO AGENT DECISIONS
 ┌─────────────────────────────────────────────────────┐
 │ HYP-2026-042: Momentum + Low Vol Factor            │
-│ Status: Validated ✓                                 │
-│ Sharpe: 1.2 | Max DD: 12% | Stability: 0.7         │
-│ Risk Manager: No concerns                          │
-│ Action Required: APPROVE / REJECT for paper trade  │
+│ Decision: CONTINUE ✓ (0.78)                        │
+│ Statistical: 0.82 | Risk: 0.75 | Economic: 0.70   │
+│ Status: Awaiting human CIO approval for paper      │
+├─────────────────────────────────────────────────────┤
+│ HYP-2026-043: RSI Mean Reversion                   │
+│ Decision: CONDITIONAL (0.65)                       │
+│ Statistical: 0.70 | Risk: 0.50 | Economic: 0.80   │
+│ Action: Refine risk controls, retest              │
+├─────────────────────────────────────────────────────┤
+│ HYP-2026-044: Multi-factor Composite               │
+│ Decision: KILL (0.42)                              │
+│ Reason: Poor statistical significance, Sharpe decay │
 └─────────────────────────────────────────────────────┘
 
 EXPERIMENTS THIS WEEK
@@ -140,6 +178,7 @@ NEXT WEEK PRIORITIES
 | **5. Strategy Backtest** | Quant Developer | Runs full backtest with realistic costs | `run_backtest`, `generate_ml_predicted_signals` |
 | **6. Stress Testing** | Validation Analyst | Parameter sensitivity, regime stress | `check_parameter_sensitivity` |
 | **7. Risk Review** | Risk Manager | Portfolio fit, drawdown limits | `validate_strategy` |
+| **8. CIO Decision** | **CIO Agent** | Scores across 4 dimensions, makes deployment decision | `CIOAgent.score_hypothesis()` |
 
 ---
 
@@ -345,7 +384,7 @@ for regime in ['2008_crisis', '2020_covid', '2022_rates']:
     run_backtest(signals, regime_period)
 ```
 
-### Day 8 - Risk Review & Report
+### Day 8 - Risk Review, CIO Agent Scoring & Report
 
 **Risk Manager** validates:
 ```python
@@ -358,7 +397,19 @@ result = validate_strategy({
 # Checks: Sharpe > 0.5, trades > 100, DD < 25%, etc.
 ```
 
-**Report Generator** compiles findings for CIO review.
+**CIO Agent** scores across 4 dimensions:
+```python
+score = cio_agent.score_hypothesis(
+    hypothesis_id="HYP-2026-001",
+    experiment_data={"sharpe": 1.1, "stability_score": 0.7, ...},
+    risk_data={"max_drawdown": 0.15, "volatility": 0.12, ...},
+    economic_data={"thesis": "...", "uniqueness": "novel", ...},
+    cost_data={"turnover": 0.25, "capacity": "high", ...},
+)
+# Decision: CONTINUE (0.78) → Approved for human review
+```
+
+**Report Generator** compiles findings for human CIO review.
 
 ---
 
@@ -373,9 +424,10 @@ result = validate_strategy({
 | **6** | Quant Developer backtests winners | Full backtest metrics |
 | **7** | Validation Analyst stress tests | Robustness reports |
 | **8** | Risk Manager reviews | Approved/flagged strategies |
-| **8** | Report Generator compiles | **Strategies presented to CIO** |
+| **8** | **CIO Agent scores** | Deployment decisions (CONTINUE/CONDITIONAL/KILL) |
+| **8** | Report Generator compiles | **Strategies presented to human CIO** |
 
-**Result: ~8 calendar days from cold start to first ML strategies ready for review.**
+**Result: ~8 calendar days from cold start to first ML strategies ready for human review.**
 
 ---
 
@@ -401,9 +453,12 @@ Week N:
 ├── Mon: Signal Scientist finds 2 new signals
 ├── Tue: Alpha Researcher creates 1 hypothesis
 ├── Wed-Thu: ML Scientist tests (existing pipeline warm)
-├── Fri: CIO reviews 1-2 new strategies + ongoing refinements
+├── Fri: CIO Agent scores + CIO reviews 1-2 new strategies + ongoing refinements
 
 Throughput: 1-3 new validated strategies per week
+- ~40% automatically approved by CIO Agent (CONTINUE)
+- ~30% sent back for refinement (CONDITIONAL)
+- ~30% rejected (KILL/PIVOT)
 ```
 
 ---
@@ -416,12 +471,49 @@ Throughput: 1-3 new validated strategies per week
 - Modify deployed strategies
 - Approve capital allocation
 
-### What the CIO Does
+### CIO Agent: Autonomous Scoring & Decision Making
 
-**1. Weekly Review (~30 min Friday)**
+The **CIO Agent** is an autonomous agent that evaluates validated hypotheses across 4 dimensions and makes deployment decisions:
+
+```python
+from hrp.agents import CIOAgent
+
+agent = CIOAgent(job_id="cio-weekly-001", actor="agent:cio")
+
+# Score a hypothesis across all 4 dimensions
+score = agent.score_hypothesis(
+    hypothesis_id="HYP-2026-001",
+    experiment_data={"sharpe": 1.5, "stability_score": 0.6, ...},
+    risk_data={"max_drawdown": 0.12, "volatility": 0.11, ...},
+    economic_data={"thesis": "...", "uniqueness": "novel", ...},
+    cost_data={"turnover": 0.25, "capacity": "high", ...},
+)
+
+print(f"Decision: {score.decision}")  # CONTINUE, CONDITIONAL, KILL, PIVOT
+print(f"Total Score: {score.total:.2f}")  # 0.75+ for CONTINUE
+```
+
+**Scoring Dimensions:**
+| Dimension | Weight | Key Metrics |
+|-----------|--------|-------------|
+| **Statistical** | 35% | Sharpe ratio, stability, IC, fold consistency |
+| **Risk** | 30% | Max drawdown, volatility, regime stability, Sharpe decay |
+| **Economic** | 25% | Thesis quality, uniqueness, black box count, agent reports |
+| **Cost** | 10% | Slippage survival, turnover, capacity, execution complexity |
+
+**Decisions:**
+- **CONTINUE** (Total ≥ 0.75): Approved for paper trading
+- **CONDITIONAL** (0.60-0.74): Needs refinement, retest after changes
+- **KILL** (< 0.60): Rejected, insufficient promise
+- **PIVOT**: Different direction shows promise (e.g., signal works inversely)
+
+### What the Human CIO Does
+
+**1. Weekly Review (~15 min Friday)**
 - Read Report Generator's summary
-- Review validated hypotheses awaiting decision
-- Approve/reject for paper trading
+- Review CIO Agent decisions (override if needed)
+- Final approve/reject for paper trading deployment
+- Review any KILL/PIVOT decisions for strategic insights
 
 **2. Strategic Direction**
 - "Focus on low-turnover strategies this month"
@@ -430,36 +522,37 @@ Throughput: 1-3 new validated strategies per week
 
 **3. Ad-hoc Queries via MCP**
 ```
-CIO: "Why did HYP-2026-042 fail in 2022?"
+CIO: "Why did the CIO Agent reject HYP-2026-042?"
 
-→ Quant Developer pulls the backtest
-→ Alpha Researcher adds regime context
-→ Response: "Strategy relies on momentum continuation;
-   2022 had 4 regime shifts that broke the signal"
+→ CIO Agent provides detailed score breakdown
+→ Risk Manager adds context
+→ Response: "Statistical score was weak (0.4) due to Sharpe decay >50%"
 ```
 
-**4. Final Authority**
+**4. Final Authority (unchanged)**
 ```
 Pipeline: Discovery → Modeling → Validation → Risk Review
-                                                    ↓
-                                           CIO APPROVAL
-                                                    ↓
-                                            Paper Trading
+                                                ↓
+                                       CIO Agent Scoring
+                                                ↓
+                                         Human CIO APPROVAL
+                                                ↓
+                                          Paper Trading
 ```
 
 ### Typical Week
 
-| Day | CIO Time | What's Happening |
-|-----|----------|------------------|
+| Day | Human Time | What's Happening |
+|-----|------------|------------------|
 | Mon | 0 min | Agents processing weekend findings |
 | Tue | 0 min | ML training running autonomously |
 | Wed | 5 min | Glance at alerts if any leakage/risk flags |
 | Thu | 0 min | Validation + Risk review in progress |
-| Fri | 30 min | Read report, approve/reject, set direction |
+| Fri | 15 min | CIO Agent scores hypotheses + review report, final approvals |
 | Sat | 0 min | Fundamentals ingestion (weekly) |
 | Sun | 0 min | System idle |
 
-**Total weekly commitment: ~35 minutes** for a full quant research operation.
+**Total weekly commitment: ~20 minutes** for a full quant research operation (CIO Agent reduces from 35 min).
 
 ---
 
@@ -504,22 +597,54 @@ Pipeline: Discovery → Modeling → Validation → Risk Review
                       MLflow Experiments
                       Lineage System
                       Feature Store
+
+                    ┌─────────────────┐
+                    │   CIO Agent     │
+                    │ (Auto Scoring)  │
+                    │ - Statistical   │
+                    │ - Risk          │
+                    │ - Economic      │
+                    │ - Cost          │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    Deployment Decisions
+                    (CONTINUE/CONDITIONAL/
+                     KILL/PIVOT)
 ```
 
 ---
 
 ## Next Steps
 
-1. [ ] Decide which 2-3 agents to build first
-2. [ ] Define agent infrastructure (base class, scheduling, MCP integration)
-3. [ ] Implement initial agents
-4. [ ] Test coordination through shared workspace
+### Implementation Status
+
+| Agent | Status | Notes |
+|-------|--------|-------|
+| Signal Scientist | ✅ Implemented | Nightly signal scans, hypothesis creation |
+| Alpha Researcher | ✅ Implemented | Hypothesis refinement, regime analysis |
+| ML Scientist | ✅ Implemented | Walk-forward validation, ML experiments |
+| ML Quality Sentinel | ✅ Implemented | Overfitting detection, leakage checks |
+| Quant Developer | 🟡 Partial | Backtesting infrastructure exists |
+| Validation Analyst | ✅ Implemented | Parameter sensitivity, stress testing |
+| Risk Manager | 🟡 Partial | Risk checks exist, independent review pending |
+| Report Generator | ✅ Implemented | Daily/weekly research reports |
+| **CIO Agent** | ✅ Implemented | Autonomous scoring across 4 dimensions |
+
+### Remaining Work
+
+1. [ ] Complete Quant Developer agent (automate backtest generation)
+2. [ ] Complete Risk Manager agent (independent portfolio-level review)
+3. [ ] Implement event-driven agent coordination (lineage triggers)
+4. [ ] Add deployment pipeline (paper trading integration)
+5. [ ] Human-in-the-loop approval workflow for CIO decisions
 
 ---
 
 ## Document History
 
 - **2026-01-25:** Initial brainstorm documentation from conversation
+- **2026-01-28:** Updated to include CIO Agent (9th agent), autonomous scoring, and updated implementation status
 
 My recommendation for first 2-3 agents:                                                                                                                                           
   ┌──────────┬─────────────────────┬───────────────────────────────────────────────────────────────────┐                                                                            

@@ -6,7 +6,7 @@ Includes LineageEventWatcher for event-driven agent coordination.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Callable, Union
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -954,6 +954,51 @@ class IngestionScheduler:
             name="Weekly Research Report",
         )
         logger.info(f"Scheduled weekly research report on Sunday at {report_time} ET")
+
+    def setup_weekly_cio_review(
+        self,
+        review_time: str = "17:00",
+        day_of_week: str = "fri",
+    ) -> None:
+        """
+        Schedule weekly CIO Agent review.
+
+        The CIO Agent reviews all validated hypotheses, scores them across
+        4 dimensions (statistical, risk, economic, cost), and makes deployment
+        decisions (CONTINUE, CONDITIONAL, KILL, PIVOT).
+
+        Args:
+            review_time: Time to run CIO review (HH:MM format, default 17:00)
+            day_of_week: Day to run review (default: fri)
+        """
+        from hrp.agents.cio import CIOAgent
+
+        hour, minute = _parse_time(review_time, "review_time")
+
+        def run_cio_review():
+            agent = CIOAgent(
+                job_id=f"cio-weekly-{date.today().strftime('%Y%m%d')}",
+                actor="agent:cio",
+            )
+            result = agent.execute()
+            logger.info(
+                f"CIO review complete: {result.get('decision_count', 0)} decisions, "
+                f"report: {result.get('report_path', 'N/A')}"
+            )
+            return result
+
+        self.add_job(
+            func=run_cio_review,
+            job_id="weekly_cio_review",
+            trigger=CronTrigger(
+                day_of_week=day_of_week,
+                hour=hour,
+                minute=minute,
+                timezone=ET_TIMEZONE,
+            ),
+            name="Weekly CIO Review",
+        )
+        logger.info(f"Scheduled weekly CIO review on {day_of_week.capitalize()} at {review_time} ET")
 
     def setup_weekly_cleanup(
         self,
