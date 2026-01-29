@@ -3322,7 +3322,7 @@ class RiskManager(ResearchAgent):
             """
             params = []
 
-        result = self.api.db.execute(query, params).fetchdf()
+        result = self.api._db.fetchdf(query, params)
 
         if result.empty:
             return []
@@ -3543,7 +3543,7 @@ class RiskManager(ResearchAgent):
         """
         # Get existing paper portfolio
         try:
-            portfolio = self.api.db.execute(
+            portfolio = self.api._db.execute(
                 """
                 SELECT hypothesis_id, weight
                 FROM paper_portfolio
@@ -3633,7 +3633,7 @@ class RiskManager(ResearchAgent):
         """
         # Get current portfolio state
         try:
-            portfolio = self.api.db.execute(
+            portfolio = self.api._db.execute(
                 """
                 SELECT COUNT(*) as num_positions, COALESCE(SUM(weight), 0) as total_weight
                 FROM paper_portfolio
@@ -3972,7 +3972,7 @@ class QuantDeveloper(ResearchAgent):
             """
             params = []
 
-        result = self.api._db.execute(query, params).fetchdf()
+        result = self.api._db.fetchdf(query, params)
 
         if result.empty:
             return []
