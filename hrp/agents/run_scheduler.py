@@ -187,6 +187,23 @@ def main():
         default=90.0,
         help="Health score threshold for warnings (default: 90.0)",
     )
+    parser.add_argument(
+        "--with-cio-review",
+        action="store_true",
+        help="Enable weekly CIO Agent review (Friday 5 PM ET by default)",
+    )
+    parser.add_argument(
+        "--cio-review-time",
+        type=str,
+        default="17:00",
+        help="Time to run CIO review (HH:MM format, default: 17:00)",
+    )
+    parser.add_argument(
+        "--cio-review-day",
+        type=str,
+        default="fri",
+        help="Day to run CIO review (default: fri)",
+    )
 
     args = parser.parse_args()
 
@@ -256,6 +273,14 @@ def main():
             check_time=args.quality_monitor_time,
             health_threshold=args.health_threshold,
             send_alerts=True,
+        )
+
+    # Setup weekly CIO review
+    if args.with_cio_review:
+        logger.info("Setting up weekly CIO Agent review...")
+        scheduler.setup_weekly_cio_review(
+            review_time=args.cio_review_time,
+            day_of_week=args.cio_review_day,
         )
 
     # Setup research agent triggers (event-driven pipeline)

@@ -1,8 +1,9 @@
 # Research Agents Design
 
 **Date:** January 25, 2026
-**Status:** Implementation In Progress (8/12 steps complete)
-**Related:** Tier 2 Intelligence (85% complete) - Research Agents feature
+**Last Updated:** January 28, 2026
+**Status:** Implementation Nearly Complete (7/8 agents built + 1 additional CIO Agent)
+**Related:** Tier 2 Intelligence (95% complete) - Research Agents feature
 
 ---
 
@@ -16,12 +17,12 @@ Build a multi-agent quant research team that runs autonomously and coordinates t
 
 | Decision | Choice |
 |----------|--------|
-| Agent count | 8 agents (Option A - lean) |
-| Implementation | Case-by-case: 3 SDK, 3 Custom, 1 Hybrid, 2 Already Built |
-| Build order | ~~Alpha Researcher~~ ✅ → ML Quality Sentinel → Validation Analyst |
+| Agent count | 9 agents (8 from Option A + CIO Agent added) |
+| Implementation | 4 SDK, 3 Custom, 1 Hybrid |
+| Build order | ✅ Complete: Alpha Researcher → ML Quality Sentinel → Validation Analyst → CIO Agent |
 | Communication | Shared registries only (no direct agent-to-agent) |
 | Scheduling | APScheduler (extend existing infrastructure) |
-| SDK infrastructure | Shared `SDKAgent` base class |
+| SDK infrastructure | ✅ Built: `SDKAgent` base class with checkpoint/resume, token tracking |
 
 ### Agent Implementation Matrix
 
@@ -30,18 +31,20 @@ Build a multi-agent quant research team that runs autonomously and coordinates t
 | Signal Scientist | Custom | ✅ Built | Deterministic: calculate IC, threshold check |
 | ML Scientist | Custom | ✅ Built | Deterministic: walk-forward validation pipeline |
 | Alpha Researcher | SDK | ✅ Built | Needs reasoning: "is this pattern meaningful?" |
-| ML Quality Sentinel | Custom | To build (2nd) | Deterministic: run checklist of validations |
-| Validation Analyst | Hybrid | To build (3rd) | Mix: deterministic tests + reasoning for edge cases |
-| Risk Manager | Custom | To build | Deterministic: check limits, flag violations |
-| Quant Developer | SDK | To build | Needs reasoning: "how to implement this strategy?" |
-| Report Generator | SDK | To build | Needs reasoning: "what's the narrative here?" |
+| ML Quality Sentinel | Custom | ✅ Built | Deterministic: run checklist of validations |
+| Validation Analyst | Hybrid | ✅ Built | Mix: deterministic tests + reasoning for edge cases |
+| Risk Manager | Custom | ⏳ Not built | Deterministic: check limits, flag violations |
+| Quant Developer | SDK | ⏳ Not built | Needs reasoning: "how to implement this strategy?" |
+| Report Generator | SDK | ✅ Built | Needs reasoning: "what's the narrative here?" |
+| **CIO Agent** | SDK | ✅ Built | NEW: Autonomous scoring across 4 dimensions |
 
 ### Coordination Model
-**Decision:** Autonomous with shared workspace
+**Decision:** Autonomous with shared workspace + CIO Agent pre-screening
 - Each agent works independently
 - Findings shared to common registry (hypotheses, MLflow, lineage)
 - Other agents pick up relevant work
-- User (CIO) reviews validated findings for final approval
+- CIO Agent scores validated hypotheses autonomously (4-dimensional evaluation)
+- User (CIO) reviews CIO Agent decisions for final deployment approval
 
 ### Execution Model
 **Decision:** Both scheduled and on-demand
@@ -184,10 +187,10 @@ CIO / Research Director (final authority)
 
 ## Proposed Options
 
-### Option A: 8 Agents (Lean) - RECOMMENDED
+### Option A: 9 Agents (Lean + CIO) - RECOMMENDED
 
 ```
-You (CIO/Research Director)
+You (CIO/Research Director) - Final approval authority
 │
 ├── Alpha Researcher (with regime awareness)
 ├── Signal Scientist
@@ -200,13 +203,16 @@ You (CIO/Research Director)
 ├── Risk Manager
 ├── Validation Analyst
 │
-└── Report Generator
+├── Report Generator
+│
+└── CIO Agent (Autonomous Scoring) - Pre-screens for human CIO
 ```
 
-**Why 8 agents:**
+**Why 9 agents:**
 - Each agent has distinct, full-time job
 - No idle agents waiting for work
-- Covers full research lifecycle: Discovery → Modeling → Implementation → Risk → Reporting
+- Covers full research lifecycle: Discovery → Modeling → Implementation → Risk → CIO Decision → Reporting
+- CIO Agent provides autonomous pre-screening before human review
 - Matches current HRP platform capabilities
 - Easy to expand later
 
@@ -315,6 +321,15 @@ You (CIO/Research Director)
 **Schedule:** Weekly + on-demand
 **Uses:** `get_lineage`, `list_hypotheses`, `get_experiment`, `analyze_results`
 
+### 9. CIO Agent (NEW - Added 2026-01-28)
+**Focus:** Autonomous hypothesis scoring and deployment decision-making
+**Inputs:** Validated hypotheses, experiment metrics, risk data, economic context
+**Outputs:** CIO decisions (CONTINUE/CONDITIONAL/KILL/PIVOT), weekly CIO reports
+**Schedule:** Weekly review + on-demand
+**Uses:** `score_hypothesis()`, 4-dimensional scoring (Statistical, Risk, Economic, Cost)
+
+> **Detailed spec:** See [CIO Agent Design](../plans/2026-01-26-cio-agent-design.md) and [CIO Agent Implementation](../plans/2026-01-27-cio-agent-implementation.md)
+
 ---
 
 ## Shared Workspace: How Agents Coordinate
@@ -352,9 +367,16 @@ You (CIO/Research Director)
    → Checks risk limits, portfolio fit
    → Approves or flags concerns
 
-7. Report Generator summarizes for CIO review
+7. CIO Agent scores validated hypothesis across 4 dimensions:
+   - Statistical: Sharpe, stability, IC
+   - Risk: Max DD, volatility, regime stability
+   - Economic: Thesis quality, uniqueness
+   - Cost: Turnover, capacity, execution complexity
+   → Decision: CONTINUE/CONDITIONAL/KILL/PIVOT
+
+8. Report Generator summarizes for human CIO review
    → Weekly report includes HYP-2026-042 findings
-   → CIO decides whether to deploy
+   → Human CIO makes final deployment decision
 ```
 
 ---
@@ -398,13 +420,16 @@ You (CIO/Research Director)
 3. [x] Decide communication model → **Shared registries only**
 4. [x] Decide scheduling → **APScheduler**
 5. [x] Write Alpha Researcher specification → **See spec below**
-6. [ ] Design `SDKAgent` base class
+6. [x] Design `SDKAgent` base class → **Implemented with checkpoint/resume, token tracking**
 7. [x] Build lineage event watcher → **See [Data Pipeline Diagram](../architecture/data-pipeline-diagram.md#event-driven-agent-coordination)**
 8. [x] Implement Alpha Researcher (SDK) → Uses Claude API for economic rationale analysis
-9. [ ] Implement ML Quality Sentinel (Custom)
-10. [ ] Implement Validation Analyst (Hybrid)
+9. [x] Implement ML Quality Sentinel (Custom) → **Complete**
+10. [x] Implement Validation Analyst (Hybrid) → **Complete**
 11. [x] Test coordination through shared workspace → Event-driven triggers working
-12. [ ] Expand to remaining agents
+12. [x] Implement CIO Agent → **NEW: Autonomous scoring across 4 dimensions**
+13. [ ] Implement Risk Manager (Custom)
+14. [ ] Implement Quant Developer (SDK)
+15. [ ] Integration testing: Full agent pipeline end-to-end
 
 ---
 
@@ -617,3 +642,5 @@ Status updated: draft → testing
 - **2026-01-26:** Added Alpha Researcher detailed specification
 - **2026-01-26:** Lineage event watcher implemented; Alpha Researcher implemented; event-driven coordination tested
 - **2026-01-26:** Added reference to [Data Pipeline Architecture](../architecture/data-pipeline-diagram.md)
+- **2026-01-28:** Implementation status update: 7/8 agents built, SDKAgent infrastructure complete
+- **2026-01-28:** Added CIO Agent (9th agent) - autonomous scoring across Statistical, Risk, Economic, Cost dimensions

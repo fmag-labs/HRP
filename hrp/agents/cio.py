@@ -331,15 +331,22 @@ class CIOAgent(SDKAgent):
 
         decision_id = f"CIO-{date.today().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
+        # Get next id value
+        max_id_result = self.api._db.fetchdf(
+            "SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM cio_decisions"
+        )
+        next_id = int(max_id_result.iloc[0]["next_id"])
+
         self.api._db.execute(
             """
             INSERT INTO cio_decisions
-            (decision_id, report_date, hypothesis_id, decision,
+            (id, decision_id, report_date, hypothesis_id, decision,
              score_total, score_statistical, score_risk, score_economic, score_cost,
              rationale, approved)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                next_id,
                 decision_id,
                 date.today(),
                 hypothesis_id,
