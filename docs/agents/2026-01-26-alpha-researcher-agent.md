@@ -23,13 +23,14 @@
 
 ## Purpose
 
-Reviews and refines draft hypotheses using Claude's reasoning capabilities. The Alpha Researcher:
+Reviews and refines draft hypotheses using Claude's reasoning capabilities, and generates novel strategy concepts. The Alpha Researcher:
 
 1. **Analyzes economic rationale** - Why might this signal work?
 2. **Checks regime context** - Does signal work across market conditions?
 3. **Searches related hypotheses** - Novel or variant of existing idea?
 4. **Promotes or rejects** hypotheses based on analysis
-5. **Triggers downstream** ML Scientist via lineage events
+5. **Generates new strategies** - Creates novel strategy concepts from economic principles
+6. **Triggers downstream** ML Scientist via lineage events
 
 ---
 
@@ -75,6 +76,35 @@ regimes = api.detect_regime(prices)
 - Identifies conflicting hypotheses
 - Notes if idea is novel or variant of existing
 
+### 5. Strategy Generation (NEW)
+
+Generates novel strategy concepts from three sources:
+
+```python
+# Enable strategy generation
+researcher = AlphaResearcher(
+    enable_strategy_generation=True,
+    generation_target_count=3,  # Number of strategies to generate
+    generation_sources=[
+        "claude_ideation",      # Use Claude to brainstorm novel concepts
+        "literature_patterns",  # Adapt known academic factors
+        "pattern_mining",       # Extend existing successful patterns
+    ],
+)
+result = researcher.run()
+
+print(f"Strategies generated: {result['strategies_generated']}")
+# Strategy specs written to: docs/strategies/{strategy_name}/spec.md
+```
+
+**Generation Sources:**
+
+| Source | Description | Example |
+|--------|-------------|---------|
+| **Claude Ideation** | Brainstorm novel concepts from economic first principles | "Post-earnings drift with sentiment filter" |
+| **Literature Patterns** | Adapt published academic factors to platform constraints | "Momentum factor with volatility weighting" |
+| **Pattern Mining** | Extend patterns from existing successful hypotheses | "Combine momentum_20d + low_volatility for dual strategy" |
+
 ---
 
 ## Configuration
@@ -87,6 +117,15 @@ class AlphaResearcherConfig(SDKAgentConfig):
     include_regime_analysis: bool = True
     include_related_search: bool = True
     auto_promote: bool = True  # Auto-promote approved hypotheses to 'testing'
+
+    # Strategy generation settings (NEW)
+    enable_strategy_generation: bool = True
+    generation_target_count: int = 3
+    generation_sources: list[str] = field(default_factory=lambda: [
+        "claude_ideation",
+        "literature_patterns",
+        "pattern_mining",
+    ])
 ```
 
 | Parameter | Default | Description |
@@ -96,6 +135,9 @@ class AlphaResearcherConfig(SDKAgentConfig):
 | `include_regime_analysis` | `True` | Analyze regime-conditional performance |
 | `include_related_search` | `True` | Search for related hypotheses |
 | `auto_promote` | `True` | Auto-promote approved hypotheses |
+| `enable_strategy_generation` | `True` | Enable novel strategy generation |
+| `generation_target_count` | `3` | Number of new strategies to generate |
+| `generation_sources` | `[claude_ideation, literature_patterns, pattern_mining]` | Strategy sources |
 
 ---
 
@@ -283,3 +325,4 @@ Token usage: 12,450 input / 3,200 output
 
 - **2026-01-26:** Initial standalone agent definition created
 - **2026-01-26:** Extracted from research-agents-design.md for standalone reference
+- **2026-01-29:** Enhanced with strategy generation capabilities (3 sources: Claude ideation, literature patterns, pattern mining)

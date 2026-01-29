@@ -1,8 +1,8 @@
 # Research Agents Design
 
 **Date:** January 25, 2026
-**Last Updated:** January 28, 2026
-**Status:** Implementation Nearly Complete (8/8 agents built + CIO Agent)
+**Last Updated:** January 29, 2026
+**Status:** Implementation Complete (10/10 agents built including Pipeline Orchestrator)
 **Related:** Tier 2 Intelligence (95% complete) - Research Agents feature
 
 ---
@@ -17,7 +17,7 @@ Build a multi-agent quant research team that runs autonomously and coordinates t
 
 | Decision | Choice |
 |----------|--------|
-| Agent count | 9 agents (8 from Option A + CIO Agent added) |
+| Agent count | 10 agents (9 from Option A + Pipeline Orchestrator + CIO Agent) |
 | Implementation | 4 SDK, 3 Custom, 1 Hybrid |
 | Build order | ✅ Complete: Alpha Researcher → ML Quality Sentinel → Validation Analyst → CIO Agent |
 | Communication | Shared registries only (no direct agent-to-agent) |
@@ -30,11 +30,12 @@ Build a multi-agent quant research team that runs autonomously and coordinates t
 |-------|------|--------|-----------|
 | Signal Scientist | Custom | ✅ Built | Deterministic: calculate IC, threshold check |
 | ML Scientist | Custom | ✅ Built | Deterministic: walk-forward validation pipeline |
-| Alpha Researcher | SDK | ✅ Built | Needs reasoning: "is this pattern meaningful?" |
+| Alpha Researcher | SDK | ✅ Built (Enhanced) | Needs reasoning: economic analysis + strategy generation |
 | ML Quality Sentinel | Custom | ✅ Built | Deterministic: run checklist of validations |
 | Validation Analyst | Hybrid | ✅ Built | Mix: deterministic tests + reasoning for edge cases |
 | Risk Manager | Custom | ✅ Built | Independent oversight: drawdown, concentration, limits |
-| Quant Developer | SDK | ⏳ Not built | Needs reasoning: "how to implement this strategy?" |
+| Quant Developer | Custom | ✅ Built | Deterministic: production backtests, baseline comparisons |
+| **Pipeline Orchestrator** | Custom | ✅ Built (NEW) | Coordination: baselines, parallel execution, kill gates |
 | Report Generator | SDK | ✅ Built | Needs reasoning: "what's the narrative here?" |
 | **CIO Agent** | SDK | ✅ Built | NEW: Autonomous scoring across 4 dimensions |
 
@@ -264,11 +265,16 @@ You (CIO/Research Director)
 ## Agent Role Definitions (Option A)
 
 ### 1. Alpha Researcher
-**Focus:** Hypothesis development, strategy design, regime awareness
-**Inputs:** Market data, features, existing hypotheses
-**Outputs:** New hypotheses with thesis, prediction, falsification criteria
+**Focus:** Hypothesis development, strategy design, regime awareness, strategy generation from economic principles
+**Inputs:** Market data, features, existing hypotheses, economic research
+**Outputs:** New hypotheses with thesis, prediction, falsification criteria, strategy specification documents
 **Schedule:** Weekly discovery runs + on-demand
-**Uses:** `create_hypothesis`, `get_features`, `get_prices`, `run_backtest`
+**Uses:** `create_hypothesis`, `get_features`, `get_prices`, `run_backtest`, `generate_strategies()`
+
+**Key Methods:**
+- `generate_strategies()` - Generate strategies from economic principles
+- `_write_strategy_spec_doc()` - Write strategy specification document
+- Three sources: academic research, practitioner insights, market observation
 
 > **Detailed spec:** See [Alpha Researcher Specification](#alpha-researcher-specification) below
 
@@ -294,34 +300,57 @@ You (CIO/Research Director)
 **Uses:** Overfitting guards, leakage validators, Sharpe decay monitoring
 
 ### 5. Quant Developer
-**Focus:** Backtest implementation, code quality, performance optimization, pipeline orchestration
+**Focus:** Backtest implementation, code quality, performance optimization, production backtests
 **Inputs:** Strategy specifications, model outputs
 **Outputs:** Optimized backtests, performance reports, infrastructure improvements
 **Schedule:** On-demand + monitors experiment queue
 **Uses:** `run_backtest`, MLflow APIs, feature computation
 
-### 6. Risk Manager
+**Key Methods:**
+- `run()` - Execute production backtests for validated hypotheses
+- Backtest configuration, execution, results logging
+- Baseline comparisons and performance analysis
+
+> **Detailed spec:** See [Quant Developer Implementation](../plans/2026-01-28-quant-developer-implementation.md)
+
+### 6. Pipeline Orchestrator (NEW - Added 2026-01-29)
+**Focus:** Baseline comparisons, parallel experiment execution, kill gate enforcement
+**Inputs:** Validated hypotheses, experiment results, kill gate criteria
+**Outputs:** Baseline comparisons, parallel execution results, kill decisions
+**Schedule:** On-demand (triggered by validated hypotheses)
+**Uses:** `compare_experiments()`, `run_backtest()`, `get_experiment()`, lineage APIs
+
+**Key Features:**
+- Baseline comparisons: Compare new strategies against existing benchmarks
+- Parallel execution: Run multiple experiments concurrently for efficiency
+- Kill gates: Stop unpromising strategies early to save resources
+- Results aggregation: Combine and analyze results from multiple experiments
+- Decision logic: Enforce kill gate criteria (e.g., max drawdown thresholds)
+
+> **Detailed spec:** See [Pipeline Orchestrator Design](../plans/2026-01-28-pipeline-orchestrator-design.md)
+
+### 7. Risk Manager
 **Focus:** Position limits, drawdown monitoring, portfolio risk, independent oversight
 **Inputs:** Backtest results, portfolio state, market conditions
 **Outputs:** Risk reports, limit violations, strategy vetoes
 **Schedule:** Continuous monitoring + reviews before deployment approval
 **Uses:** Risk validation APIs, strategy metrics
 
-### 7. Validation Analyst
+### 8. Validation Analyst
 **Focus:** Stress testing, execution realism, model validation, out-of-sample testing
 **Inputs:** Strategies, backtest results, market scenarios
 **Outputs:** Stress test reports, execution cost estimates, validation verdicts
 **Schedule:** Runs on all strategies before promotion to "validated"
 **Uses:** Parameter sensitivity, robustness testing, statistical validation
 
-### 8. Report Generator
+### 9. Report Generator
 **Focus:** Synthesize findings, create human-readable summaries
 **Inputs:** All agent outputs, hypothesis status, experiment results
 **Outputs:** Weekly research reports, hypothesis summaries, action recommendations
 **Schedule:** Weekly + on-demand
 **Uses:** `get_lineage`, `list_hypotheses`, `get_experiment`, `analyze_results`
 
-### 9. CIO Agent (NEW - Added 2026-01-28)
+### 10. CIO Agent (NEW - Added 2026-01-28)
 **Focus:** Autonomous hypothesis scoring and deployment decision-making
 **Inputs:** Validated hypotheses, experiment metrics, risk data, economic context
 **Outputs:** CIO decisions (CONTINUE/CONDITIONAL/KILL/PIVOT), weekly CIO reports
@@ -363,18 +392,29 @@ You (CIO/Research Director)
    → Parameter sensitivity, regime analysis
    → Updates hypothesis with validation results
 
-6. Risk Manager reviews validated hypothesis
+6. Quant Developer runs production backtests
+   → Full historical backtest with realistic costs
+   → Compares against baseline strategies
+   → Logs production-ready results
+
+7. Pipeline Orchestrator coordinates execution
+   → Runs parallel experiments for efficiency
+   → Applies kill gates to stop unpromising strategies
+   → Aggregates and compares results
+   → Makes go/no-go decision
+
+8. Risk Manager reviews validated hypothesis
    → Checks risk limits, portfolio fit
    → Approves or flags concerns
 
-7. CIO Agent scores validated hypothesis across 4 dimensions:
+9. CIO Agent scores validated hypothesis across 4 dimensions:
    - Statistical: Sharpe, stability, IC
    - Risk: Max DD, volatility, regime stability
    - Economic: Thesis quality, uniqueness
    - Cost: Turnover, capacity, execution complexity
    → Decision: CONTINUE/CONDITIONAL/KILL/PIVOT
 
-8. Report Generator summarizes for human CIO review
+10. Report Generator summarizes for human CIO review
    → Weekly report includes HYP-2026-042 findings
    → Human CIO makes final deployment decision
 ```
@@ -428,8 +468,9 @@ You (CIO/Research Director)
 11. [x] Test coordination through shared workspace → Event-driven triggers working
 12. [x] Implement CIO Agent → **NEW: Autonomous scoring across 4 dimensions**
 13. [x] Implement Risk Manager (Custom) → **Complete: Independent oversight**
-14. [ ] Implement Quant Developer (SDK)
-15. [ ] Integration testing: Full agent pipeline end-to-end
+14. [x] Implement Quant Developer (Custom) → **Complete: Production backtests**
+15. [x] Implement Pipeline Orchestrator (Custom) → **Complete: Baselines, parallel execution, kill gates**
+16. [ ] Integration testing: Full agent pipeline end-to-end
 
 ---
 
@@ -645,3 +686,4 @@ Status updated: draft → testing
 - **2026-01-28:** Implementation status update: 7/8 agents built, SDKAgent infrastructure complete
 - **2026-01-28:** Added CIO Agent (9th agent) - autonomous scoring across Statistical, Risk, Economic, Cost dimensions
 - **2026-01-28:** Implementation status update: 8/8 agents built + CIO Agent (Risk Manager complete)
+- **2026-01-29:** Major update - Alpha Researcher enhanced with strategy generation, Pipeline Orchestrator added, decision pipeline updated with 10 agents

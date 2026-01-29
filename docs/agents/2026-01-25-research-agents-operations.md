@@ -8,18 +8,19 @@
 
 ## Overview
 
-This document projects how the **9-agent research team** would operate day-to-day, leveraging HRP platform capabilities. It covers the ML experimentation pipeline, timeline from cold start to presented strategies, and the CIO Agent's autonomous decision-making role.
+This document projects how the **10-agent research team** would operate day-to-day, leveraging HRP platform capabilities. It covers the ML experimentation pipeline, timeline from cold start to presented strategies, and the CIO Agent's autonomous decision-making role.
 
 **Agents:**
 1. Signal Scientist - Feature discovery and hypothesis creation
-2. Alpha Researcher - Hypothesis refinement and regime analysis
+2. Alpha Researcher - Strategy generation and hypothesis refinement
 3. ML Scientist - Model training and walk-forward validation
 4. ML Quality Sentinel - Experiment auditing (overfitting, leakage)
 5. Quant Developer - Strategy backtesting
-6. Validation Analyst - Stress testing and robustness checks
-7. Risk Manager - Portfolio-level risk review
-8. Report Generator - Research synthesis and reporting
-9. **CIO Agent** - Autonomous hypothesis scoring and deployment decisions
+6. **Pipeline Orchestrator** - Baseline execution, parallel experiments, kill gates
+7. Validation Analyst - Stress testing and robustness checks
+8. Risk Manager - Portfolio-level risk review
+9. Report Generator - Research synthesis and reporting
+10. **CIO Agent** - Autonomous hypothesis scoring and deployment decisions
 
 ---
 
@@ -64,20 +65,62 @@ IngestionScheduler triggers:
 
 | Day | Agent Activity |
 |-----|----------------|
-| **Monday** | Alpha Researcher reviews draft hypotheses, refines falsification criteria, promotes to `testing` |
-| **Tuesday-Wednesday** | ML Scientist runs walk-forward validation on `testing` hypotheses |
+| **Monday 7 PM** | Alpha Researcher generates strategies, reviews hypotheses, refines falsification criteria |
+| **Tuesday 6 AM** | Pipeline Orchestrator runs baseline experiments, parallel testing, kill gates |
+| **Wednesday** | ML Scientist runs walk-forward validation on `testing` hypotheses |
 | **Thursday** | Validation Analyst stress tests + Risk Manager reviews |
 | **Friday** | **CIO Agent scores validated hypotheses** + Report Generator compiles weekly summary |
 | **Saturday** | Fundamentals ingestion (weekly job) |
 | **Sunday** | System idle |
 
 ### Monday - Alpha Researcher
+**Strategy Generation (NEW):**
+- Generates 3-5 complete strategy specifications per week from multiple sources:
+  - **Signal Analysis:** Transforms high-IC features into strategy concepts
+  - **Academic Literature:** Adaptations of published factor research
+  - **Market Regimes:** Strategies targeting specific volatility/liquidity conditions
+- Writes comprehensive strategy spec documents to `docs/strategies/STRATEGY-NAME.md`
+- Fires `ALPHA_RESEARCHER_COMPLETE` event to trigger Pipeline Orchestrator
+
+**Hypothesis Review:**
 - Reviews all draft hypotheses from Signal Scientist
 - Adds regime awareness: "Does this signal work in high-vol vs low-vol?"
 - Refines falsification criteria to be testable
 - Promotes promising ones to `status='testing'`
 
-### Tuesday/Wednesday - ML Scientist
+### Tuesday - Pipeline Orchestrator
+**Baseline Execution:**
+- Automatically generates baseline experiments for new strategies:
+  - Multiple model types: ridge, lasso, random_forest, lightgbm
+  - Standard feature combinations: single factor, multi-factor
+  - Default hyperparameters: no tuning (speed over optimization)
+- Executes 8-12 baseline experiments per strategy (4 models × 2-3 feature sets)
+- Parallel processing: all models run simultaneously using `n_jobs=-1`
+
+**Parallel Experimentation:**
+- Runs all baselines in parallel across available CPU cores
+- Typical runtime: 15-30 minutes for full baseline suite
+- Logs all results to MLflow with `stage='baseline'` tag
+- Tracks experiment lineage: `strategy_name → model_type → features → metrics`
+
+**Kill Gates (Early Termination):**
+After each baseline completes:
+1. **Statistical Kill Gate:** Sharpe < 0.5 or IC < 0.02 → KILL
+2. **Stability Kill Gate:** stability_score > 1.5 → KILL
+3. **Overfitting Kill Gate:** Sharpe decay > 60% → KILL
+4. **Leakage Kill Gate:** Target correlation > 0.95 → KILL
+
+**Decisions:**
+- **PASS:** All gates cleared → Promote to `status='testing'` for ML Scientist
+- **FAIL:** Any gate triggered → Mark as `status='rejected'` with reason
+- **CONDITIONAL:** Marginal results (e.g., Sharpe 0.45-0.5) → Flag for review
+
+**Output:**
+- Summary report: `docs/reports/YYYY-MM-DD/baseline-STRATEGY-NAME.md`
+- Database updates: hypothesis status, experiment results, kill gate decisions
+- Lineage events: `PIPELINE_ORCHESTRATOR_PASS` or `PIPELINE_ORCHESTRATOR_KILL`
+
+### Wednesday - ML Scientist
 - Picks up hypotheses in `testing` status
 - Runs walk-forward validation:
   ```python
@@ -172,34 +215,59 @@ NEXT WEEK PRIORITIES
 | Stage | Agent | What They Do | HRP Tools Used |
 |-------|-------|--------------|----------------|
 | **1. Signal Discovery** | Signal Scientist | Tests feature predictiveness (IC analysis) | `get_features`, correlation scans |
-| **2. Hypothesis Creation** | Alpha Researcher | Formalizes signal into testable hypothesis | `create_hypothesis` |
-| **3. Model Training** | ML Scientist | Trains models, tunes hyperparameters | `walk_forward_validate`, MLflow |
-| **4. Training Audit** | ML Quality Sentinel | Checks leakage, overfitting, Sharpe decay | `HyperparameterTrialCounter`, `TargetLeakageValidator` |
-| **5. Strategy Backtest** | Quant Developer | Runs full backtest with realistic costs | `run_backtest`, `generate_ml_predicted_signals` |
-| **6. Stress Testing** | Validation Analyst | Parameter sensitivity, regime stress | `check_parameter_sensitivity` |
-| **7. Risk Review** | Risk Manager | Portfolio fit, drawdown limits | `validate_strategy` |
-| **8. CIO Decision** | **CIO Agent** | Scores across 4 dimensions, makes deployment decision | `CIOAgent.score_hypothesis()` |
+| **2. Strategy Generation** | Alpha Researcher | Generates strategy specs, formalizes hypotheses | `create_hypothesis`, strategy spec documents |
+| **3. Baseline Experiments** | Pipeline Orchestrator | Runs parallel baseline tests, applies kill gates | `run_backtest`, parallel execution, kill gates |
+| **4. Model Training** | ML Scientist | Trains models, tunes hyperparameters | `walk_forward_validate`, MLflow |
+| **5. Training Audit** | ML Quality Sentinel | Checks leakage, overfitting, Sharpe decay | `HyperparameterTrialCounter`, `TargetLeakageValidator` |
+| **6. Strategy Backtest** | Quant Developer | Runs full backtest with realistic costs | `run_backtest`, `generate_ml_predicted_signals` |
+| **7. Stress Testing** | Validation Analyst | Parameter sensitivity, regime stress | `check_parameter_sensitivity` |
+| **8. Risk Review** | Risk Manager | Portfolio fit, drawdown limits | `validate_strategy` |
+| **9. CIO Decision** | **CIO Agent** | Scores across 4 dimensions, makes deployment decision | `CIOAgent.score_hypothesis()` |
 
 ---
 
 ## ML Experimentation Loop (Detail)
 
 ```
-Signal Scientist                    ML Scientist
+Signal Scientist                    Alpha Researcher
      │                                   │
      │ "momentum_20d has IC=0.04"        │
      │                                   │
-     ▼                                   │
-Alpha Researcher                         │
+     ▼                                   ▼
+Alpha Researcher                 Strategy Generation
      │                                   │
-     │ Creates HYP-2026-001              │
-     │ status='testing'                  │
+     │ Creates HYP-2026-001              │ Generates strategy spec
+     │ status='testing'                  │ docs/strategies/STRATEGY.md
      │                                   │
-     └──────────────────────────────────►│
-                                         │
-                    ┌────────────────────┘
+     └───────────────────────────────────┘
                     │
                     ▼
+        ┌───────────────────────────────────────┐
+        │      PIPELINE ORCHESTRATOR            │
+        │                                       │
+        │  1. Generate 8-12 baseline experiments│
+        │     - 4 model types × 2-3 feature sets│
+        │     - Default hyperparameters         │
+        │                                       │
+        │  2. Run all baselines in parallel     │
+        │     - n_jobs=-1 (all cores)           │
+        │     - Runtime: 15-30 min              │
+        │                                       │
+        │  3. Apply Kill Gates:                 │
+        │     ✓ Sharpe < 0.5 → KILL             │
+        │     ✓ IC < 0.02 → KILL                │
+        │     ✓ Stability > 1.5 → KILL          │
+        │     ✓ Sharpe decay > 60% → KILL       │
+        │     ✓ Target leakage > 0.95 → KILL    │
+        │                                       │
+        │  4. Decision:                         │
+        │     - PASS → Promote to ML Scientist  │
+        │     - FAIL → Reject with reason       │
+        │     - CONDITIONAL → Flag for review   │
+        │                                       │
+        └───────────────────────────────────────┘
+                    │
+                    ▼ (if PASS)
         ┌───────────────────────────────────────┐
         │         ML SCIENTIST LOOP             │
         │                                       │
@@ -622,10 +690,11 @@ Pipeline: Discovery → Modeling → Validation → Risk Review
 | Agent | Status | Notes |
 |-------|--------|-------|
 | Signal Scientist | ✅ Implemented | Nightly signal scans, hypothesis creation |
-| Alpha Researcher | ✅ Implemented | Hypothesis refinement, regime analysis |
+| Alpha Researcher | ✅ Implemented (Enhanced) | Strategy generation, hypothesis refinement, regime analysis |
 | ML Scientist | ✅ Implemented | Walk-forward validation, ML experiments |
 | ML Quality Sentinel | ✅ Implemented | Overfitting detection, leakage checks |
-| Quant Developer | 🟡 Partial | Backtesting infrastructure exists |
+| Quant Developer | ✅ Implemented | Strategy backtesting with realistic costs |
+| **Pipeline Orchestrator** | ✅ Implemented (NEW) | Baseline execution, parallel experiments, kill gates |
 | Validation Analyst | ✅ Implemented | Parameter sensitivity, stress testing |
 | Risk Manager | ✅ Implemented | Independent portfolio-level risk oversight |
 | Report Generator | ✅ Implemented | Daily/weekly research reports |
@@ -645,6 +714,7 @@ Pipeline: Discovery → Modeling → Validation → Risk Review
 - **2026-01-25:** Initial brainstorm documentation from conversation
 - **2026-01-28:** Updated to include CIO Agent (9th agent), autonomous scoring, and updated implementation status
 - **2026-01-28:** Updated to reflect Risk Manager implementation (✅ Implemented - independent portfolio-level risk oversight)
+- **2026-01-29:** Major update - Added Pipeline Orchestrator (10th agent), enhanced Alpha Researcher with strategy generation, updated decision pipeline
 
 My recommendation for first 2-3 agents:                                                                                                                                           
   ┌──────────┬─────────────────────┬───────────────────────────────────────────────────────────────────┐                                                                            
