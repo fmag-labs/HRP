@@ -598,6 +598,42 @@ scheduler.start()
 # 5. Generate markdown report in docs/reports/YYYY-MM-DD/
 ```
 
+### Run Risk Manager for portfolio risk assessment
+```python
+from hrp.agents import RiskManager
+
+# Assess all validated hypotheses with conservative risk limits
+agent = RiskManager(
+    max_drawdown=0.15,  # 15% max drawdown
+    max_correlation=0.60,  # 0.60 max correlation with existing positions
+    max_sector_exposure=0.25,  # 25% max sector exposure
+    send_alerts=True,  # Send email for vetoes
+)
+result = agent.run()
+
+print(f"Assessed: {result['hypotheses_assessed']}")
+print(f"Passed: {result['hypotheses_passed']}")
+print(f"Vetoed: {result['hypotheses_vetoed']}")
+# Research note written to docs/research/YYYY-MM-DD-risk-manager.md
+
+# Risk Manager performs:
+# 1. Drawdown risk check - Max drawdown limits, drawdown duration
+# 2. Concentration risk - Position diversification, sector exposure limits
+# 3. Correlation check - Ensures new strategies add diversification value
+# 4. Risk limits validation - Volatility, turnover, leverage checks
+# 5. Independent veto - Can veto strategies but CANNOT approve deployment
+# 6. Portfolio impact calculation - Assesses impact of adding to paper portfolio
+
+# Risk Manager uses conservative institutional defaults:
+# - MAX_MAX_DRAWDOWN = 0.20 (20%)
+# - MAX_DRAWDOWN_DURATION_DAYS = 126 (6 months)
+# - MAX_POSITION_CORRELATION = 0.70
+# - MAX_SECTOR_EXPOSURE = 0.30 (30%)
+# - MAX_SINGLE_POSITION = 0.10 (10%)
+# - MIN_DIVERSIFICATION = 10 positions
+# - TARGET_POSITIONS = 20 positions
+```
+
 
 ### Run a multi-factor strategy backtest
 ```python
@@ -1021,7 +1057,7 @@ print(f"Regime stability: {'PASS' if stability.passed else 'FAIL'}")
 
 ```bash
 pytest tests/ -v
-# Pass rate: 99.7% (2,639 passed, 7 failed, 1 skipped)
+# Pass rate: 99.85% (2,661 passed, 4 failed, 1 skipped)
 ```
 
 ## Performance Metrics (Empyrical-powered)

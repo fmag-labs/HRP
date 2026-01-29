@@ -10,7 +10,7 @@
 | **Trading** | Live Execution | 0% | 🔮 Future |
 
 **Codebase:** ~24,500 lines of production code across 100+ modules
-**Test Suite:** 2,639 tests (99.7% pass rate)
+**Test Suite:** 2,661 tests (99.85% pass rate)
 
 ## Current Progress
 
@@ -165,14 +165,15 @@ ML capabilities, statistical rigor, and agent integration.
 | **LineageEventWatcher** | ✅ | Event-driven agent coordination (`hrp/agents/scheduler.py`) |
 | **Validation Analyst** | ✅ | Parameter sensitivity, regime stress tests (`hrp/agents/research_agents.py`) |
 | **Report Generator** | ✅ | Daily/weekly research summaries (`hrp/agents/report_generator.py`) |
+| **Risk Manager** | ✅ | Independent risk oversight, veto authority (`hrp/agents/research_agents.py`) |
 | **CIO Agent** | ⏳ | Strategic decision-making + paper portfolio (`docs/plans/2026-01-26-cio-agent-design.md`) |
 
 **Research Agent Pipeline:**
 ```
-Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst → CIO Agent
-     ↓                    ↓                 ↓                ↓                   ↓                    ↓
-  IC analysis         Review drafts     Walk-forward      Audit for        Stress test          CONTINUE/PIVOT/KILL
-  Create drafts       Promote/defer     validation        overfitting      Pre-deployment       Paper portfolio
+Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst → Risk Manager → CIO Agent
+     ↓                    ↓                 ↓                ↓                   ↓                   ↓              ↓
+  IC analysis         Review drafts     Walk-forward      Audit for        Stress test      Portfolio risk   CONTINUE/PIVOT/KILL
+  Create drafts       Promote/defer     validation        overfitting      Pre-deployment    Independent veto   Paper portfolio
 ```
 
 **CIO Agent (Designed - Awaiting Implementation):**
@@ -186,7 +187,7 @@ Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel �
 
 **Event-Driven Coordination:**
 - `LineageEventWatcher` polls lineage table for events
-- Automatic triggering: Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst
+- Automatic triggering: Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst → Risk Manager
 - Report Generator runs daily (7 AM ET) and weekly (Sunday 8 PM ET) via scheduler
 - Enable with `scheduler.setup_research_agent_triggers()` + `scheduler.start_with_triggers()`
 
@@ -205,15 +206,24 @@ Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel �
 - Fold stability - critical if CV >2.0 or sign flips
 - Suspiciously good - critical if IC >0.15 or Sharpe >3.0
 
+**Risk Manager Checks:**
+- Drawdown risk - Max drawdown limit (default 20%), drawdown duration (126 days)
+- Concentration risk - Position diversification (min 10), sector exposure (max 30%)
+- Correlation check - Max correlation with existing positions (default 0.70)
+- Risk limits - Volatility warning (>25%), turnover warning (>50%)
+- Independent veto - Can veto strategies but cannot approve deployment
+- Portfolio impact - Calculates effect of adding strategy to paper portfolio
+
 ### Tier 2 Complete
 
 All Intelligence tier features implemented. The platform now has:
 - Complete ML framework with walk-forward validation
-- Full research agent pipeline (Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst)
+- Full research agent pipeline (Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Validation Analyst → Risk Manager)
 - Report Generator for automated daily/weekly research summaries
 - Empyrial-powered performance metrics and tear sheets
 - Overfitting guards and statistical validation
 - 44 technical indicators with point-in-time fundamentals
+- Independent risk oversight with veto authority
 
 ### Parked Features (Future Consideration)
 
@@ -339,6 +349,7 @@ Complete feature tracking with spec links.
 | F-047 | SDKAgent Base Class | 2 | ✅ done | — |
 | F-048 | LineageEventWatcher | 2 | ✅ done | — |
 | F-049 | CIO Agent | 2 | ⏳ designed | 2026-01-26-cio-agent-design.md |
+| F-050 | Risk Manager Agent | 2 | ✅ done | docs/agents/2026-01-28-risk-manager-agent.md |
 | F-027 | Dashboard Authentication | 3 | ❌ planned | — |
 | F-028 | Security Hardening | 3 | ❌ planned | — |
 | F-029 | Health Checks & Monitoring | 3 | ❌ planned | — |
@@ -409,6 +420,22 @@ Complete feature tracking with spec links.
 ## Document History
 
 **Last Updated:** January 28, 2026
+
+**Changes (January 28, 2026 - Risk Manager Agent Implementation):**
+- Implemented Risk Manager agent for independent portfolio risk oversight (`hrp/agents/research_agents.py`)
+- Added four risk checks: drawdown, concentration, correlation, risk limits
+- Conservative institutional defaults: 20% max drawdown, 30% sector exposure, 70% correlation
+- Independent veto authority (can veto strategies, cannot approve deployment)
+- Portfolio impact calculation for assessing new strategy additions
+- Dataclasses: RiskVeto, PortfolioRiskAssessment, RiskManagerReport
+- Lineage events: RISK_REVIEW_COMPLETE, RISK_VETO
+- Research report generation to docs/research/YYYY-MM-DD-risk-manager.md
+- Email alerts for critical vetoes
+- 19 comprehensive tests covering all functionality
+- Created agent specification: docs/agents/2026-01-28-risk-manager-agent.md
+- Added F-050 (Risk Manager Agent) to Feature Registry with ✅ done status
+- Test count updated: 2,639 → 2,661 tests (99.85% pass rate)
+- Updated Research Agents table in Project-Status.md
 
 **Changes (January 28, 2026 - CIO Agent Implementation Phase 1):**
 - Implemented CIO Agent execute() method with weekly review logic

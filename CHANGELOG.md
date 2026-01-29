@@ -1,5 +1,35 @@
 ## [Unreleased]
 
+## [1.7.4] - 2026-01-28
+
+### Added
+- **Risk Manager Agent (F-050)**: Independent portfolio risk oversight agent:
+  - `RiskManager` class in `hrp/agents/research_agents.py` - Extends `ResearchAgent` with deterministic risk checks
+  - Independent veto authority (can veto strategies, cannot approve deployment)
+  - Four risk checks: drawdown, concentration, correlation, risk limits
+  - Portfolio impact calculation for new strategies
+  - Conservative institutional defaults (20% max drawdown, 30% sector exposure, 70% correlation)
+  - Dataclasses: `RiskVeto`, `PortfolioRiskAssessment`, `RiskManagerReport`
+  - Lineage events: `RISK_REVIEW_COMPLETE`, `RISK_VETO`
+  - Research report generation to `docs/research/YYYY-MM-DD-risk-manager.md`
+  - Email alerts for critical vetoes
+  - MCP tool integration for on-demand assessment
+  - 19 comprehensive tests covering all functionality
+- **Agent Specification**: Complete spec document for Risk Manager (`docs/agents/2026-01-28-risk-manager-agent.md`)
+
+### Changed
+- **Research Agents Design** (docs/agents/2026-01-25-research-agents-design.md):
+  - Updated status: 8/8 agents built (all Tier 2 research agents complete)
+  - Added Risk Manager to implementation matrix
+
+### Testing
+- 19 new tests for Risk Manager agent (100% pass rate)
+- Test suite: 2,661 tests (99.85% pass rate, 4 failures in ML deployment pipeline - unrelated)
+
+### Documentation
+- docs/agents/2026-01-28-risk-manager-agent.md: Comprehensive Risk Manager specification
+- Updated Project-Status.md with Risk Manager completion
+
 ## [1.7.3] - 2026-01-28
 
 ### Added
