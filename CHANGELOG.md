@@ -1,5 +1,21 @@
 ## [Unreleased]
 
+## [1.8.0] - 2026-01-30
+
+### Changed
+- **Scheduler Architecture**: Replaced long-lived APScheduler daemon with 12 individual launchd jobs
+  - Each job runs at its scheduled time, holds DuckDB lock briefly, then exits
+  - Eliminates persistent DB write lock contention with MCP server and dashboard
+  - `hrp/agents/run_job.py`: Unified CLI entry point (`python -m hrp.agents.run_job --job prices`)
+  - 12 launchd plists in `launchd/` with `StartCalendarInterval`/`StartInterval` scheduling
+  - `scripts/manage_launchd.sh`: Install/uninstall/status/reload management script
+  - `agent-pipeline` job (every 15 min) replaces `LineageEventWatcher` daemon for event-driven chaining
+  - Old `run_scheduler.py` daemon preserved for backward compatibility
+
+### Documentation
+- Rewrote `docs/setup/Scheduler-Configuration-Guide.md` for individual-job architecture
+- Added Database Architecture Roadmap to `docs/plans/Project-Status.md` (DuckDB → WAL → PostgreSQL split)
+
 ## [1.7.4] - 2026-01-28
 
 ### Added
