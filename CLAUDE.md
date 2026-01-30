@@ -455,6 +455,24 @@ print(f"Strategy docs written: {result['strategy_docs_written']}")
 # Output: Strategies generated: 3, Strategy docs written: ["docs/strategies/post_earnings_drift.md", ...]
 ```
 
+### Use Code Materializer for strategy code generation
+
+```python
+from hrp.agents import CodeMaterializer
+
+# Materialize strategy specs into executable code
+materializer = CodeMaterializer(
+    hypothesis_ids=["HYP-2026-001"],
+    validate_syntax=True,
+)
+result = materializer.run()
+
+print(f"Hypotheses processed: {result['hypotheses_processed']}")
+print(f"Code generated: {result['code_generated']}")
+print(f"Syntax valid: {result['syntax_valid']}")
+# Output files written to hrp/strategies/generated/
+```
+
 ### Run ML Scientist for hypothesis validation
 ```python
 from hrp.agents import MLScientist
@@ -756,6 +774,34 @@ print(f"Model is stable: {result.is_stable}")  # stability_score <= 1.0
 for fold in result.fold_results:
     print(f"Fold {fold.fold_index}: IC={fold.metrics['ic']:.4f}, "
           f"MSE={fold.metrics['mse']:.6f}")
+```
+
+### Use Stability Score v1 for model validation
+
+```python
+from hrp.research.metrics import calculate_stability_score_v1
+
+# Calculate stability score from walk-forward validation results
+fold_sharpes = [0.82, 0.91, 0.75, 0.88, 0.79]
+fold_drawdowns = [0.12, 0.15, 0.10, 0.13, 0.11]
+mean_ic = 0.045
+
+score = calculate_stability_score_v1(
+    fold_sharpes=fold_sharpes,
+    fold_drawdowns=fold_drawdowns,
+    mean_fold_ic=mean_ic,
+)
+
+print(f"Stability Score: {score:.4f}")  # Lower is better
+if score <= 1.0:
+    print("Model is stable - proceed to deployment")
+else:
+    print("Model is unstable - reconsider parameters")
+
+# Stability Score v1 combines:
+# 1. Sharpe CV (coefficient of variation across folds)
+# 2. Drawdown dispersion (variability in max drawdown)
+# 3. Sign flip penalty (penalizes inconsistent IC signs)
 ```
 
 ### Use overfitting guards

@@ -125,6 +125,30 @@ This document describes the complete decision flow from signal discovery to stra
 
 ---
 
+### Adaptive IC Thresholds (NEW)
+
+**Feature:** Signal Scientist now applies strategy-class-specific IC thresholds to improve signal quality assessment.
+
+**Strategy Classifications:**
+
+| Strategy Class | Description | Pass Threshold | Kill Threshold |
+|----------------|-------------|----------------|-----------------|
+| `cross_sectional_factor` | Relative value strategies (e.g., P/E ratio) | IC ≥ 0.015 | IC < 0.005 |
+| `time_series_momentum` | Trend-following strategies | IC ≥ 0.02 | IC < 0.01 |
+| `ml_composite` | ML model predictions | IC ≥ 0.025 | IC < 0.01 |
+
+**Implementation:**
+- Alpha Researcher classifies hypotheses by strategy class during review
+- Signal Scientist applies class-specific thresholds when creating hypotheses
+- Ensures appropriate rigor for each strategy type
+
+**Benefits:**
+- More realistic expectations for different strategy types
+- Reduces false positives from weak signals
+- Prevents premature rejection of viable strategies
+
+---
+
 ### Stage 2: Hypothesis Formation (Alpha Researcher)
 
 **Agent:** `AlphaResearcher`
