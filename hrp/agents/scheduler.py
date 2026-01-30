@@ -843,22 +843,26 @@ class IngestionScheduler:
             f"Scheduled weekly sector ingestion at {sectors_time} ET on {day_of_week.upper()}"
         )
 
-    def setup_quality_sentinel(
+    def setup_model_monitoring(
         self,
         audit_time: str = "06:00",
-        audit_window_days: int = 1,
+        audit_window_days: int = 7,
         include_monitoring: bool = True,
         send_alerts: bool = True,
     ) -> None:
         """
-        Configure daily ML Quality Sentinel audit.
+        Configure daily model monitoring and audit safety net.
 
-        Schedules the ML Quality Sentinel to run daily, auditing recent experiments
-        for overfitting, leakage, and other quality issues.
+        Schedules the ML Quality Sentinel to run daily, monitoring deployed models
+        for degradation and acting as a safety net for any missed experiments.
+
+        Note: New experiments are audited immediately via event-driven triggers.
+        This scheduled job focuses on production model monitoring and catch-all audits.
 
         Args:
             audit_time: Time to run audit (HH:MM format, default: 06:00 AM ET)
-            audit_window_days: Days of recent experiments to audit (default: 1)
+            audit_window_days: Days of recent experiments to audit (default: 7)
+                - Increased from 1 to 7 since experiments are caught immediately by events
             include_monitoring: Whether to monitor deployed models (default: True)
             send_alerts: Whether to send email alerts for critical issues (default: True)
         """
@@ -874,15 +878,15 @@ class IngestionScheduler:
             send_alerts=send_alerts,
         )
 
-        # Schedule quality sentinel job
+        # Schedule model monitoring job
         self.add_job(
             func=sentinel.run,
-            job_id="ml_quality_sentinel",
+            job_id="model_monitoring",
             trigger=CronTrigger(hour=hour, minute=minute, timezone=ET_TIMEZONE),
-            name="Daily ML Quality Sentinel",
+            name="Daily Model Monitoring",
         )
         logger.info(
-            f"Scheduled ML Quality Sentinel at {audit_time} ET "
+            f"Scheduled Model Monitoring at {audit_time} ET "
             f"(window: {audit_window_days} days, monitoring: {include_monitoring})"
         )
 

@@ -140,13 +140,13 @@ def main():
     parser.add_argument(
         "--with-quality-sentinel",
         action="store_true",
-        help="Enable daily ML Quality Sentinel audit (6 AM ET by default)",
+        help="Enable daily model monitoring (deployed models + audit safety net, 6 AM ET by default)",
     )
     parser.add_argument(
         "--sentinel-time",
         type=str,
         default="06:00",
-        help="Time to run ML Quality Sentinel (HH:MM format, default: 06:00)",
+        help="Time to run model monitoring (HH:MM format, default: 06:00)",
     )
     parser.add_argument(
         "--with-daily-report",
@@ -247,12 +247,12 @@ def main():
             create_hypotheses=True,
         )
 
-    # Setup daily ML Quality Sentinel
+    # Setup daily model monitoring
     if args.with_quality_sentinel:
-        logger.info("Setting up daily ML Quality Sentinel audit...")
-        scheduler.setup_quality_sentinel(
+        logger.info("Setting up daily model monitoring (deployed models + safety net)...")
+        scheduler.setup_model_monitoring(
             audit_time=args.sentinel_time,
-            audit_window_days=1,
+            audit_window_days=7,  # Safety net for missed experiments
             send_alerts=True,
         )
 
