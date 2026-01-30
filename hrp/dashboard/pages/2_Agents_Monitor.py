@@ -7,7 +7,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from hrp.dashboard.agents_monitor import get_all_agent_status, AgentStatus
+from hrp.dashboard.agents_monitor import get_all_agent_status, get_timeline, AgentStatus
 from hrp.api.platform import PlatformAPI
 
 
@@ -56,10 +56,79 @@ for idx, agent in enumerate(agents):
 
         st.markdown("---")
 
-# Historical Timeline Section (placeholder)
+# Historical Timeline Section
 st.markdown("---")
 st.subheader("Historical Timeline")
-st.info("Timeline view coming soon...")
+
+# Timeline filters
+col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+with col1:
+    agent_filter = st.multiselect(
+        "Filter by Agent",
+        options=[a.name for a in agents],
+        default=[a.name for a in agents],
+    )
+with col2:
+    status_filter = st.multiselect(
+        "Filter by Status",
+        options=["Running", "Completed", "Failed"],
+        default=["Running", "Completed", "Failed"],
+    )
+with col3:
+    limit = st.slider("Events to show", min_value=10, max_value=500, value=100)
+with col4:
+    st.write("")  # Spacer
+    if st.button("Apply Filters"):
+        st.rerun()
+
+# Get and display timeline
+timeline = get_timeline(api, limit=limit)
+
+if not timeline:
+    st.info("No events found.")
+else:
+    for event in timeline:
+        # Skip if not in agent filter
+        if event.get("agent_name") not in agent_filter:
+            continue
+
+        # Determine status icon
+        if "failed" in event["event_type"].lower():
+            status_icon = "❌"
+        elif "start" in event["event_type"].lower():
+            status_icon = "🔄"
+        else:
+            status_icon = "✅"
+
+        # Create expandable event
+        with st.expander(
+            f"{status_icon} **{event.get('agent_name', 'Unknown')}** — "
+            f"{event['event_type'].replace('_', ' ').title()} • "
+            f"{datetime.fromisoformat(event['timestamp']).strftime('%Y-%m-%d %H:%M')} "
+            f"• `{event.get('hypothesis_id', 'N/A')}`"
+        ):
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.markdown("**Details**")
+                st.caption(f"Event ID: {event['lineage_id']}")
+                st.caption(f"Actor: `{event['actor']}`")
+                if event.get("experiment_id"):
+                    st.caption(f"Experiment: `{event['experiment_id']}`")
+
+            with col2:
+                st.markdown("**Info**")
+                if event.get("details"):
+                    for key, value in event["details"].items():
+                        st.caption(f"{key}: {value}")
+
+            with col3:
+                st.markdown("**Actions**")
+                if event.get("experiment_id"):
+                    st.link_button(
+                        "View in MLflow",
+                        f"http://localhost:5000/experiments/{event.get('experiment_id')}"
+                    )
 
 # Auto-refresh logic
 if auto_refresh:
