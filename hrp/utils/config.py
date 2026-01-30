@@ -40,6 +40,22 @@ class DataConfig:
     def cache_dir(self) -> Path:
         return self.data_dir / "cache"
 
+    @property
+    def output_dir(self) -> Path:
+        return self.data_dir / "output"
+
+    @property
+    def research_dir(self) -> Path:
+        return self.output_dir / "research"
+
+    @property
+    def strategies_dir(self) -> Path:
+        return self.output_dir / "strategies"
+
+    @property
+    def reports_dir(self) -> Path:
+        return self.output_dir / "reports"
+
 
 @dataclass
 class APIConfig:

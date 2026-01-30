@@ -49,7 +49,8 @@ class TestReportGeneratorConfig:
         """Test default configuration values."""
         config = ReportGeneratorConfig()
         assert config.report_type == "daily"
-        assert config.report_dir == "docs/reports"
+        from hrp.utils.config import get_config
+        assert config.report_dir == str(get_config().data.reports_dir)
         assert len(config.include_sections) == 6
         assert config.lookback_days == 7
 

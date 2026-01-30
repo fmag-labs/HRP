@@ -63,11 +63,6 @@ features.db*
 # Auto Claude data directory
 .auto-claude/
 
-# Agent-generated output (research notes, strategy specs, reports)
-docs/research/
-docs/strategies/
-docs/reports/
-
 # Auto Claude generated files
 .auto-claude-security.json
 .auto-claude-status

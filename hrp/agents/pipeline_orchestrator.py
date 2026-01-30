@@ -80,7 +80,12 @@ class PipelineOrchestratorConfig:
 
     # Resource tracking
     log_resource_usage: bool = True
-    kill_gate_report_dir: str = "docs/research"
+    kill_gate_report_dir: str = ""  # Set from config in __post_init__
+
+    def __post_init__(self):
+        if not self.kill_gate_report_dir:
+            from hrp.utils.config import get_config
+            self.kill_gate_report_dir = str(get_config().data.research_dir)
 
 
 @dataclass

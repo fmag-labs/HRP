@@ -458,8 +458,9 @@ class CIOAgent(SDKAgent):
         """Generate weekly CIO report markdown file."""
         from datetime import date
         from pathlib import Path
+        from hrp.utils.config import get_config
 
-        report_dir = Path("docs/reports") / date.today().strftime("%Y-%m-%d")
+        report_dir = get_config().data.reports_dir / date.today().strftime("%Y-%m-%d")
         report_dir.mkdir(parents=True, exist_ok=True)
 
         report_path = report_dir / f"{date.today().strftime('%H-%M')}-cio-review.md"

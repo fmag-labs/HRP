@@ -1129,7 +1129,7 @@ def run_alpha_researcher(
     Args:
         hypothesis_ids: Specific hypothesis IDs to review (optional).
                        If not provided, reviews all hypotheses in "draft" status.
-        write_research_note: Whether to write research note to docs/research/ (default True)
+        write_research_note: Whether to write research note to ~/hrp-data/output/research/ (default True)
 
     Returns:
         Summary of reviewed hypotheses with recommendations
@@ -1181,7 +1181,7 @@ def run_report_generator(
     - Agent activity (recent runs of all research agents)
     - AI-powered insights (actionable recommendations)
 
-    Reports are written to docs/reports/YYYY-MM-DD/HH-MM-{daily,weekly}.md
+    Reports are written to ~/hrp-data/output/reports/YYYY-MM-DD/HH-MM-{daily,weekly}.md
 
     Args:
         report_type: Type of report to generate ("daily" or "weekly", default "daily")

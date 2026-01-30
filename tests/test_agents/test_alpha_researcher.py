@@ -84,7 +84,8 @@ class TestAlphaResearcherConfig:
         assert config.hypothesis_ids is None
         assert config.regime_lookback_days == 252 * 3
         assert config.write_research_note is True
-        assert config.research_note_dir == "docs/research"
+        from hrp.utils.config import get_config
+        assert config.research_note_dir == str(get_config().data.research_dir)
         # Inherited from SDKAgentConfig
         assert config.max_tokens_per_run == 50_000
 

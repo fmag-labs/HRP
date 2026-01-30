@@ -15,7 +15,6 @@ def main():
     # Create config that disables dependency checks
     config = ReportGeneratorConfig(
         report_type="daily",
-        report_dir="docs/reports",
     )
 
     # Create generator

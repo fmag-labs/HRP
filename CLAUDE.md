@@ -143,6 +143,7 @@ Job scheduling: Individual launchd plists in `launchd/`, managed via `scripts/ma
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `HRP_DB_PATH` | Database path (default: `~/hrp-data/hrp.duckdb`) | No |
+| `HRP_DATA_DIR` | Data directory (default: `~/hrp-data/`) | No |
 | `RESEND_API_KEY` | Resend API key for email notifications | For alerts |
 | `NOTIFICATION_EMAIL` | Email address for notifications | For alerts |
 | `NOTIFICATION_FROM_EMAIL` | From address (default: `noreply@hrp.local`) | No |

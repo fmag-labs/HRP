@@ -89,9 +89,17 @@ class AlphaResearcherConfig(SDKAgentConfig):
 
     # Documentation output
     write_research_note: bool = True
-    research_note_dir: str = "docs/research"
-    write_strategy_docs: bool = True  # NEW
-    strategy_docs_dir: str = "docs/strategies"  # NEW
+    research_note_dir: str = ""  # Set from config in __post_init__
+    write_strategy_docs: bool = True
+    strategy_docs_dir: str = ""  # Set from config in __post_init__
+
+    def __post_init__(self):
+        if not self.research_note_dir:
+            from hrp.utils.config import get_config
+            self.research_note_dir = str(get_config().data.research_dir)
+        if not self.strategy_docs_dir:
+            from hrp.utils.config import get_config
+            self.strategy_docs_dir = str(get_config().data.strategies_dir)
 
 
 @dataclass

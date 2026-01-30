@@ -2416,12 +2416,13 @@ class MLQualitySentinel(ResearchAgent):
         warnings: list[tuple[str, str]],
         duration: float,
     ) -> None:
-        """Write per-run audit report to docs/research/."""
+        """Write per-run audit report to output/research/."""
         from pathlib import Path
+        from hrp.utils.config import get_config
 
         report_date = date.today().isoformat()
         filename = f"{report_date}-ml-quality-sentinel.md"
-        filepath = Path("docs/research") / filename
+        filepath = get_config().data.research_dir / filename
 
         # Build markdown report
         lines = [
@@ -2910,12 +2911,13 @@ class ValidationAnalyst(ResearchAgent):
         validations: list[HypothesisValidation],
         duration: float,
     ) -> None:
-        """Write per-run validation report to docs/research/."""
+        """Write per-run validation report to output/research/."""
         from pathlib import Path
+        from hrp.utils.config import get_config
 
         report_date = date.today().isoformat()
         filename = f"{report_date}-validation-analyst.md"
-        filepath = Path("docs/research") / filename
+        filepath = get_config().data.research_dir / filename
 
         lines = [
             f"# Validation Analyst Report - {report_date}",
@@ -3742,12 +3744,13 @@ class RiskManager(ResearchAgent):
             logger.warning(f"Failed to update hypothesis {assessment.hypothesis_id}: {e}")
 
     def _write_research_note(self, report: RiskManagerReport) -> None:
-        """Write per-run risk assessment report to docs/research/."""
+        """Write per-run risk assessment report to output/research/."""
         from pathlib import Path
+        from hrp.utils.config import get_config
 
         report_date = report.report_date.isoformat()
         filename = f"{report_date}-risk-manager.md"
-        filepath = Path("docs/research") / filename
+        filepath = get_config().data.research_dir / filename
 
         lines = [
             f"# Risk Manager Report - {report_date}",
@@ -4693,16 +4696,17 @@ class QuantDeveloper(ResearchAgent):
 
     def _write_research_note(self, report: QuantDeveloperReport) -> None:
         """
-        Write research note to docs/research/.
+        Write research note to output/research/.
 
         Args:
             report: QuantDeveloperReport with run results
         """
         from pathlib import Path
+        from hrp.utils.config import get_config
 
         report_date = report.report_date.isoformat()
         filename = f"{report_date}-quant-developer.md"
-        filepath = Path("docs/research") / filename
+        filepath = get_config().data.research_dir / filename
 
         lines = [
             f"# Quant Developer Report - {report_date}",

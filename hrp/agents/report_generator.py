@@ -30,7 +30,12 @@ class ReportGeneratorConfig(SDKAgentConfig):
 
     # Report settings
     report_type: str = "daily"  # "daily" or "weekly"
-    report_dir: str = "docs/reports"
+    report_dir: str = ""  # Set from config in __post_init__
+
+    def __post_init__(self):
+        if not self.report_dir:
+            from hrp.utils.config import get_config
+            self.report_dir = str(get_config().data.reports_dir)
 
     # Content sections to include
     include_sections: list[str] = field(default_factory=lambda: [
