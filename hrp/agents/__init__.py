@@ -9,8 +9,10 @@ from hrp.agents.alpha_researcher import (
     AlphaResearcherConfig,
     AlphaResearcherReport,
     HypothesisAnalysis,
+    StrategySpec,
 )
 from hrp.agents.cio import CIOAgent, CIODecision, CIOReport, CIOScore
+from hrp.agents.code_materializer import CodeMaterializer, CodeMaterializerConfig
 from hrp.agents.jobs import (
     FeatureComputationJob,
     FundamentalsIngestionJob,
@@ -31,8 +33,11 @@ from hrp.agents.research_agents import (
     MLScientistReport,
     ModelExperimentResult,
     MonitoringAlert,
+    ParameterVariation,
     PortfolioRiskAssessment,
     QualitySentinelReport,
+    QuantDeveloper,
+    QuantDeveloperReport,
     ResearchAgent,
     RiskManager,
     RiskManagerReport,
@@ -44,6 +49,17 @@ from hrp.agents.research_agents import (
     ValidationAnalystReport,
     ValidationCheck,
     ValidationSeverity,
+)
+from hrp.agents.pipeline_orchestrator import (
+    BaselineResult,
+    BaselineType,
+    ExperimentConfig,
+    ExperimentResult,
+    KillGateReason,
+    OrchestratorResult,
+    PipelineOrchestrator,
+    PipelineOrchestratorConfig,
+    PipelineOrchestratorReport,
 )
 from hrp.agents.scheduler import IngestionScheduler, LineageEventWatcher, LineageTrigger
 from hrp.agents.sdk_agent import AgentCheckpoint, SDKAgent, SDKAgentConfig, TokenUsage
@@ -85,6 +101,10 @@ __all__ = [
     "RiskVeto",
     "PortfolioRiskAssessment",
     "RiskManagerReport",
+    # Quant Developer
+    "QuantDeveloper",
+    "QuantDeveloperReport",
+    "ParameterVariation",
     # SDK Agents
     "SDKAgent",
     "SDKAgentConfig",
@@ -94,6 +114,9 @@ __all__ = [
     "AlphaResearcherConfig",
     "AlphaResearcherReport",
     "HypothesisAnalysis",
+    # Code Materializer
+    "CodeMaterializer",
+    "CodeMaterializerConfig",
     # CIO Agent
     "CIOAgent",
     "CIOScore",
@@ -103,4 +126,14 @@ __all__ = [
     "IngestionScheduler",
     "LineageEventWatcher",
     "LineageTrigger",
+    # Pipeline Orchestrator
+    "PipelineOrchestrator",
+    "PipelineOrchestratorConfig",
+    "PipelineOrchestratorReport",
+    "OrchestratorResult",
+    "BaselineResult",
+    "BaselineType",
+    "ExperimentConfig",
+    "ExperimentResult",
+    "KillGateReason",
 ]
