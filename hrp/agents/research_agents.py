@@ -3959,6 +3959,19 @@ class QuantDeveloper(ResearchAgent):
 
         for hypothesis in hypotheses:
             try:
+                # Pre-Backtest Review: lightweight feasibility check
+                hypothesis_id = hypothesis.get("hypothesis_id")
+                review = self._pre_backtest_review(hypothesis_id)
+
+                # Log review results
+                if review["warnings"] or review["data_issues"]:
+                    logger.warning(
+                        f"Pre-backtest review for {hypothesis_id}: "
+                        f"{len(review['warnings'])} warnings, "
+                        f"{len(review['data_issues'])} data issues"
+                    )
+
+                # Proceed with backtest (review is warnings-only, no veto)
                 result = self._backtest_hypothesis(hypothesis)
                 if result:
                     backtest_results.append(result)
@@ -4375,6 +4388,140 @@ class QuantDeveloper(ResearchAgent):
                 "avg_trade_value": 0,
                 "gross_return": 0,
             }
+
+    # =========================================================================
+    # Pre-Backtest Review Methods
+    # =========================================================================
+
+    def _pre_backtest_review(self, hypothesis_id: str) -> dict:
+        """
+        Lightweight execution feasibility check before expensive backtests.
+
+        Returns warnings only - does not block or veto.
+
+        Args:
+            hypothesis_id: Hypothesis ID to review
+
+        Returns:
+            Dict with review results
+        """
+        from datetime import datetime
+
+        hypothesis = self.api.get_hypothesis(hypothesis_id)
+        if not hypothesis:
+            return {
+                "hypothesis_id": hypothesis_id,
+                "passed": False,
+                "warnings": ["Hypothesis not found"],
+                "data_issues": [],
+                "execution_notes": [],
+                "reviewed_at": datetime.now().isoformat(),
+            }
+
+        # Extract strategy spec from metadata if available
+        metadata = hypothesis.get("metadata") or {}
+        if isinstance(metadata, str):
+            import json
+            metadata = json.loads(metadata)
+
+        strategy_spec = metadata.get("strategy_spec", {})
+
+        warnings = []
+        data_issues = []
+        execution_notes = []
+
+        # Check 1: Data availability
+        data_warnings = self._check_data_availability(
+            symbols=strategy_spec.get("universe_symbols", []),
+            features=strategy_spec.get("features", []),
+            start_date=strategy_spec.get("start_date"),
+        )
+        warnings.extend(data_warnings)
+
+        # Check 2: Point-in-time validity
+        pit_warnings = self._check_point_in_time_validity(strategy_spec)
+        warnings.extend(pit_warnings)
+
+        # Check 3: Execution frequency
+        freq_notes = self._check_execution_frequency(strategy_spec)
+        execution_notes.extend(freq_notes)
+
+        # Check 4: Universe liquidity
+        liquidity_warnings = self._check_universe_liquidity(
+            strategy_spec.get("universe_symbols", [])
+        )
+        warnings.extend(liquidity_warnings)
+
+        # Check 5: Cost model applicability
+        cost_warnings = self._check_cost_model_applicability(strategy_spec)
+        warnings.extend(cost_warnings)
+
+        return {
+            "hypothesis_id": hypothesis_id,
+            "passed": True,  # Always True (warnings only)
+            "warnings": warnings,
+            "data_issues": data_issues,
+            "execution_notes": execution_notes,
+            "reviewed_at": datetime.now().isoformat(),
+        }
+
+    def _check_data_availability(
+        self, symbols: list[str], features: list[str], start_date: str
+    ) -> list[str]:
+        """Check if required data exists."""
+        warnings = []
+        # Simplified implementation - in production query database for feature availability
+        # For now: placeholder
+        if not symbols:
+            warnings.append("WARNING: No universe symbols specified")
+        if not features:
+            warnings.append("WARNING: No features specified")
+        if not start_date:
+            warnings.append("WARNING: No start date specified")
+        return warnings
+
+    def _check_point_in_time_validity(self, strategy_spec: dict) -> list[str]:
+        """Check features can be computed as of required dates."""
+        warnings = []
+        # Check lookback windows vs data availability
+        # For now: placeholder
+        lookback = strategy_spec.get("lookback_days", 0)
+        if lookback > 756:  # 3 years
+            warnings.append(f"WARNING: Lookback period ({lookback} days) exceeds typical data availability")
+        return warnings
+
+    def _check_execution_frequency(self, strategy_spec: dict) -> list[str]:
+        """Check if rebalance cadence is achievable."""
+        notes = []
+        frequency = strategy_spec.get("rebalance_cadence", "weekly")
+        if frequency == "intraday":
+            notes.append("WARNING: Intraday rebalancing not supported")
+        elif frequency == "daily":
+            notes.append("NOTE: Daily rebalancing has high execution costs")
+        return notes
+
+    def _check_universe_liquidity(self, symbols: list[str]) -> list[str]:
+        """Check if symbols have sufficient liquidity."""
+        warnings = []
+        # In production: query average daily volume
+        # For now: placeholder
+        if len(symbols) > 500:
+            warnings.append(f"WARNING: Large universe ({len(symbols)} symbols) may have liquidity constraints")
+        return warnings
+
+    def _check_cost_model_applicability(self, strategy_spec: dict) -> list[str]:
+        """Check if strategy can handle transaction costs."""
+        warnings = []
+        # Estimate turnover and check if costs dominate
+        # For now: placeholder
+        rebalance_freq = strategy_spec.get("rebalance_cadence", "weekly")
+        if rebalance_freq == "daily":
+            warnings.append("WARNING: Daily rebalancing may result in excessive transaction costs")
+        return warnings
+
+    # =========================================================================
+    # Backtest Methods
+    # =========================================================================
 
     def _backtest_hypothesis(self, hypothesis: dict[str, Any]) -> str | None:
         """

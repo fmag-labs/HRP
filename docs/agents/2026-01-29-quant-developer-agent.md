@@ -227,6 +227,41 @@ result = run_quant_developer(hypothesis_id="HYP-2026-001")
 
 ---
 
+## Pre-Backtest Review (NEW)
+
+### Purpose
+
+Lightweight execution feasibility sanity check before expensive backtests.
+
+### When It Runs
+
+Between ML Quality Sentinel and full Production Backtesting.
+
+### Checks
+
+| Check | Description | Action |
+|-------|-------------|--------|
+| Data Availability | Required features exist | Warning if missing |
+| Point-in-Time Validity | Features computable as of dates | Warning if violated |
+| Execution Frequency | Rebalance cadence achievable | Warning if unrealistic |
+| Universe Liquidity | Sufficient liquidity | Warning if illiquid |
+| Cost Model | Can handle IBKR costs | Warning if dominant |
+
+### Output
+
+```python
+@dataclass
+class PreBacktestReviewResult:
+    hypothesis_id: str
+    passed: bool  # Always True (warnings only)
+    warnings: list[str]
+    data_issues: list[str]
+    execution_notes: list[str]
+    reviewed_at: datetime
+```
+
+---
+
 ## Implementation Details
 
 ### Look-Ahead Bias Prevention
