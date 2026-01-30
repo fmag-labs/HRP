@@ -15,13 +15,27 @@ from hrp.api.platform import PlatformAPI
 @st.cache_data(ttl=5)
 def get_cached_agent_status() -> list[AgentStatus]:
     """Get agent status with 5-second cache."""
-    return get_all_agent_status(PlatformAPI())
+    try:
+        return get_all_agent_status(PlatformAPI())
+    except Exception as e:
+        st.error(f"Failed to load agent status: {e}")
+        if st.button("Retry", key="retry_agent_status"):
+            st.cache_data.clear()
+            st.rerun()
+        return []
 
 
 @st.cache_data(ttl=10)
 def get_cached_timeline(_limit: int = 100) -> list[dict]:
     """Get timeline with 10-second cache."""
-    return get_timeline(PlatformAPI(), limit=_limit)
+    try:
+        return get_timeline(PlatformAPI(), limit=_limit)
+    except Exception as e:
+        st.error(f"Failed to load timeline: {e}")
+        if st.button("Retry", key="retry_timeline"):
+            st.cache_data.clear()
+            st.rerun()
+        return []
 
 
 st.title("🤖 Agents Monitor")
