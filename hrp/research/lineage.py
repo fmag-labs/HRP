@@ -32,6 +32,7 @@ class EventType(str, Enum):
     DEPLOYMENT_APPROVED = "deployment_approved"
     DEPLOYMENT_REJECTED = "deployment_rejected"
     AGENT_RUN_COMPLETE = "agent_run_complete"
+    AGENT_RUN_START = "agent_run_start"
     ML_QUALITY_SENTINEL_AUDIT = "ml_quality_sentinel_audit"
     ALPHA_RESEARCHER_REVIEW = "alpha_researcher_review"
     VALIDATION_ANALYST_REVIEW = "validation_analyst_review"

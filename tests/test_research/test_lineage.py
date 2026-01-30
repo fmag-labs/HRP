@@ -97,6 +97,7 @@ class TestEventType:
             "deployment_approved",
             "deployment_rejected",
             "agent_run_complete",
+            "agent_run_start",  # NEW
             "data_ingestion",
             "system_error",
         ]
@@ -115,6 +116,11 @@ class TestEventType:
         """VALIDATION_ANALYST_REVIEW event type is defined."""
         assert hasattr(EventType, "VALIDATION_ANALYST_REVIEW")
         assert EventType.VALIDATION_ANALYST_REVIEW.value == "validation_analyst_review"
+
+    def test_agent_run_start_event_type_exists(self):
+        """AGENT_RUN_START event type should exist in EventType enum."""
+        assert hasattr(EventType, "AGENT_RUN_START")
+        assert EventType.AGENT_RUN_START == "agent_run_start"
 
 
 class TestLineageEvent:
