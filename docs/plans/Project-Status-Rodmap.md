@@ -82,6 +82,7 @@ Everything needed for a working research platform with reliable data.
 | Ingestion Status | ✅ | Source status, last fetch times |
 | Hypotheses | ✅ | Browse, create, update, lifecycle management |
 | Experiments | ✅ | MLflow integration, comparison, artifacts |
+| **Agents Monitor** | ✅ NEW | Real-time status + historical timeline for all 11 agents |
 
 ---
 
@@ -419,7 +420,19 @@ Complete feature tracking with spec links.
 
 ## Document History
 
-**Last Updated:** January 28, 2026
+**Last Updated:** January 30, 2026
+
+**Changes (January 30, 2026 - Agents Monitor Dashboard):**
+- Implemented Agents Monitor page for real-time agent status and historical timeline
+- Real-Time Monitor: 4-column grid showing all 11 agents with status icons (🟦 Running, 🟢 Completed, 🔴 Failed, ⚪ Idle)
+- Hybrid auto-refresh: 2s when agents active, 10s when idle, with manual toggle
+- Historical Timeline: Expandable events with filters (agent, status, date range)
+- Backend: `get_all_agent_status()` and `get_timeline()` functions in `hrp/dashboard/agents_monitor.py`
+- Caching: @st.cache_data decorators (5s for status, 10s for timeline)
+- Error handling: Graceful degradation with retry buttons
+- 9 comprehensive tests for status inference, timeline filtering, agent registry
+- Design document: docs/plans/2026-01-29-agents-monitor-design.md
+- Implementation plan: docs/plans/2026-01-29-agents-monitor-implementation.md
 
 **Changes (January 28, 2026 - Risk Manager Agent Implementation):**
 - Implemented Risk Manager agent for independent portfolio risk oversight (`hrp/agents/research_agents.py`)

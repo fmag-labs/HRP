@@ -1178,6 +1178,7 @@ print(format_metrics(metrics))
 | Service | Command | Port |
 |---------|---------|------|
 | Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
+| └─ Agents Monitor | Navigate to "Agents Monitor" page | - |
 | MLflow UI | `mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db` | 5000 |
 | Scheduler | `python -m hrp.agents.run_scheduler` | - |
 | Scheduler (full) | `python -m hrp.agents.run_scheduler --with-research-triggers --with-signal-scan --with-quality-sentinel --with-daily-report --with-weekly-report` | - |
