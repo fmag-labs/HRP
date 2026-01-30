@@ -6,6 +6,7 @@
 |------|-------|--------|
 | **Foundation** | Data + Research Core | Complete |
 | **Intelligence** | ML + Agents | Complete |
+| **Intelligence Extensions** | NLP + Bayesian Optimization | Not started |
 | **Production** | Security + Ops | Not started |
 | **Trading** | Live Execution | Not started |
 
@@ -35,7 +36,7 @@
 - Universe management: S&P 500 from Wikipedia, exclusion rules (financials, REITs, penny stocks)
 - Multi-source ingestion: Polygon.io (primary) + Yahoo Finance (fallback)
 - Feature store: 44 technical indicators with versioning
-- Scheduled jobs: APScheduler — Prices (18:00) → Universe (18:05) → Features (18:10)
+- Scheduled jobs: Individual launchd jobs — Prices (18:00) → Universe (18:05) → Features (18:10)
 - Weekly fundamentals: Saturday 10 AM ET (SimFin + YFinance fallback)
 - Data quality: 5 check types (anomaly, completeness, gaps, stale, volume)
 - Backup system: Automated daily, SHA-256 verification, 30-day retention
@@ -112,11 +113,52 @@
 
 **Pipeline:** Signal Scientist → Alpha Researcher → Code Materializer → ML Scientist → ML Quality Sentinel → Validation Analyst → Risk Manager → CIO Agent
 
-**Coordination:** Event-driven via LineageEventWatcher + APScheduler time-based triggers
+**Coordination:** Event-driven via individual launchd jobs (agent-pipeline polls every 15 min) + time-based launchd scheduling
 
 ### MCP Server (22 Tools)
 
 Hypothesis management (5), data access (5), backtesting (4), ML training (3), quality/health (3), agents (2)
+
+---
+
+## Tier 2.5: Intelligence Extensions (Not Started)
+
+### Bayesian Hyperparameter Optimization
+
+- **Status:** Optuna already in dependencies, unused
+- **Scope:** Replace grid/random search in `cross_validated_optimize()` with Optuna TPE sampler
+- **Files:** `hrp/ml/optimization.py`, `hrp/ml/training.py`
+- **Benefit:** Better hyperparameter search with fewer trials, respects existing trial counter limits (`HyperparameterTrialCounter`)
+
+### Fundamental NLP
+
+Text-based features from earnings calls, SEC filings, and news.
+
+| Phase | Scope | Details |
+|-------|-------|---------|
+| **1** | SEC EDGAR ingestion | 10-Q/10-K text → new data source + ingestion job |
+| **2** | Earnings sentiment features | FinBERT or Claude API → 6-8 new features |
+| **3** | News sentiment aggregation | Rolling sentiment signals |
+
+**New files:**
+
+- `hrp/data/sources/sec_edgar_source.py` — EDGAR full-text retrieval
+- `hrp/data/ingestion/nlp_text.py` — Text ingestion job
+- `hrp/data/features/nlp_features.py` — Sentiment/NLP feature computation
+
+**Schema:** New `raw_text_data` table; NLP features stored in existing `features` table.
+
+**Integration:** Zero changes to backtest engine, ML pipeline, or risk system — uses existing feature store pattern.
+
+---
+
+## Database Architecture Roadmap
+
+| Phase | Architecture | Enables |
+|-------|-------------|---------|
+| **Current** | DuckDB single-file, individual launchd jobs (short-lived locks) | MCP + dashboard without lock contention |
+| **Tier 3** | DuckDB WAL mode, read-only connections everywhere possible | Concurrent reads during writes |
+| **Tier 4** | Split storage: PostgreSQL (mutable metadata: hypotheses, lineage, experiments) + DuckDB (analytics: prices, features, backtests) | Concurrent writes for intraday agents |
 
 ---
 
@@ -133,3 +175,6 @@ Hypothesis management (5), data access (5), backtesting (4), ML training (3), qu
 - Order execution (signal → order conversion)
 - Position tracking and P&L
 - Live vs backtest comparison
+- Auto-predict: daily scheduled predictions for production models
+- Model management dashboard page
+- Automated rollback on drift threshold breach
