@@ -37,14 +37,15 @@ class PlatformAPI:
         )
     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, read_only: bool = False):
         """
         Initialize the Platform API.
 
         Args:
             db_path: Optional path to database (uses default if not provided)
+            read_only: If True, use read-only database connection (default: False)
         """
-        self._db = get_db(db_path)
+        self._db = get_db(db_path, read_only=read_only)
         logger.debug("PlatformAPI initialized")
 
     # =========================================================================

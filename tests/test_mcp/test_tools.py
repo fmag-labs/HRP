@@ -18,7 +18,7 @@ def call_tool(tool, *args, **kwargs):
 @pytest.fixture
 def mock_api():
     """Create a mock PlatformAPI."""
-    with patch.object(research_server, "_api", None):
+    with patch.object(research_server, "_api_ro", None):
         with patch.object(research_server, "get_api") as mock_get_api:
             api = MagicMock()
             mock_get_api.return_value = api

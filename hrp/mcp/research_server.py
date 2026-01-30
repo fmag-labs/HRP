@@ -37,17 +37,25 @@ mcp = FastMCP(
 # Actor identifier for all MCP tool calls
 ACTOR = "agent:claude-interactive"
 
-# Cached API instance
-_api: Optional[PlatformAPI] = None
+# Cached read-only API instance for queries (never holds write lock)
+_api_ro: Optional[PlatformAPI] = None
 
 
-def get_api() -> PlatformAPI:
-    """Get or create the PlatformAPI instance."""
-    global _api
-    if _api is None:
-        _api = PlatformAPI()
-        logger.info("PlatformAPI initialized for MCP server")
-    return _api
+def get_api(read_only: bool = True) -> PlatformAPI:
+    """Get or create a PlatformAPI instance.
+
+    Args:
+        read_only: If True, returns a cached read-only instance (default).
+                   If False, returns a new read-write instance for mutations.
+    """
+    if read_only:
+        global _api_ro
+        if _api_ro is None:
+            _api_ro = PlatformAPI(read_only=True)
+            logger.info("PlatformAPI (read-only) initialized for MCP server")
+        return _api_ro
+    # Write operations get a fresh instance so the lock is short-lived
+    return PlatformAPI(read_only=False)
 
 
 # =============================================================================
@@ -135,7 +143,7 @@ def create_hypothesis(
     Returns:
         The newly created hypothesis ID
     """
-    api = get_api()
+    api = get_api(read_only=False)
     hypothesis_id = api.create_hypothesis(
         title=title,
         thesis=thesis,
@@ -169,7 +177,7 @@ def update_hypothesis(
     Returns:
         Confirmation of the update
     """
-    api = get_api()
+    api = get_api(read_only=False)
     api.update_hypothesis(
         hypothesis_id=hypothesis_id,
         status=status,
@@ -440,7 +448,7 @@ def run_backtest(
     """
     from hrp.research.config import BacktestConfig
 
-    api = get_api()
+    api = get_api(read_only=False)
     start = parse_date(start_date)
     end = parse_date(end_date)
 
