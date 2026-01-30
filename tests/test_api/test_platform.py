@@ -1735,6 +1735,93 @@ class TestPlatformAPIBacktest:
         assert any(e["event_type"] == "backtest_run" for e in lineage)
 
 
+class TestPlatformAPIPredictModel:
+    """Tests for predict_model with drift check."""
+
+    @patch("hrp.api.platform.PlatformAPI.check_model_drift")
+    @patch("hrp.ml.inference.ModelPredictor")
+    def test_predict_model_runs_drift_check(self, MockPredictor, mock_drift, test_api):
+        """predict_model should run drift check after generating predictions."""
+        # Setup predictor mock
+        mock_predictor = MagicMock()
+        mock_predictor.model_version = "v1"
+        mock_predictor.predict_batch.return_value = pd.DataFrame(
+            {"symbol": ["AAPL"], "prediction": [0.05]}
+        )
+        MockPredictor.return_value = mock_predictor
+
+        # Setup drift check mock
+        mock_drift.return_value = {
+            "summary": {"drift_detected": False, "total_checks": 1, "num_drifts": 0},
+        }
+
+        test_api.predict_model(
+            model_name="test_model",
+            symbols=["AAPL"],
+            as_of_date=date(2023, 6, 1),
+        )
+
+        mock_drift.assert_called_once_with(
+            model_name="test_model",
+            current_data=mock_predictor.predict_batch.return_value,
+            reference_data=None,
+        )
+
+    @patch("hrp.api.platform.PlatformAPI.check_model_drift")
+    @patch("hrp.ml.inference.ModelPredictor")
+    def test_predict_model_logs_drift_event_when_detected(
+        self, MockPredictor, mock_drift, test_api
+    ):
+        """predict_model should log lineage event when drift is detected."""
+        mock_predictor = MagicMock()
+        mock_predictor.model_version = "v1"
+        mock_predictor.predict_batch.return_value = pd.DataFrame(
+            {"symbol": ["AAPL"], "prediction": [0.05]}
+        )
+        MockPredictor.return_value = mock_predictor
+
+        mock_drift.return_value = {
+            "summary": {"drift_detected": True, "total_checks": 1, "num_drifts": 1},
+        }
+
+        test_api.predict_model(
+            model_name="test_model",
+            symbols=["AAPL"],
+            as_of_date=date(2023, 6, 1),
+        )
+
+        lineage = test_api.get_lineage()
+        drift_events = [
+            e for e in lineage
+            if e["event_type"] == "validation_failed" and e.get("details", {}).get("drift_detected")
+        ]
+        assert len(drift_events) == 1
+        assert drift_events[0]["details"]["model_name"] == "test_model"
+
+    @patch("hrp.api.platform.PlatformAPI.check_model_drift")
+    @patch("hrp.ml.inference.ModelPredictor")
+    def test_predict_model_returns_predictions_when_drift_check_fails(
+        self, MockPredictor, mock_drift, test_api
+    ):
+        """predict_model should still return predictions if drift check raises."""
+        mock_predictor = MagicMock()
+        mock_predictor.model_version = "v1"
+        predictions = pd.DataFrame({"symbol": ["AAPL"], "prediction": [0.05]})
+        mock_predictor.predict_batch.return_value = predictions
+        MockPredictor.return_value = mock_predictor
+
+        mock_drift.side_effect = RuntimeError("Drift monitor unavailable")
+
+        result = test_api.predict_model(
+            model_name="test_model",
+            symbols=["AAPL"],
+            as_of_date=date(2023, 6, 1),
+        )
+
+        assert len(result) == 1
+        assert result.iloc[0]["symbol"] == "AAPL"
+
+
 class TestPlatformAPIQualityAlerts:
     """Tests for quality alert email notifications."""
 

@@ -1599,6 +1599,27 @@ class PlatformAPI:
             },
         )
 
+        # Run drift check (non-blocking)
+        try:
+            drift_result = self.check_model_drift(
+                model_name=model_name,
+                current_data=predictions,
+                reference_data=None,
+            )
+            if drift_result.get("summary", {}).get("drift_detected"):
+                logger.warning(f"Drift detected for model {model_name}")
+                self.log_event(
+                    event_type="validation_failed",
+                    actor="system",
+                    details={
+                        "model_name": model_name,
+                        "drift_detected": True,
+                        "num_drifts": drift_result.get("summary", {}).get("num_drifts"),
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"Drift check failed for {model_name}: {e}")
+
         return predictions
 
     def get_model_predictions(
