@@ -17,7 +17,7 @@
 | **Implementation** | `hrp/agents/alpha_researcher.py` |
 | **Trigger** | Lineage event (after Signal Scientist) + MCP on-demand |
 | **Upstream** | Signal Scientist (creates draft hypotheses) |
-| **Downstream** | ML Scientist (validates promoted hypotheses) |
+| **Downstream** | Code Materializer (translates strategy specs) |
 
 ---
 
@@ -30,7 +30,9 @@ Reviews and refines draft hypotheses using Claude's reasoning capabilities, and 
 3. **Searches related hypotheses** - Novel or variant of existing idea?
 4. **Promotes or rejects** hypotheses based on analysis
 5. **Generates new strategies** - Creates novel strategy concepts from economic principles
-6. **Triggers downstream** ML Scientist via lineage events
+6. **Writes strategy specifications** - Economic specs only, NO code generation
+7. **Tags strategy class** - For adaptive IC thresholds (cross-sectional, time-series, ML)
+8. **Triggers downstream** Code Materializer via lineage events
 
 ---
 
@@ -104,6 +106,21 @@ print(f"Strategies generated: {result['strategies_generated']}")
 | **Claude Ideation** | Brainstorm novel concepts from economic first principles | "Post-earnings drift with sentiment filter" |
 | **Literature Patterns** | Adapt published academic factors to platform constraints | "Momentum factor with volatility weighting" |
 | **Pattern Mining** | Extend patterns from existing successful hypotheses | "Combine momentum_20d + low_volatility for dual strategy" |
+
+**Note:** Alpha Researcher generates economic strategy specifications ONLY.
+Code generation is handled by Code Materializer (downstream).
+
+### 6. Strategy Classification
+
+Tags each hypothesis with strategy class for adaptive IC thresholds:
+
+| Strategy Class | IC Pass | IC Kill | Examples |
+|----------------|---------|---------|----------|
+| `cross_sectional_factor` | ≥ 0.015 | < 0.005 | Value, quality, low-vol |
+| `time_series_momentum` | ≥ 0.02 | < 0.01 | Trend-following |
+| `ml_composite` | ≥ 0.025 | < 0.01 | Multi-feature ML |
+
+Updated in hypothesis metadata: `strategy_class` field.
 
 ---
 
@@ -264,7 +281,7 @@ Extends `SDKAgent` which provides:
 | **MLflow** | Logs review sessions |
 | **Lineage** | Logs events, triggers downstream |
 | **Signal Scientist** | Upstream - creates draft hypotheses |
-| **ML Scientist** | Downstream - validates promoted hypotheses |
+| **Code Materializer** | Downstream - translates strategy specs to code |
 
 ---
 
@@ -326,3 +343,4 @@ Token usage: 12,450 input / 3,200 output
 - **2026-01-26:** Initial standalone agent definition created
 - **2026-01-26:** Extracted from research-agents-design.md for standalone reference
 - **2026-01-29:** Enhanced with strategy generation capabilities (3 sources: Claude ideation, literature patterns, pattern mining)
+- **2026-01-29:** Updated downstream to Code Materializer (specs only, NO code generation), added strategy classification
