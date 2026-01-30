@@ -1403,6 +1403,7 @@ class MLScientist(ResearchAgent):
                 window_type=self.window_type,
                 n_jobs=-1 if self.parallel_folds else 1,
                 hyperparameters=model_params,
+                tags={"hypothesis_id": hypothesis_id},
             )
 
             result = walk_forward_validate(

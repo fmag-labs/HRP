@@ -105,6 +105,7 @@ class WalkForwardConfig:
     n_jobs: int = 1  # Number of parallel jobs (-1 = use all cores)
     purge_days: int = 0  # Days between train and test (gap after training)
     embargo_days: int = 0  # Days excluded from test metrics
+    tags: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -643,6 +644,10 @@ def _log_to_mlflow(result: WalkForwardResult) -> None:
         mlflow.set_experiment(experiment_name)
 
         with mlflow.start_run(run_name=f"wf_{result.config.n_folds}folds"):
+            # Log user-provided tags (e.g. hypothesis_id)
+            if result.config.tags:
+                mlflow.set_tags(result.config.tags)
+
             # Log config
             mlflow.log_param("model_type", result.config.model_type)
             mlflow.log_param("n_folds", result.config.n_folds)
