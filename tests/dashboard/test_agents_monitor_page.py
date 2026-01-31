@@ -7,7 +7,7 @@ from pathlib import Path
 
 def test_agents_monitor_page_exists():
     """Agents monitor page file should exist."""
-    page_path = Path("hrp/dashboard/pages/2_Agents_Monitor.py")
+    page_path = Path("hrp/dashboard/pages/agents_monitor_page.py")
     assert page_path.exists()
     # Page should contain basic Streamlit elements
     content = page_path.read_text()

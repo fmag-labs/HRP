@@ -489,7 +489,7 @@ class DeploymentPipeline:
             results["has_predictions"] = True
             # Check for reasonable prediction values
             preds = validation_data["prediction"].dropna()
-            results["reasonable_predictions"] = (
+            results["reasonable_predictions"] = bool(
                 len(preds) > 0 and preds.notna().all()
             )
         else:

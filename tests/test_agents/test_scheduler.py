@@ -962,13 +962,20 @@ class TestResearchAgentTriggers:
         scheduler = IngestionScheduler()
         watcher = scheduler.setup_research_agent_triggers()
 
-        # Should have 4 triggers:
+        # Should have 6 triggers:
         # 1. Signal Scientist → Alpha Researcher
         # 2. Alpha Researcher → ML Scientist
         # 3. ML Scientist → ML Quality Sentinel
-        # 4. ML Quality Sentinel → Validation Analyst
-        assert watcher.trigger_count == 4
+        # 4. ML Quality Sentinel → Quant Developer
+        # 5. Quant Developer → Pipeline Orchestrator
+        # 6. Pipeline Orchestrator → Validation Analyst
+        assert watcher.trigger_count == 6
 
-        # Verify the Validation Analyst trigger is registered
+        # Verify full chain is registered
         trigger_names = [t.name for t in watcher._triggers]
-        assert "ml_quality_sentinel_to_validation_analyst" in trigger_names
+        assert "signal_scientist_to_alpha_researcher" in trigger_names
+        assert "alpha_researcher_to_ml_scientist" in trigger_names
+        assert "ml_scientist_to_quality_sentinel" in trigger_names
+        assert "ml_quality_sentinel_to_quant_developer" in trigger_names
+        assert "quant_developer_to_pipeline_orchestrator" in trigger_names
+        assert "pipeline_orchestrator_to_validation_analyst" in trigger_names

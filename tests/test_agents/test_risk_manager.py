@@ -149,15 +149,12 @@ class TestRiskManagerExecute:
         assert result["assessments"] == []
 
     @patch("hrp.agents.research_agents.PlatformAPI")
-    @patch("pathlib.Path")
-    def test_execute_with_hypotheses(self, mock_path, mock_api_class):
+    def test_execute_with_hypotheses(self, mock_api_class, tmp_path):
         """Test execute processes hypotheses."""
-        # Mock database query through self.api.db
         mock_api = Mock()
         mock_db = Mock()
-        mock_execute_result = Mock()
 
-        # First call returns hypotheses, subsequent calls return portfolio state
+        # Mock fetchdf for _get_hypotheses_to_assess
         mock_hypotheses_df = Mock()
         mock_hypotheses_df.empty = False
         mock_hypotheses_df.to_dict.return_value = [
@@ -172,41 +169,35 @@ class TestRiskManagerExecute:
 
         mock_portfolio_df = Mock()
         mock_portfolio_df.iloc = [{"num_positions": 0, "total_weight": 0.0}]
-        mock_portfolio_df.empty = False  # For portfolio query
+        mock_portfolio_df.empty = True  # No existing portfolio
 
-        # Configure side_effect for fetchdf
-        # Each execute() call returns a new execute_result, so we need to chain properly
-        def fetchdf_side_effect():
-            # Return hypotheses first, then portfolio
-            if not hasattr(fetchdf_side_effect, 'call_count'):
-                fetchdf_side_effect.call_count = 0
-            fetchdf_side_effect.call_count += 1
-            if fetchdf_side_effect.call_count == 1:
+        call_count = 0
+
+        def fetchdf_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
                 return mock_hypotheses_df
             return mock_portfolio_df
 
-        mock_execute_result.fetchdf.side_effect = fetchdf_side_effect
-        mock_db.execute.return_value = mock_execute_result
-        mock_api.db = mock_db
+        mock_db.fetchdf.side_effect = fetchdf_side_effect
+        mock_db.execute.return_value.fetchdf.return_value = mock_portfolio_df
+        mock_api._db = mock_db
         mock_api_class.return_value = mock_api
 
-        # Mock file writing
-        mock_path_instance = Mock()
-        mock_path.return_value = mock_path_instance
-        mock_path_instance.parent.mkdir = Mock()
-        mock_path_instance.write_text = Mock()
+        # Use tmp_path for research note output
+        research_dir = tmp_path / "research"
+        research_dir.mkdir()
 
         agent = RiskManager()
-        result = agent.run()
+
+        with patch("hrp.utils.config.get_config") as mock_config:
+            mock_config.return_value.data.research_dir = research_dir
+            result = agent.run()
 
         # Result should contain assessments
-        if "assessments" in result:
-            assert len(result["assessments"]) == 1
-            assert result["assessments"][0].hypothesis_id == "HYP-001"
-        else:
-            # If report generation failed, that's ok for this test
-            # We're primarily testing the agent can be initialized and run
-            assert result["status"] in ["complete", "failed"]
+        assert len(result["assessments"]) == 1
+        assert result["assessments"][0].hypothesis_id == "HYP-001"
 
 
 class TestRiskManagerCheckDrawdown:
@@ -367,7 +358,7 @@ class TestRiskManagerCalculatePortfolioImpact:
         mock_row = {"num_positions": 5, "total_weight": 0.25}
         mock_df = Mock()
         mock_df.iloc = [mock_row]  # iloc[0] will access the first element
-        mock_api.db.execute.return_value.fetchdf.return_value = mock_df
+        mock_api._db.execute.return_value.fetchdf.return_value = mock_df
         mock_api_class.return_value = mock_api
 
         agent = RiskManager()
