@@ -542,7 +542,8 @@ class PriceIngestionJob(IngestionJob):
             dependencies: List of job IDs that must complete before this job runs
         """
         super().__init__(job_id, max_retries, retry_backoff, dependencies)
-        self.symbols = symbols or TEST_SYMBOLS
+        self._symbols_override = symbols
+        self.symbols = symbols or TEST_SYMBOLS  # Resolved at execute() if no override
         self.start = start or (date.today() - timedelta(days=1))
         self.end = end or date.today()
         self.source = source
@@ -554,6 +555,16 @@ class PriceIngestionJob(IngestionJob):
         Returns:
             Dictionary with job execution stats
         """
+        # Resolve symbols from universe if no explicit override was provided
+        if self._symbols_override is None:
+            um = UniverseManager()
+            universe = um.get_universe_at_date(date.today())
+            if universe:
+                self.symbols = universe
+                logger.info(f"Price ingestion using {len(universe)} symbols from universe")
+            else:
+                logger.warning("Universe empty, falling back to TEST_SYMBOLS")
+
         logger.info(
             f"Ingesting prices for {len(self.symbols)} symbols from {self.start} to {self.end}"
         )

@@ -91,7 +91,7 @@ class ReportGenerator(SDKAgent):
             job_id="report_generator",
             actor=self.ACTOR,
             config=base_config,
-            dependencies=["hypotheses", "experiments", "lineage"],
+            dependencies=[],
         )
 
         self.report_type = report_type

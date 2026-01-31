@@ -327,7 +327,7 @@ def run_cio_review(dry_run: bool = False) -> dict:
         job_id=f"cio-weekly-{date.today().strftime('%Y%m%d')}",
         actor="agent:cio",
     )
-    result = agent.execute()
+    result = agent.run()
     logger.info(
         f"CIO review complete: {result.get('decision_count', 0)} decisions, "
         f"report: {result.get('report_path', 'N/A')}"

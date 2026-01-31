@@ -443,32 +443,42 @@ class PlatformAPI:
     def update_hypothesis(
         self,
         hypothesis_id: str,
-        status: str,
+        status: Optional[str] = None,
         outcome: Optional[str] = None,
         actor: str = "user",
         metadata: Optional[Dict] = None,
     ) -> None:
         """
-        Update a hypothesis status and/or outcome.
+        Update a hypothesis status, outcome, and/or metadata.
 
         Args:
             hypothesis_id: ID of the hypothesis to update
-            status: New status ('draft', 'testing', 'validated', 'rejected', 'deployed')
+            status: New status ('draft', 'testing', 'validated', 'rejected', 'deployed').
+                    If None, keeps current status (useful for metadata-only updates).
             outcome: Optional outcome description
             actor: Who is making the update
             metadata: Optional metadata dict to store (merged with existing)
 
         Raises:
             NotFoundError: If hypothesis doesn't exist
+            ValueError: If neither status nor metadata is provided
         """
         # Validate inputs
         Validator.not_empty(hypothesis_id, "hypothesis_id")
-        Validator.not_empty(status, "status")
         Validator.not_empty(actor, "actor")
+
+        if status is not None:
+            Validator.not_empty(status, "status")
+
+        if status is None and metadata is None and outcome is None:
+            raise ValueError("At least one of status, outcome, or metadata must be provided")
 
         existing = self.get_hypothesis(hypothesis_id)
         if not existing:
             raise NotFoundError(f"Hypothesis {hypothesis_id} not found")
+
+        # Use current status if none provided
+        effective_status = status if status is not None else existing["status"]
 
         # Handle metadata update
         if metadata is not None:
@@ -487,14 +497,14 @@ class PlatformAPI:
                 SET status = ?, outcome = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE hypothesis_id = ?
             """
-            self._db.execute(query, (status, outcome, metadata_json, hypothesis_id))
+            self._db.execute(query, (effective_status, outcome, metadata_json, hypothesis_id))
         else:
             query = """
                 UPDATE hypotheses
                 SET status = ?, outcome = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE hypothesis_id = ?
             """
-            self._db.execute(query, (status, outcome, hypothesis_id))
+            self._db.execute(query, (effective_status, outcome, hypothesis_id))
 
         self.log_event(
             event_type="hypothesis_updated",
@@ -502,13 +512,13 @@ class PlatformAPI:
             details={
                 "hypothesis_id": hypothesis_id,
                 "old_status": existing["status"],
-                "new_status": status,
+                "new_status": effective_status,
                 "outcome": outcome,
             },
             hypothesis_id=hypothesis_id,
         )
 
-        logger.info(f"Updated hypothesis {hypothesis_id}: status={status}")
+        logger.info(f"Updated hypothesis {hypothesis_id}: status={effective_status}")
 
     def list_hypotheses(self, status: Optional[str] = None, limit: int = 100) -> List[Dict]:
         """
