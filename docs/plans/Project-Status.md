@@ -19,6 +19,7 @@
 - DuckDB storage: 13 tables, 3 sequences, 17 indexes
 - Thread-safe connection pooling (max 5 connections)
 - FK constraints, NOT NULL, CHECK constraints, event type validation
+- Idempotent migrations: agent_token_usage identity, CIO table FK removal, sector columns
 
 ### Core Research Loop
 

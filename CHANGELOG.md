@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+## [1.8.1] - 2026-01-31
+
+### Fixed
+- **FK Constraints Blocking Hypothesis Updates**: Removed FOREIGN KEY constraints from 4 CIO tables (cio_decisions, model_cemetery, paper_portfolio, paper_portfolio_trades) that prevented UPDATE on hypotheses due to DuckDB limitation. Uses same pattern as existing hypothesis_experiments/lineage migration.
+- **agent_token_usage.id NOT NULL**: Wired existing `migrate_agent_token_usage_identity()` into `create_tables()` so the sequence-based auto-increment runs on startup. Previously the migration existed but was never called, causing every INSERT to fail.
+- **Price Data Gap (Jan 27-29)**: Backfilled 1,980 price rows for 396 symbols and recomputed 67,856 feature rows for Jan 24-30. Health score improved from 50 to 80.
+- **CIO Review Report Filename**: Changed from `HH-MM-cio-review.md` to `YYYY-MM-DD-HH-MM-cio-review.md` to match the standard report naming pattern.
+- **Quality Monitor Weekend False Positives**: Resolve `as_of_date` to most recent trading day so checks don't flag missing data on weekends/holidays.
+
+### Changed
+- **Schema Migrations on Startup**: `create_tables()` now runs all idempotent migrations (agent_token_usage identity, sector columns, CIO FK removal) automatically after table creation.
+
+### Testing
+- 2,681 tests passing (1 skipped, 100% pass rate)
+
 ## [1.8.0] - 2026-01-30
 
 ### Changed
