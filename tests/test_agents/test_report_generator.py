@@ -240,14 +240,14 @@ class TestGetReportFilename:
         """Test daily report filename format."""
         mock_datetime.now.return_value = datetime(2026, 1, 26, 7, 0)
         filename = daily_generator._get_report_filename()
-        assert filename == "2026-01-26-07-00-daily.md"
+        assert filename == "2026-01-26T070000-daily.md"
 
     @patch('hrp.agents.report_generator.datetime')
     def test_weekly_report_filename(self, mock_datetime, weekly_generator):
         """Test weekly report filename format."""
         mock_datetime.now.return_value = datetime(2026, 1, 26, 20, 0)
         filename = weekly_generator._get_report_filename()
-        assert filename == "2026-01-26-20-00-weekly.md"
+        assert filename == "2026-01-26T200000-weekly.md"
 
 
 # =============================================================================

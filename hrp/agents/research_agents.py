@@ -1546,6 +1546,8 @@ class MLScientist(ResearchAgent):
                     "ml_scientist_results": {
                         "model_type": best_result.model_type,
                         "features": best_result.features,
+                        "hyperparameters": best_result.model_params,
+                        "target": self.target,
                         "mean_ic": best_result.mean_ic,
                         "ic_std": best_result.ic_std,
                         "stability_score": best_result.stability_score,
@@ -2450,9 +2452,10 @@ class MLQualitySentinel(ResearchAgent):
             render_section_divider,
         )
 
+        from hrp.agents.output_paths import research_note_path
+
         report_date = date.today().isoformat()
-        filename = f"{report_date}-ml-quality-sentinel.md"
-        filepath = get_config().data.research_dir / filename
+        filepath = research_note_path("04-ml-quality-sentinel")
 
         passed_count = sum(1 for a in audits if a.overall_passed)
         flagged_count = sum(1 for a in audits if a.has_critical_issues)
@@ -2968,9 +2971,10 @@ class ValidationAnalyst(ResearchAgent):
             render_section_divider, get_status_emoji,
         )
 
+        from hrp.agents.output_paths import research_note_path
+
         report_date = date.today().isoformat()
-        filename = f"{report_date}-validation-analyst.md"
-        filepath = get_config().data.research_dir / filename
+        filepath = research_note_path("07-validation-analyst")
 
         passed_count = sum(1 for v in validations if v.overall_passed)
         failed_count = sum(1 for v in validations if not v.overall_passed)
@@ -3844,9 +3848,10 @@ class RiskManager(ResearchAgent):
             render_veto_section, render_section_divider, render_progress_bar,
         )
 
+        from hrp.agents.output_paths import research_note_path
+
         report_date = report.report_date.isoformat()
-        filename = f"{report_date}-risk-manager.md"
-        filepath = get_config().data.research_dir / filename
+        filepath = research_note_path("08-risk-manager")
 
         parts = []
 
@@ -4149,7 +4154,7 @@ class QuantDeveloper(ResearchAgent):
         else:
             # All hypotheses that passed ML audit but not yet backtested
             return self.api.list_hypotheses_with_metadata(
-                status='audited',
+                status='validated',
                 metadata_exclude='%quant_developer_backtest%',
                 limit=10,
             )
@@ -4167,22 +4172,17 @@ class QuantDeveloper(ResearchAgent):
         Raises:
             ValueError: If ML config not found in metadata
         """
-        metadata = hypothesis.get("metadata", {})
+        metadata = hypothesis.get("metadata") or {}
 
-        # Check for ML Scientist review
-        ml_review = metadata.get("ml_scientist_review", {})
-        if not ml_review:
+        ml_results = metadata.get("ml_scientist_results", {})
+        if not ml_results:
             raise ValueError(f"ML config not found for {hypothesis.get('hypothesis_id')}")
 
-        best_model = ml_review.get("best_model", {})
-        if not best_model:
-            raise ValueError(f"Best model not found for {hypothesis.get('hypothesis_id')}")
-
         return {
-            "model_type": best_model.get("model_type"),
-            "features": best_model.get("features", []),
-            "hyperparameters": best_model.get("hyperparameters", {}),
-            "target": best_model.get("target"),
+            "model_type": ml_results.get("model_type"),
+            "features": ml_results.get("features", []),
+            "hyperparameters": ml_results.get("hyperparameters", {}),
+            "target": ml_results.get("target"),
         }
 
     def _train_full_history(
@@ -4807,9 +4807,10 @@ class QuantDeveloper(ResearchAgent):
         )
         from hrp.utils.config import get_config
 
+        from hrp.agents.output_paths import research_note_path
+
         report_date = report.report_date.isoformat()
-        filename = f"{report_date}-quant-developer.md"
-        filepath = get_config().data.research_dir / filename
+        filepath = research_note_path("05-quant-developer")
 
         parts: list[str] = []
 

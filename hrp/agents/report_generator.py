@@ -757,7 +757,7 @@ Return a JSON list of insights:
     def _get_report_filename(self) -> str:
         """Generate report filename with timestamp."""
         now = datetime.now()
-        return f"{now.strftime('%Y-%m-%d-%H-%M')}-{self.report_type}.md"
+        return f"{now.strftime('%Y-%m-%dT%H%M%S')}-{self.report_type}.md"
 
     # ==========================================================================
     # REPORT WRITING (Task 5)

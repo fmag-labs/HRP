@@ -634,8 +634,7 @@ class PipelineOrchestrator(IngestionJob):
             render_section_divider, render_progress_bar, format_metric,
         )
 
-        # Create directory
-        os.makedirs(self.config.kill_gate_report_dir, exist_ok=True)
+        from hrp.agents.output_paths import research_note_path
 
         today = date.today().isoformat()
         total = len(self._results)
@@ -740,7 +739,7 @@ class PipelineOrchestrator(IngestionJob):
         content = "\n".join(parts)
 
         # Write to file
-        filepath = os.path.join(self.config.kill_gate_report_dir, f"{today}-kill-gates.md")
+        filepath = str(research_note_path("06-kill-gates"))
 
         try:
             with open(filepath, "w") as f:
