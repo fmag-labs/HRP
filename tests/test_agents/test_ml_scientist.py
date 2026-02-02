@@ -478,6 +478,7 @@ class TestMLScientistIntegration:
         mock_result.stability_score = 0.8
         mock_result.is_stable = True
         mock_result.fold_results = [MagicMock(metrics={"ic": 0.04})] * 5
+        mock_result.mlflow_run_id = None
         mock_wf_validate.return_value = mock_result
 
         agent = MLScientist(
