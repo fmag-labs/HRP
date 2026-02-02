@@ -659,10 +659,9 @@ Respond with a JSON object containing:
         content = "\n".join(parts)
 
         # Write to file
-        import os
+        from hrp.agents.output_paths import research_note_path
 
-        os.makedirs(config.research_note_dir, exist_ok=True)
-        filepath = f"{config.research_note_dir}/{today}-alpha-researcher.md"
+        filepath = str(research_note_path("02-alpha-researcher"))
 
         try:
             with open(filepath, "w") as f:
