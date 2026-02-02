@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+## [1.8.4] - 2026-02-02
+
+### Fixed
+- **QuantDeveloper ML config handoff**: QuantDeveloper read `ml_scientist_review.best_model` but MLScientist stored results under `ml_scientist_results`. Aligned `_extract_ml_config()` to read from the correct key.
+- **Missing ML metadata fields**: MLScientist now stores `hyperparameters` (from `model_params`) and `target` in `ml_scientist_results` so QuantDeveloper can configure backtests.
+- **QuantDeveloper status query**: Changed default hypothesis query from `status='audited'` (never set by any agent) to `status='validated'`.
+
+### Changed
+- **Research output paths**: Agent research notes now write to date-organized folders (`docs/research/YYYY-MM-DD/`) with pipeline sequence numbers (e.g., `04-ml-quality-sentinel.md`) via new `hrp/agents/output_paths.py` module.
+
+### Testing
+- 2,706 tests (environment requires Python 3.11+)
+
 ## [1.8.3] - 2026-02-02
 
 ### Fixed
