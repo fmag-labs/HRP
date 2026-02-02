@@ -1,5 +1,24 @@
 ## [Unreleased]
 
+## [1.9.0] - 2026-02-02
+
+### Fixed
+- **Look-ahead bias in ML training** (P0): Training window end shifted back by target horizon to ensure all forward-return targets are fully realized before prediction time
+- **Regime detection index misalignment** (P0): Returns and volatility series now aligned by index intersection instead of positional slicing
+- **SQL injection in Platform API** (P1): All dynamic symbol/identifier interpolation replaced with parameterized queries and allowlist validation
+- **CostModel ignores commission** (P1): IBKR commission (`commission_per_share`, `commission_min`, `commission_max_pct`) now included in `total_cost_pct()`
+- **Walk-forward embargo semantics** (P1): Embargo now excludes the first N days of the test fold from metric calculation (standard academic meaning), renamed old behavior to `extend_train_days`
+- **Parameter sweep mock** (P2): `_evaluate_single_combination()` now raises `NotImplementedError` instead of silently returning random numbers
+
+### Changed
+- **"The Rule" enforcement**: Migrated 20+ modules from direct `get_db()` imports to `PlatformAPI`. Added 10 new API methods (`query_readonly`, `fetchone_readonly`, `fetchall_readonly`, `execute_write`, `get_features_range`, `get_symbol_sectors`, `get_available_symbols`, `get_ingestion_logs`, `get_daily_token_usage`, `resume_agent_checkpoint`). Implementation modules use dependency injection (`db=None`); consumer modules fully migrated.
+- **Connection pool timeout**: `ConnectionPool.acquire()` now has a configurable timeout (default 30s) instead of blocking indefinitely
+- **Split research_agents.py**: Refactored 4,895-line monolith into per-agent modules under `hrp/agents/`
+- **Backup schedule**: Changed from daily to weekly (Saturdays 2 AM ET)
+
+### Testing
+- 2,665 tests passing (1 skipped)
+
 ## [1.8.4] - 2026-02-02
 
 ### Fixed

@@ -66,6 +66,12 @@ api.register_model(model, model_name, model_type, features, target, metrics, ...
 api.deploy_model(model_name, model_version, validation_data, environment, actor)
 api.predict_model(model_name, symbols, as_of_date)
 api.check_model_drift(model_name, current_data, reference_data, ...)
+
+# Generic DB access (for ad-hoc queries outside data layer)
+api.query_readonly(sql, params)       # Returns DataFrame (SELECT/WITH only)
+api.fetchone_readonly(sql, params)    # Returns single row tuple
+api.fetchall_readonly(sql, params)    # Returns list of tuples
+api.execute_write(sql, params)        # INSERT/UPDATE/DELETE
 ```
 
 ## Available Features (44 total)

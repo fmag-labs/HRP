@@ -17,13 +17,13 @@
 ### Database & Schema
 
 - DuckDB storage: 13 tables, 3 sequences, 17 indexes
-- Thread-safe connection pooling (max 5 connections)
+- Thread-safe connection pooling (max 5 connections, 30s acquire timeout)
 - FK constraints, NOT NULL, CHECK constraints, event type validation
 - Idempotent migrations: agent_token_usage identity, CIO table FK removal, sector columns
 
 ### Core Research Loop
 
-- Platform API: Single entry point, 35+ public methods (`hrp/api/platform.py`)
+- Platform API: Single entry point, 45+ public methods (`hrp/api/platform.py`), "The Rule" enforced (no direct `get_db` outside data layer)
 - Backtest engine: VectorBT with split/dividend adjustment, trailing stops, benchmark comparison
 - Experiment tracking: MLflow integration
 - Hypothesis registry: Full lifecycle (draft → testing → validated/rejected → deployed), validation guard enforced at API layer, MAX-based ID generation (gap-safe)
