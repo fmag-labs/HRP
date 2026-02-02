@@ -958,14 +958,19 @@ class PlatformAPI:
     def _generate_hypothesis_id(self) -> str:
         """Generate a unique hypothesis ID in format HYP-YYYY-NNN."""
         year = datetime.now().year
+        prefix = f"HYP-{year}-"
 
         result = self._db.fetchone(
-            "SELECT COUNT(*) FROM hypotheses WHERE hypothesis_id LIKE ?",
-            (f"HYP-{year}-%",),
+            "SELECT hypothesis_id FROM hypotheses WHERE hypothesis_id LIKE ? ORDER BY hypothesis_id DESC LIMIT 1",
+            (f"{prefix}%",),
         )
-        count = result[0] + 1 if result else 1
 
-        return f"HYP-{year}-{count:03d}"
+        if result:
+            sequence = int(result[0].split("-")[-1]) + 1
+        else:
+            sequence = 1
+
+        return f"{prefix}{sequence:03d}"
 
     def link_experiment(
         self,
