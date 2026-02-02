@@ -515,44 +515,70 @@ Return a JSON list of insights:
     def _render_daily_report(
         self, context: dict[str, Any], insights: list[dict[str, Any]]
     ) -> str:
-        """Render daily report markdown."""
+        """Render daily report markdown with institutional formatting."""
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_insights, render_agent_activity, render_alert_banner,
+            render_status_table, render_section_divider, format_metric,
+        )
+
         hyp_data = context["hypothesis_data"]
         exp_data = context["experiment_data"]
         signal_data = context["signal_data"]
         agent_activity = context["agent_activity"]
         generated_at = context["generated_at"]
 
-        lines = []
-        lines.append(f"# HRP Research Report - Daily {generated_at.strftime('%Y-%m-%d')}")
-        lines.append("")
+        parts = []
 
-        # Executive Summary
-        lines.append("## Executive Summary")
+        # ── Header ──
+        parts.append(render_header(
+            title="Daily Research Report",
+            report_type="daily",
+            date_str=generated_at.strftime("%Y-%m-%d"),
+        ))
+
+        # ── KPI Dashboard ──
         draft_count = hyp_data["total_counts"]["draft"]
         testing_count = hyp_data["total_counts"]["testing"]
+        validated_count = hyp_data["total_counts"]["validated"]
+        deployed_count = hyp_data["total_counts"]["deployed"]
         exp_count = exp_data["total_experiments"]
 
-        lines.append(f"- {draft_count} new hypotheses created")
-        lines.append(f"- {testing_count} hypotheses in testing")
-        lines.append(f"- {exp_count} ML experiments completed")
-
+        top_sharpe = "N/A"
         if exp_data["top_experiments"]:
             top_exp = exp_data["top_experiments"][0]
-            top_sharpe = top_exp["metrics"].get("sharpe_ratio", "N/A")
-            lines.append(f"- Best model Sharpe: {top_sharpe:.2f}" if isinstance(top_sharpe, (int, float)) else f"- Best model Sharpe: {top_sharpe}")
+            raw_sharpe = top_exp["metrics"].get("sharpe_ratio", "N/A")
+            top_sharpe = format_metric(raw_sharpe, "f2")
 
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+        parts.append(render_kpi_dashboard([
+            {"icon": "📝", "label": "Draft", "value": draft_count, "detail": "hypotheses"},
+            {"icon": "🧪", "label": "Testing", "value": testing_count, "detail": "in progress"},
+            {"icon": "✅", "label": "Validated", "value": validated_count, "detail": "ready"},
+            {"icon": "🚀", "label": "Deployed", "value": deployed_count, "detail": "live"},
+        ]))
 
-        # Hypothesis Pipeline
-        lines.append("## Hypothesis Pipeline")
-        lines.append("")
+        # ── Alert banner for validated hypotheses awaiting deployment ──
+        alerts = []
+        if validated_count > 0:
+            alerts.append(f"{validated_count} hypotheses VALIDATED and awaiting deployment review")
+        if exp_count == 0:
+            alerts.append("No ML experiments completed today — check pipeline status")
+        if alerts:
+            parts.append(render_alert_banner(alerts, severity="warning" if exp_count > 0 else "critical"))
+
+        # ── Executive Summary ──
+        parts.append("## 📋 Executive Summary\n")
+        parts.append(f"- 📝 **{draft_count}** new hypotheses in draft")
+        parts.append(f"- 🧪 **{testing_count}** hypotheses in testing")
+        parts.append(f"- 🔬 **{exp_count}** ML experiments completed")
+        parts.append(f"- 📈 **Best Sharpe**: {top_sharpe}")
+        parts.append("")
+
+        # ── Hypothesis Pipeline ──
+        parts.append(render_section_divider("📊 Hypothesis Pipeline"))
 
         if hyp_data["draft"]:
-            lines.append("### New Hypotheses (Draft)")
-            lines.append("| ID | Title | Signal | IC |")
-            lines.append("|----|-------|--------|-----|")
+            rows = []
             for hyp in hyp_data["draft"][:5]:
                 metadata = hyp.get("metadata") or {}
                 if isinstance(metadata, str):
@@ -560,150 +586,191 @@ Return a JSON list of insights:
                         metadata = json.loads(metadata)
                     except json.JSONDecodeError:
                         metadata = {}
-                signal = metadata.get("signal_feature", "N/A")
-                ic = metadata.get("signal_ic", "N/A")
-                lines.append(f"| {hyp['hypothesis_id']} | {hyp.get('title', 'N/A')[:40]} | {signal} | {ic} |")
-            lines.append("")
+                signal = metadata.get("signal_feature", "—")
+                ic = format_metric(metadata.get("signal_ic"), "f3") if metadata.get("signal_ic") else "—"
+                rows.append([hyp["hypothesis_id"], hyp.get("title", "N/A")[:40], signal, ic])
+            parts.append(render_status_table(
+                "📝 New Hypotheses (Draft)",
+                ["ID", "Title", "Signal", "IC"],
+                rows,
+            ))
 
         if hyp_data["validated"]:
-            lines.append("### Validated This Week (Ready for Deployment)")
-            lines.append("| ID | Title | Sharpe | Stability |")
-            lines.append("|----|-------|--------|-----------|")
+            rows = []
             for hyp in hyp_data["validated"][:5]:
-                lines.append(f"| {hyp['hypothesis_id']} | {hyp.get('title', 'N/A')[:40]} | See MLflow | ✅ |")
-            lines.append("")
+                rows.append([hyp["hypothesis_id"], hyp.get("title", "N/A")[:40], "See MLflow", "Validated"])
+            parts.append(render_status_table(
+                "✅ Validated (Ready for Deployment)",
+                ["ID", "Title", "Sharpe", "Status"],
+                rows,
+                status_col=3,
+            ))
 
-        # Experiment Results
-        lines.append("## Experiment Results (Top 3)")
-        lines.append("| Experiment | Model | Sharpe | IC | Status |")
-        lines.append("|------------|-------|--------|-----|--------|")
-        for exp in exp_data["top_experiments"][:3]:
-            exp_id = exp["experiment_id"][:12]
-            model = exp.get("metrics", {}).get("model", "N/A")
-            sharpe = exp["metrics"].get("sharpe_ratio", "N/A")
-            lines.append(f"| {exp_id} | {model} | {sharpe} | N/A | Testing |")
-        lines.append("")
-
-        # Signal Analysis
-        lines.append("## Signal Analysis")
-        if signal_data["best_signals"]:
-            best = signal_data["best_signals"][0]
-            lines.append(f"- **Best validated signal**: `{best['signal']}` (IC={best['ic']})")
+        # ── Experiment Results ──
+        if exp_data["top_experiments"]:
+            rows = []
+            for exp in exp_data["top_experiments"][:3]:
+                exp_id = exp["experiment_id"][:12]
+                model = exp.get("metrics", {}).get("model", "N/A")
+                sharpe = format_metric(exp["metrics"].get("sharpe_ratio"), "f2")
+                rows.append([exp_id, model, sharpe, "N/A", "🧪 Testing"])
+            parts.append(render_status_table(
+                "🔬 Top Experiments",
+                ["Experiment", "Model", "Sharpe", "IC", "Status"],
+                rows,
+            ))
         else:
-            lines.append("- No new signal discoveries")
-        lines.append("")
+            parts.append("### 🔬 Top Experiments\n\n> _No experiments completed in this period_\n")
 
-        # Actionable Insights
-        lines.append("## Actionable Insights")
-        for i, insight in enumerate(insights, 1):
-            priority_emoji = "🔴" if insight["priority"] == "high" else "🟡" if insight["priority"] == "medium" else "🟢"
-            category = insight["category"].upper()
-            lines.append(f"{i}. **{priority_emoji} [{category}]** {insight['action']}")
-        lines.append("")
+        # ── Signal Analysis ──
+        parts.append(render_section_divider("📡 Signal Analysis"))
+        if signal_data["best_signals"]:
+            parts.append("| Rank | Signal | IC | Hypothesis |")
+            parts.append("|------|--------|-----|------------|")
+            for i, sig in enumerate(signal_data["best_signals"][:5], 1):
+                medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f" {i}.")
+                parts.append(f"| {medal} | `{sig['signal']}` | {format_metric(sig['ic'], 'f3')} | {sig['hypothesis_id']} |")
+            parts.append("")
+        else:
+            parts.append("> _No new signal discoveries_\n")
 
-        # Agent Activity Summary
-        lines.append("## Agent Activity Summary")
-        for agent_name, activity in agent_activity.items():
-            status_emoji = "✅" if activity["status"] == "success" else "⏳"
-            lines.append(f"- {agent_name.replace('_', ' ').title()}: {status_emoji}")
-        lines.append("")
+        # ── Actionable Insights ──
+        parts.append(render_insights("Actionable Insights", insights))
 
-        # Footer
-        lines.append("---")
-        lines.append("")
-        lines.append(f"Generated at: {generated_at.strftime('%Y-%m-%d %H:%M')} ET")
-        lines.append(f"Token cost: ${self.token_usage.estimated_cost_usd:.4f}")
+        # ── Agent Activity ──
+        parts.append(render_agent_activity(agent_activity))
 
-        return "\n".join(lines)
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name="report-generator",
+            timestamp=generated_at,
+            cost_usd=self.token_usage.estimated_cost_usd,
+        ))
+
+        return "\n".join(parts)
 
     def _render_weekly_report(
         self, context: dict[str, Any], insights: list[dict[str, Any]]
     ) -> str:
-        """Render weekly report markdown."""
+        """Render weekly report markdown with institutional formatting."""
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_pipeline_flow, render_insights, render_health_gauges,
+            render_status_table, render_section_divider, render_alert_banner,
+            render_progress_bar, format_metric,
+        )
+
         hyp_data = context["hypothesis_data"]
         exp_data = context["experiment_data"]
         signal_data = context["signal_data"]
         generated_at = context["generated_at"]
 
-        lines = []
-        lines.append(f"# HRP Research Report - Weekly {generated_at.strftime('%Y-%m-%d')}")
-        lines.append("")
-
-        # Week at a Glance
         week_start = (generated_at - timedelta(days=7)).strftime("%B %d, %Y")
-        lines.append(f"## Week at a Glance ({week_start} - {generated_at.strftime('%B %d, %Y')})")
+        week_end = generated_at.strftime("%B %d, %Y")
 
         draft_count = hyp_data["total_counts"]["draft"]
         testing_count = hyp_data["total_counts"]["testing"]
         validated_count = hyp_data["total_counts"]["validated"]
+        deployed_count = hyp_data["total_counts"]["deployed"]
         exp_count = exp_data["total_experiments"]
+        total_hyp = draft_count + testing_count + validated_count + deployed_count
 
-        lines.append(f"- **New hypotheses**: {draft_count} created")
-        lines.append(f"- **Hypotheses in testing**: {testing_count}")
-        lines.append(f"- **Validated**: {validated_count}")
-        lines.append(f"- **Experiments**: {exp_count} completed")
-        lines.append(f"- **Research spend**: ${self.token_usage.estimated_cost_usd:.2f} (Claude API)")
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+        parts = []
 
-        # Pipeline Velocity
-        lines.append("## Pipeline Velocity")
-        lines.append("")
-        lines.append("```")
-        lines.append("Signal Scientist → Alpha Researcher → ML Scientist → Validation → Deploy")
-        lines.append(f"    [{draft_count}]  →     [{testing_count}]           →     [{exp_count}]    →    [{validated_count}]    →   [{hyp_data['total_counts']['deployed']}]")
-        lines.append("```")
-        lines.append("")
+        # ── Header ──
+        parts.append(render_header(
+            title="Weekly Research Report",
+            report_type="weekly",
+            date_str=generated_at.strftime("%Y-%m-%d"),
+            subtitle=f"📅 Week: {week_start} → {week_end}",
+        ))
 
-        # Top Hypotheses
+        # ── KPI Dashboard ──
+        parts.append(render_kpi_dashboard([
+            {"icon": "📝", "label": "Hypotheses", "value": total_hyp, "detail": f"+{draft_count} new"},
+            {"icon": "🧪", "label": "Experiments", "value": exp_count, "detail": "completed"},
+            {"icon": "✅", "label": "Validated", "value": validated_count, "detail": "ready"},
+            {"icon": "💰", "label": "API Cost", "value": f"${self.token_usage.estimated_cost_usd:.2f}", "detail": "Claude API"},
+        ]))
+
+        # ── Alert banner for validated awaiting deployment ──
+        if validated_count > 0:
+            parts.append(render_alert_banner(
+                [f"{validated_count} hypotheses VALIDATED and awaiting deployment review",
+                 "Action: Review in CIO dashboard for paper portfolio allocation"],
+                severity="warning",
+            ))
+
+        # ── Pipeline Flow ──
+        parts.append(render_pipeline_flow([
+            {"icon": "📡", "label": "Signal", "count": draft_count},
+            {"icon": "🔬", "label": "Research", "count": testing_count},
+            {"icon": "🧪", "label": "ML Train", "count": exp_count},
+            {"icon": "✅", "label": "Validate", "count": validated_count},
+            {"icon": "🚀", "label": "Deploy", "count": deployed_count},
+        ]))
+
+        # ── Health Gauges ──
+        # Calculate pipeline health metrics
+        pipeline_throughput = (validated_count / max(total_hyp, 1)) * 100
+        experiment_rate = min((exp_count / max(testing_count, 1)) * 100, 100)
+
+        parts.append(render_health_gauges([
+            {"label": "Pipeline Throughput", "value": pipeline_throughput, "max_val": 100,
+             "trend": "up" if validated_count > 0 else "stable"},
+            {"label": "Experiment Rate", "value": experiment_rate, "max_val": 100,
+             "trend": "up" if exp_count > 0 else "down"},
+            {"label": "Deployment Ready", "value": validated_count, "max_val": max(total_hyp, 1),
+             "trend": "up" if validated_count > 0 else "stable"},
+        ]))
+
+        # ── Top Hypotheses ──
         if hyp_data["validated"]:
-            lines.append("## Top Hypotheses This Week")
-            lines.append("")
-            lines.append("### Newly Validated (Ready for Your Review)")
-            lines.append("| ID | Title | Status |")
-            lines.append("|----|-------|--------|")
+            rows = []
             for hyp in hyp_data["validated"][:5]:
-                lines.append(f"| {hyp['hypothesis_id']} | {hyp.get('title', 'N/A')[:50]} | ✅ Validated |")
-            lines.append("")
+                rows.append([hyp["hypothesis_id"], hyp.get("title", "N/A")[:50], "Validated"])
+            parts.append(render_status_table(
+                "✅ Newly Validated (Ready for Your Review)",
+                ["ID", "Title", "Status"],
+                rows,
+                status_col=2,
+            ))
 
-        # Model Performance
+        # ── Model Performance ──
         if exp_data["model_performance"]:
-            lines.append("## Experiment Insights")
-            lines.append("")
-            lines.append("### Model Performance")
-            lines.append("| Model | Avg Sharpe |")
-            lines.append("|-------|------------|")
-            for model, avg_sharpe in sorted(exp_data["model_performance"].items(), key=lambda x: x[1], reverse=True):
-                lines.append(f"| {model} | {avg_sharpe:.2f} |")
-            lines.append("")
+            parts.append(render_section_divider("🧪 Model Performance"))
+            parts.append("| Model | Avg Sharpe | Rating |")
+            parts.append("|-------|-----------|--------|")
+            for model, avg_sharpe in sorted(
+                exp_data["model_performance"].items(), key=lambda x: x[1], reverse=True
+            ):
+                bar = render_progress_bar(avg_sharpe, 2.0, width=10, show_pct=False)
+                rating = "🟢" if avg_sharpe >= 1.0 else "🟡" if avg_sharpe >= 0.5 else "🔴"
+                parts.append(f"| **{model}** | {avg_sharpe:.2f} | {bar} {rating} |")
+            parts.append("")
 
-        # Signal Discoveries
+        # ── Signal Discoveries ──
         if signal_data["best_signals"]:
-            lines.append("## Signal Discoveries")
-            lines.append("")
-            lines.append("### Best Validated Signals")
-            lines.append("| Feature | IC | Hypothesis |")
-            lines.append("|---------|-----|------------|")
-            for sig in signal_data["best_signals"][:5]:
-                lines.append(f"| `{sig['signal']}` | {sig['ic']:.3f} | {sig['hypothesis_id']} |")
-            lines.append("")
+            parts.append(render_section_divider("📡 Signal Discoveries"))
+            parts.append("| Rank | Feature | IC | Hypothesis |")
+            parts.append("|------|---------|-----|------------|")
+            for i, sig in enumerate(signal_data["best_signals"][:5], 1):
+                medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f" {i}.")
+                parts.append(f"| {medal} | `{sig['signal']}` | {format_metric(sig['ic'], 'f3')} | {sig['hypothesis_id']} |")
+            parts.append("")
 
-        # Action Items
-        lines.append("## Action Items for You")
-        for i, insight in enumerate(insights, 1):
-            priority_emoji = "🔴" if insight["priority"] == "high" else "🟡" if insight["priority"] == "medium" else "🟢"
-            lines.append(f"{i}. **{priority_emoji}** {insight['action']}")
-        lines.append("")
+        # ── Action Items ──
+        parts.append(render_insights("Action Items for You", insights))
 
-        # Footer
-        lines.append("---")
-        lines.append("")
-        lines.append(f"Generated at: {generated_at.strftime('%Y-%m-%d %H:%M')} ET")
-        lines.append(f"Week: {week_start} - {generated_at.strftime('%B %d, %Y')}")
-        lines.append(f"Token cost: ${self.token_usage.estimated_cost_usd:.4f}")
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name="report-generator",
+            timestamp=generated_at,
+            cost_usd=self.token_usage.estimated_cost_usd,
+            extra_lines=[f"📅 Week: {week_start} → {week_end}"],
+        ))
 
-        return "\n".join(lines)
+        return "\n".join(parts)
 
     def _get_report_filename(self) -> str:
         """Generate report filename with timestamp."""

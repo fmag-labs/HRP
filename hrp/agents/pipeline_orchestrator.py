@@ -651,62 +651,116 @@ class PipelineOrchestrator(IngestionJob):
         if not self._results:
             return None
 
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_alert_banner, render_health_gauges, render_risk_limits,
+            render_section_divider, render_progress_bar, format_metric,
+        )
+
         # Create directory
         os.makedirs(self.config.kill_gate_report_dir, exist_ok=True)
 
-        # Generate content
         today = date.today().isoformat()
-        content = f"""# Pipeline Orchestrator Kill Gate Report - {today}
+        total = len(self._results)
+        killed_count = sum(1 for r in self._results if r.killed_by_gate)
+        passed_count = total - killed_count
+        baselines_run = sum(len(r.baselines) for r in self._results)
+        experiments_run = sum(len(r.experiments) for r in self._results)
+        experiments_killed = sum(sum(1 for e in r.experiments if e.killed_early) for r in self._results)
+        time_saved = sum(r.time_saved_seconds for r in self._results)
 
-## Summary
+        parts = []
 
-- Hypotheses processed: {len(self._results)}
-- Hypotheses killed by gates: {sum(1 for r in self._results if r.killed_by_gate)}
-- Baselines run: {sum(len(r.baselines) for r in self._results)}
-- Experiments run: {sum(len(r.experiments) for r in self._results)}
-- Experiments killed: {sum(sum(1 for e in r.experiments if e.killed_early) for r in self._results)}
-- Estimated time saved: {sum(r.time_saved_seconds for r in self._results):.0f} seconds
+        # ── Header ──
+        parts.append(render_header(
+            title="Pipeline Kill Gate Report",
+            report_type="kill-gates",
+            date_str=today,
+            subtitle=f"⚔️ {total} hypotheses processed | {killed_count} killed | {format_metric(time_saved, 'int')}s saved",
+        ))
 
----
+        # ── KPI Dashboard ──
+        parts.append(render_kpi_dashboard([
+            {"icon": "📋", "label": "Processed", "value": total, "detail": "hypotheses"},
+            {"icon": "⚔️", "label": "Killed", "value": killed_count, "detail": "by gates"},
+            {"icon": "🧪", "label": "Experiments", "value": experiments_run, "detail": f"{experiments_killed} killed"},
+            {"icon": "⏱️", "label": "Time Saved", "value": f"{time_saved:.0f}s", "detail": "compute"},
+        ]))
 
-## Kill Gate Settings
+        # ── Alert banner ──
+        if killed_count > 0:
+            kill_pct = killed_count / max(total, 1) * 100
+            parts.append(render_alert_banner(
+                [f"{killed_count} of {total} hypotheses killed at gates ({kill_pct:.0f}%)",
+                 f"⏱️  Estimated {time_saved:.0f}s of compute time saved"],
+                severity="warning" if kill_pct < 50 else "critical",
+            ))
 
-- Minimum baseline Sharpe: {self.config.min_baseline_sharpe}
-- Maximum train Sharpe: {self.config.max_train_sharpe}
-- Maximum drawdown: {self.config.max_drawdown_threshold:.1%}
-- Maximum feature count: {self.config.max_feature_count}
+        # ── Health Gauges ──
+        survival_rate = (passed_count / max(total, 1)) * 100
+        parts.append(render_health_gauges([
+            {"label": "Gate Survival Rate", "value": survival_rate, "max_val": 100,
+             "trend": "up" if survival_rate > 50 else "down"},
+            {"label": "Experiment Efficiency", "value": (experiments_run - experiments_killed), "max_val": max(experiments_run, 1),
+             "trend": "stable"},
+        ]))
 
----
+        # ── Kill Gate Settings ──
+        parts.append(render_risk_limits({
+            "Min Baseline Sharpe": str(self.config.min_baseline_sharpe),
+            "Max Train Sharpe": str(self.config.max_train_sharpe),
+            "Max Drawdown": f"{self.config.max_drawdown_threshold:.1%}",
+            "Max Feature Count": str(self.config.max_feature_count),
+        }))
 
-## Hypothesis Details
-
-"""
+        # ── Hypothesis Details ──
+        parts.append(render_section_divider("📊 Hypothesis Details"))
 
         for result in self._results:
-            status = "🔴 KILLED" if result.killed_by_gate else "✅ Passed"
-            content += f"""### {result.hypothesis_id} - {status}
+            if result.killed_by_gate:
+                status_emoji = "🔴"
+                status_label = "KILLED"
+            else:
+                status_emoji = "✅"
+                status_label = "PASSED"
 
-**Gate Trigger:** {result.gate_trigger_reason.value if result.gate_trigger_reason else 'N/A'}
-**Duration:** {result.total_duration_seconds:.1f}s
+            parts.append(f"### {status_emoji} {result.hypothesis_id} — **{status_label}**")
+            parts.append("")
 
-**Baselines:**
-"""
+            # Gate trigger info
+            gate_reason = result.gate_trigger_reason.value if result.gate_trigger_reason else "N/A"
+            parts.append(f"| Field | Detail |")
+            parts.append(f"|-------|--------|")
+            parts.append(f"| **Gate Trigger** | {gate_reason} |")
+            parts.append(f"| **Duration** | {result.total_duration_seconds:.1f}s |")
+            parts.append(f"| **Experiments** | {len(result.experiments)} run |")
+            parts.append("")
 
-            for name, baseline in result.baselines.items():
-                content += f"- {name}: Sharpe={baseline.sharpe:.2f}, Return={baseline.total_return:.2%}\n"
+            # Baselines
+            if result.baselines:
+                parts.append("**Baselines:**")
+                parts.append("```")
+                for name, baseline in result.baselines.items():
+                    bar = render_progress_bar(max(baseline.sharpe, 0), 2.0, width=10, show_pct=False)
+                    parts.append(f"  {name.ljust(15)} Sharpe={baseline.sharpe:+.2f}  Return={baseline.total_return:+.2%}  {bar}")
+                parts.append("```")
+                parts.append("")
 
-            content += f"""
-**Experiments:** {len(result.experiments)} run
-"""
-
+            # Experiments summary
             if result.experiments:
-                killed_count = sum(1 for e in result.experiments if e.killed_early)
-                content += f"- Killed early: {killed_count}/{len(result.experiments)}\n"
-
+                exp_killed = sum(1 for e in result.experiments if e.killed_early)
                 best_exp = max(result.experiments, key=lambda e: e.sharpe)
-                content += f"- Best: {best_exp.config_name} (Sharpe={best_exp.sharpe:.2f})\n"
+                parts.append(f"**Experiments:** {exp_killed}/{len(result.experiments)} killed early")
+                parts.append(f"**Best:** {best_exp.config_name} (Sharpe={best_exp.sharpe:.2f})")
+                parts.append("")
 
-            content += "\n---\n\n"
+            parts.append("─" * 60)
+            parts.append("")
+
+        # ── Footer ──
+        parts.append(render_footer(agent_name="pipeline-orchestrator"))
+
+        content = "\n".join(parts)
 
         # Write to file
         filepath = os.path.join(self.config.kill_gate_report_dir, f"{today}-kill-gates.md")

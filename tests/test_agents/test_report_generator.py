@@ -202,7 +202,8 @@ class TestRenderDailyReport:
         insights = [{"priority": "low", "category": "general", "action": "No issues"}]
         result = daily_generator._render_daily_report(context, insights)
         assert isinstance(result, str)
-        assert "# HRP Research Report" in result
+        assert "Daily Research Report" in result
+        assert "HRP" in result
 
 
 class TestRenderWeeklyReport:
@@ -227,7 +228,8 @@ class TestRenderWeeklyReport:
         insights = [{"priority": "low", "category": "general", "action": "No issues"}]
         result = weekly_generator._render_weekly_report(context, insights)
         assert isinstance(result, str)
-        assert "# HRP Research Report" in result
+        assert "Weekly Research Report" in result
+        assert "HRP" in result
 
 
 class TestGetReportFilename:

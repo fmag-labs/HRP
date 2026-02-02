@@ -481,6 +481,11 @@ class CIOAgent(SDKAgent):
         from datetime import date
         from pathlib import Path
         from hrp.utils.config import get_config
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_scorecard, render_alert_banner, render_insights,
+            render_section_divider, DECISION_EMOJI,
+        )
 
         report_dir = get_config().data.reports_dir / date.today().strftime("%Y-%m-%d")
         report_dir.mkdir(parents=True, exist_ok=True)
@@ -492,44 +497,97 @@ class CIOAgent(SDKAgent):
         for d in decisions:
             decision_counts[d["decision"]] = decision_counts.get(d["decision"], 0) + 1
 
-        # Build report content
-        lines = [
-            f"# CIO Agent Weekly Report - {date.today().strftime('%Y-%m-%d')}\n",
-            "## Summary\n",
-            f"- **Hypotheses Reviewed**: {len(decisions)}",
+        parts = []
+
+        # ── Header ──
+        parts.append(render_header(
+            title="CIO Weekly Review",
+            report_type="cio-review",
+            date_str=date.today().strftime("%Y-%m-%d"),
+            subtitle=f"🎯 {len(decisions)} hypotheses reviewed | Strategic decision report",
+        ))
+
+        # ── KPI Dashboard ──
+        kpi_metrics = [
+            {"icon": "📋", "label": "Reviewed", "value": len(decisions), "detail": "hypotheses"},
         ]
+        for dt in ["CONTINUE", "CONDITIONAL", "KILL", "PIVOT"]:
+            count = decision_counts.get(dt, 0)
+            if count > 0:
+                emoji = DECISION_EMOJI.get(dt, "❓")
+                kpi_metrics.append({"icon": emoji, "label": dt.title(), "value": count, "detail": ""})
+        parts.append(render_kpi_dashboard(kpi_metrics[:4]))
 
-        for decision_type, count in decision_counts.items():
-            emoji = {"CONTINUE": "✅", "CONDITIONAL": "⚠️", "KILL": "❌", "PIVOT": "🔄"}.get(
-                decision_type, "❓"
-            )
-            lines.append(f"- **{decision_type}**: {count} {emoji}")
+        # ── Alert banners ──
+        kill_count = decision_counts.get("KILL", 0)
+        continue_count = decision_counts.get("CONTINUE", 0)
+        if kill_count > 0:
+            parts.append(render_alert_banner(
+                [f"{kill_count} hypotheses marked for KILL — review rationale below"],
+                severity="critical",
+            ))
+        if continue_count > 0:
+            parts.append(render_alert_banner(
+                [f"{continue_count} hypotheses approved to CONTINUE — ready for paper portfolio"],
+                severity="info",
+            ))
 
-        lines.extend([
-            "\n## Decisions\n",
-            "---\n",
-        ])
+        # ── Decision Scorecards ──
+        parts.append(render_section_divider("📊 Decision Details"))
 
         for d in decisions:
-            emoji = {"CONTINUE": "✅", "CONDITIONAL": "⚠️", "KILL": "❌", "PIVOT": "🔄"}.get(
-                d["decision"], "❓"
-            )
-            lines.extend([
-                f"### {emoji} {d['hypothesis_id']}: {d['title']}\n",
-                f"**Decision**: {d['decision']} (Score: {d['score']:.2f})\n",
-                f"\n**Rationale**:\n```\n{d['rationale']}\n```\n",
-                "---\n",
-            ])
+            # Build scorecard with dimension scores from rationale
+            dimensions = []
+            rationale = d.get("rationale", "")
+            score_data = d.get("score_breakdown", {})
 
-        lines.extend([
-            "## Next Actions\n",
-            "1. Review CONTINUE decisions for paper portfolio allocation\n",
-            "2. Address CONDITIONAL items with additional validation\n",
-            "3. Archive KILL/PIVOT hypotheses with rationale\n",
-        ])
+            # Try to extract dimension scores from score_breakdown or rationale
+            if score_data:
+                for dim_name in ["statistical", "risk", "economic", "cost"]:
+                    if dim_name in score_data:
+                        dimensions.append({"label": dim_name.title(), "score": score_data[dim_name]})
+
+            if dimensions:
+                parts.append(render_scorecard(
+                    title=f"{d['hypothesis_id']}: {d['title']}",
+                    dimensions=dimensions,
+                    overall_score=d["score"],
+                    decision=d["decision"],
+                ))
+            else:
+                # Fallback: simpler display
+                emoji = DECISION_EMOJI.get(d["decision"], "❓")
+                parts.append(f"### {emoji} {d['hypothesis_id']}: {d['title']}\n")
+                parts.append(f"**Decision**: {d['decision']} | **Score**: {d['score']:.2f}\n")
+
+            if rationale:
+                parts.append(f"**Rationale:**\n```\n{rationale}\n```\n")
+            parts.append("─" * 60 + "\n")
+
+        # ── Next Actions ──
+        action_items = []
+        if continue_count > 0:
+            action_items.append({
+                "priority": "high", "category": "deployment",
+                "action": f"Review {continue_count} CONTINUE decisions for paper portfolio allocation",
+            })
+        if decision_counts.get("CONDITIONAL", 0) > 0:
+            action_items.append({
+                "priority": "medium", "category": "research",
+                "action": f"Address {decision_counts['CONDITIONAL']} CONDITIONAL items with additional validation",
+            })
+        if kill_count > 0:
+            action_items.append({
+                "priority": "low", "category": "research",
+                "action": f"Archive {kill_count} KILL/PIVOT hypotheses with rationale",
+            })
+        parts.append(render_insights("Next Actions", action_items))
+
+        # ── Footer ──
+        parts.append(render_footer(agent_name="cio-agent", timestamp=datetime.now()))
 
         # Write report
-        report_path.write_text("\n".join(lines))
+        report_path.write_text("\n".join(parts))
 
         return report_path
 

@@ -2438,81 +2438,104 @@ class MLQualitySentinel(ResearchAgent):
         """Write per-run audit report to output/research/."""
         from pathlib import Path
         from hrp.utils.config import get_config
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_alert_banner, render_health_gauges,
+            render_section_divider,
+        )
 
         report_date = date.today().isoformat()
         filename = f"{report_date}-ml-quality-sentinel.md"
         filepath = get_config().data.research_dir / filename
 
-        # Build markdown report
-        lines = [
-            f"# ML Quality Sentinel Report - {report_date}",
-            "",
-            "## Summary",
-            f"- Experiments audited: {len(audits)}",
-            f"- Experiments passed: {sum(1 for a in audits if a.overall_passed)}",
-            f"- Experiments flagged: {sum(1 for a in audits if a.has_critical_issues)}",
-            f"- Critical issues: {len(critical_issues)}",
-            f"- Warnings: {len(warnings)}",
-            f"- Models monitored: {len(model_alerts)}",
-            f"- Duration: {duration:.1f}s",
-            "",
-        ]
+        passed_count = sum(1 for a in audits if a.overall_passed)
+        flagged_count = sum(1 for a in audits if a.has_critical_issues)
 
+        parts = []
+
+        # ── Header ──
+        parts.append(render_header(
+            title="ML Quality Sentinel Report",
+            report_type="ml-quality-sentinel",
+            date_str=report_date,
+        ))
+
+        # ── KPI Dashboard ──
+        parts.append(render_kpi_dashboard([
+            {"icon": "🔬", "label": "Audited", "value": len(audits), "detail": "experiments"},
+            {"icon": "✅", "label": "Passed", "value": passed_count, "detail": "clean"},
+            {"icon": "🚨", "label": "Flagged", "value": flagged_count, "detail": "issues"},
+            {"icon": "📊", "label": "Alerts", "value": len(model_alerts), "detail": "models"},
+        ]))
+
+        # ── Alert banner for critical issues ──
         if critical_issues:
-            lines.extend(
-                [
-                    "## Critical Issues (Require Attention)",
-                    "",
-                    "| Experiment | Issue |",
-                    "|------------|-------|",
-                ]
-            )
+            parts.append(render_alert_banner(
+                [f"{len(critical_issues)} CRITICAL issues detected — immediate review required",
+                 f"{len(warnings)} additional warnings flagged"],
+                severity="critical",
+            ))
+        elif len(audits) > 0 and flagged_count == 0:
+            parts.append(render_alert_banner(
+                [f"All {len(audits)} experiments passed quality checks ✅"],
+                severity="info",
+            ))
+
+        # ── Health Gauges ──
+        pass_rate = (passed_count / max(len(audits), 1)) * 100
+        parts.append(render_health_gauges([
+            {"label": "Experiment Quality", "value": pass_rate, "max_val": 100,
+             "trend": "up" if flagged_count == 0 else "down"},
+            {"label": "Model Monitoring", "value": max(100 - len(model_alerts) * 25, 0), "max_val": 100,
+             "trend": "stable" if len(model_alerts) == 0 else "down"},
+        ]))
+
+        # ── Critical Issues ──
+        if critical_issues:
+            parts.append(render_section_divider("🚨 Critical Issues (Require Attention)"))
+            parts.append("| Experiment | Issue |")
+            parts.append("|------------|-------|")
             for exp_id, issue in critical_issues:
-                lines.append(f"| {exp_id} | {issue} |")
-            lines.append("")
+                parts.append(f"| 🔴 {exp_id} | {issue} |")
+            parts.append("")
 
+        # ── Warnings ──
         if warnings:
-            lines.extend(
-                [
-                    "## Warnings",
-                    "",
-                    "| Experiment | Warning |",
-                    "|------------|---------|",
-                ]
-            )
+            parts.append(render_section_divider("⚠️ Warnings"))
+            parts.append("| Experiment | Warning |")
+            parts.append("|------------|---------|")
             for exp_id, warning in warnings:
-                lines.append(f"| {exp_id} | {warning} |")
-            lines.append("")
+                parts.append(f"| 🟡 {exp_id} | {warning} |")
+            parts.append("")
 
+        # ── Model Monitoring Alerts ──
         if model_alerts:
-            lines.extend(
-                [
-                    "## Model Monitoring Alerts",
-                    "",
-                ]
-            )
+            parts.append(render_section_divider("📊 Model Monitoring Alerts"))
             for alert in model_alerts:
-                lines.extend(
-                    [
-                        f"### {alert.model_id}",
-                        f"- **Type:** {alert.alert_type}",
-                        f"- **Severity:** {alert.severity.value}",
-                        f"- **Message:** {alert.message}",
-                        f"- **Recommended Action:** {alert.recommended_action}",
-                        "",
-                    ]
+                severity_emoji = {"critical": "🔴", "warning": "🟡", "info": "🔵"}.get(
+                    alert.severity.value, "⚪"
                 )
+                parts.extend([
+                    f"### {severity_emoji} {alert.model_id}",
+                    "",
+                    f"| Field | Detail |",
+                    f"|-------|--------|",
+                    f"| **Type** | {alert.alert_type} |",
+                    f"| **Severity** | {severity_emoji} {alert.severity.value} |",
+                    f"| **Message** | {alert.message} |",
+                    f"| **Action** | {alert.recommended_action} |",
+                    "",
+                ])
 
-        lines.extend(
-            [
-                "---",
-                f"*Generated by ML Quality Sentinel ({self.ACTOR})*",
-            ]
-        )
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name="ml-quality-sentinel",
+            duration_seconds=duration,
+        ))
 
         try:
             filepath.parent.mkdir(parents=True, exist_ok=True)
-            filepath.write_text("\n".join(lines))
+            filepath.write_text("\n".join(parts))
             logger.info(f"Wrote research note to {filepath}")
         except Exception as e:
             logger.warning(f"Failed to write research note: {e}")
@@ -2933,44 +2956,90 @@ class ValidationAnalyst(ResearchAgent):
         """Write per-run validation report to output/research/."""
         from pathlib import Path
         from hrp.utils.config import get_config
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_alert_banner, render_health_gauges,
+            render_section_divider, get_status_emoji,
+        )
 
         report_date = date.today().isoformat()
         filename = f"{report_date}-validation-analyst.md"
         filepath = get_config().data.research_dir / filename
 
-        lines = [
-            f"# Validation Analyst Report - {report_date}",
-            "",
-            "## Summary",
-            f"- Hypotheses validated: {len(validations)}",
-            f"- Passed: {sum(1 for v in validations if v.overall_passed)}",
-            f"- Failed: {sum(1 for v in validations if not v.overall_passed)}",
-            f"- Duration: {duration:.1f}s",
-            "",
-        ]
+        passed_count = sum(1 for v in validations if v.overall_passed)
+        failed_count = sum(1 for v in validations if not v.overall_passed)
+
+        parts = []
+
+        # ── Header ──
+        parts.append(render_header(
+            title="Validation Analyst Report",
+            report_type="validation-analyst",
+            date_str=report_date,
+        ))
+
+        # ── KPI Dashboard ──
+        parts.append(render_kpi_dashboard([
+            {"icon": "📋", "label": "Validated", "value": len(validations), "detail": "hypotheses"},
+            {"icon": "✅", "label": "Passed", "value": passed_count, "detail": "approved"},
+            {"icon": "❌", "label": "Failed", "value": failed_count, "detail": "rejected"},
+        ]))
+
+        # ── Alert banner ──
+        if failed_count > 0:
+            parts.append(render_alert_banner(
+                [f"{failed_count} hypotheses FAILED validation — review check details below"],
+                severity="warning",
+            ))
+        elif len(validations) > 0:
+            parts.append(render_alert_banner(
+                [f"All {len(validations)} hypotheses passed validation ✅"],
+                severity="info",
+            ))
+
+        # ── Health Gauge ──
+        pass_rate = (passed_count / max(len(validations), 1)) * 100
+        parts.append(render_health_gauges([
+            {"label": "Validation Pass Rate", "value": pass_rate, "max_val": 100,
+             "trend": "up" if failed_count == 0 else "down"},
+        ]))
+
+        # ── Per-hypothesis validation details ──
+        parts.append(render_section_divider("📊 Validation Details"))
 
         for validation in validations:
             status = "PASSED" if validation.overall_passed else "FAILED"
-            lines.extend([
-                f"## {validation.hypothesis_id}: {status}",
-                "",
-                "| Check | Passed | Severity | Message |",
-                "|-------|--------|----------|---------|",
-            ])
-            for check in validation.checks:
-                passed_str = "Yes" if check.passed else "No"
-                lines.append(
-                    f"| {check.name} | {passed_str} | {check.severity.value} | {check.message} |"
-                )
-            lines.append("")
+            emoji = "✅" if validation.overall_passed else "❌"
 
-        lines.extend([
-            "---",
-            f"*Generated by Validation Analyst ({self.ACTOR})*",
-        ])
+            parts.append(f"### {emoji} {validation.hypothesis_id}: **{status}**")
+            parts.append("")
+
+            if validation.checks:
+                parts.append("| Check | Result | Severity | Message |")
+                parts.append("|-------|--------|----------|---------|")
+                for check in validation.checks:
+                    check_emoji = "✅" if check.passed else "❌"
+                    severity_emoji = {"critical": "🔴", "warning": "🟡", "info": "🔵"}.get(
+                        check.severity.value, "⚪"
+                    )
+                    parts.append(
+                        f"| {check.name} | {check_emoji} | {severity_emoji} {check.severity.value} | {check.message} |"
+                    )
+                parts.append("")
+            else:
+                parts.append("> _No validation checks recorded_\n")
+
+            parts.append("─" * 60)
+            parts.append("")
+
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name="validation-analyst",
+            duration_seconds=duration,
+        ))
 
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text("\n".join(lines))
+        filepath.write_text("\n".join(parts))
         logger.info(f"Research note written to {filepath}")
 
     def _send_alert_email(self, validations: list[HypothesisValidation]) -> None:
@@ -3786,75 +3855,105 @@ class RiskManager(ResearchAgent):
         """Write per-run risk assessment report to output/research/."""
         from pathlib import Path
         from hrp.utils.config import get_config
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_alert_banner, render_health_gauges, render_risk_limits,
+            render_veto_section, render_section_divider, render_progress_bar,
+        )
 
         report_date = report.report_date.isoformat()
         filename = f"{report_date}-risk-manager.md"
         filepath = get_config().data.research_dir / filename
 
-        lines = [
-            f"# Risk Manager Report - {report_date}",
-            "",
-            "## Summary",
-            f"- Hypotheses assessed: {report.hypotheses_assessed}",
-            f"- Passed: {report.hypotheses_passed}",
-            f"- Vetoed: {report.hypotheses_vetoed}",
-            f"- Duration: {report.duration_seconds:.1f}s",
-            "",
-            "---",
-            "",
-            "## Risk Limits",
-            f"- Max Drawdown: {self.max_drawdown:.1%}",
-            f"- Max Correlation: {self.max_correlation:.2f}",
-            f"- Max Sector Exposure: {self.max_sector_exposure:.1%}",
-            f"- Min Diversification: {self.MIN_DIVERSIFICATION} positions",
-            "",
-        ]
+        parts = []
+
+        # ── Header ──
+        parts.append(render_header(
+            title="Risk Manager Report",
+            report_type="risk-manager",
+            date_str=report_date,
+        ))
+
+        # ── KPI Dashboard ──
+        parts.append(render_kpi_dashboard([
+            {"icon": "📋", "label": "Assessed", "value": report.hypotheses_assessed, "detail": "hypotheses"},
+            {"icon": "✅", "label": "Passed", "value": report.hypotheses_passed, "detail": "approved"},
+            {"icon": "🚫", "label": "Vetoed", "value": report.hypotheses_vetoed, "detail": "blocked"},
+        ]))
+
+        # ── Alert banner ──
+        if report.hypotheses_vetoed > 0:
+            veto_pct = report.hypotheses_vetoed / max(report.hypotheses_assessed, 1) * 100
+            parts.append(render_alert_banner(
+                [f"{report.hypotheses_vetoed} of {report.hypotheses_assessed} hypotheses VETOED ({veto_pct:.0f}%)",
+                 "📌 Review risk limits and drawdown thresholds if veto rate is excessive"],
+                severity="critical" if veto_pct > 50 else "warning",
+            ))
+        elif report.hypotheses_assessed > 0:
+            parts.append(render_alert_banner(
+                [f"All {report.hypotheses_assessed} hypotheses passed risk assessment ✅"],
+                severity="info",
+            ))
+
+        # ── Health Gauges ──
+        pass_rate = (report.hypotheses_passed / max(report.hypotheses_assessed, 1)) * 100
+        parts.append(render_health_gauges([
+            {"label": "Risk Pass Rate", "value": pass_rate, "max_val": 100,
+             "trend": "up" if report.hypotheses_vetoed == 0 else "down"},
+            {"label": "Portfolio Safety", "value": 100 - (report.hypotheses_vetoed * 10), "max_val": 100,
+             "trend": "stable"},
+        ]))
+
+        # ── Risk Limits ──
+        parts.append(render_risk_limits({
+            "Max Drawdown": f"{self.max_drawdown:.1%}",
+            "Max Correlation": f"{self.max_correlation:.2f}",
+            "Max Sector Exposure": f"{self.max_sector_exposure:.1%}",
+            "Min Diversification": f"{self.MIN_DIVERSIFICATION} positions",
+        }))
+
+        # ── Per-hypothesis assessment ──
+        parts.append(render_section_divider("📊 Hypothesis Assessments"))
 
         for assessment in report.assessments:
-            status = "PASSED" if assessment.passed else "VETOED"
-            lines.extend([
-                f"## {assessment.hypothesis_id}: {status}",
-                "",
-            ])
-
+            status = "passed" if assessment.passed else "vetoed"
+            veto_data = []
             if assessment.vetos:
-                lines.append("### Vetos")
                 for veto in assessment.vetos:
-                    emoji = "🚫" if veto.severity == "critical" else "⚠️"
-                    lines.append(
-                        f"- {emoji} **{veto.veto_type}**: {veto.veto_reason}"
-                    )
-                lines.append("")
+                    veto_data.append({
+                        "type": veto.veto_type,
+                        "reason": veto.veto_reason,
+                        "severity": veto.severity,
+                    })
 
-            if assessment.warnings:
-                lines.append("### Warnings")
-                for warning in assessment.warnings:
-                    lines.append(f"- ⚠️ {warning}")
-                lines.append("")
+            warning_data = list(assessment.warnings) if assessment.warnings else []
+            impact_data = assessment.portfolio_impact if assessment.portfolio_impact else None
 
-            if assessment.portfolio_impact:
-                lines.append("### Portfolio Impact")
-                impact = assessment.portfolio_impact
-                lines.extend([
-                    f"- Current positions: {impact.get('current_positions', 0)}",
-                    f"- New positions: {impact.get('new_positions', 0)}",
-                    f"- Portfolio weight increase: {impact.get('weight_increase', 0):.1%}",
-                    "",
-                ])
+            parts.append(render_veto_section(
+                hypothesis_id=assessment.hypothesis_id,
+                status=status,
+                vetos=veto_data if veto_data else None,
+                warnings=warning_data if warning_data else None,
+                portfolio_impact=impact_data,
+            ))
 
-        lines.extend([
-            "---",
-            "",
-            "## Note",
-            "Risk Manager operates independently and can veto strategies but",
-            "CANNOT approve deployment. Only the human CIO has final approval",
-            "authority.",
-            "",
-            f"*Generated by Risk Manager ({self.ACTOR})*",
-        ])
+        # ── Disclaimer ──
+        parts.append("")
+        parts.append("```")
+        parts.append("⚖️  NOTICE: Risk Manager operates independently and can veto strategies")
+        parts.append("   but CANNOT approve deployment. Only the human CIO has final approval")
+        parts.append("   authority. All decisions require human sign-off.")
+        parts.append("```")
+        parts.append("")
+
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name="risk-manager",
+            duration_seconds=report.duration_seconds,
+        ))
 
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text("\n".join(lines))
+        filepath.write_text("\n".join(parts))
         logger.info(f"Research note written to {filepath}")
 
     def _send_veto_alerts(self, assessments: list[PortfolioRiskAssessment]) -> None:
@@ -4741,48 +4840,62 @@ class QuantDeveloper(ResearchAgent):
             report: QuantDeveloperReport with run results
         """
         from pathlib import Path
+
+        from hrp.agents.report_formatting import (
+            render_footer,
+            render_header,
+            render_kpi_dashboard,
+            render_section_divider,
+            render_status_table,
+        )
         from hrp.utils.config import get_config
 
         report_date = report.report_date.isoformat()
         filename = f"{report_date}-quant-developer.md"
         filepath = get_config().data.research_dir / filename
 
-        lines = [
-            f"# Quant Developer Report - {report_date}",
-            "",
-            "## Summary",
-            f"- Hypotheses processed: {report.hypotheses_processed}",
-            f"- Backtests completed: {report.backtests_completed}",
-            f"- Backtests failed: {report.backtests_failed}",
-            f"- Duration: {report.duration_seconds:.1f}s",
-            "",
-            "---",
-            "",
-            "## Backtest Results",
-            "",
-        ]
+        parts: list[str] = []
 
-        for hypothesis_id in report.results:
-            lines.extend([
-                f"### {hypothesis_id}",
-                "",
-                "Status: Backtest complete",
-                "",
-            ])
+        # ── Header ──
+        parts.append(render_header(
+            title="Quant Developer Report",
+            report_type="agent-execution",
+            date_str=report_date,
+        ))
 
-        lines.extend([
-            "---",
-            "",
-            "## Configuration",
-            f"- Signal method: {self.signal_method}",
-            f"- Top percentile: {self.top_pct:.1%}",
-            f"- Max positions: {self.max_positions}",
-            f"- Commission: {self.commission_bps} bps",
-            f"- Slippage: {self.slippage_bps} bps",
-            "",
-            f"*Generated by Quant Developer ({self.ACTOR})*",
-        ])
+        # ── KPI Dashboard ──
+        parts.append(render_kpi_dashboard([
+            {"icon": "📋", "label": "Processed", "value": report.hypotheses_processed, "detail": "hypotheses"},
+            {"icon": "✅", "label": "Completed", "value": report.backtests_completed, "detail": "backtests"},
+            {"icon": "❌", "label": "Failed", "value": report.backtests_failed, "detail": "backtests"},
+            {"icon": "⏱️", "label": "Duration", "value": f"{report.duration_seconds:.1f}s", "detail": "elapsed"},
+        ]))
+
+        # ── Backtest Results ──
+        if report.results:
+            rows = [[hyp_id, "✅ Complete"] for hyp_id in report.results]
+            parts.append(render_status_table(
+                "🧪 Backtest Results",
+                ["Hypothesis", "Status"],
+                rows,
+            ))
+
+        # ── Configuration ──
+        parts.append(render_section_divider("⚙️ Configuration"))
+        parts.append("```")
+        parts.append(f"  Signal method:    {self.signal_method}")
+        parts.append(f"  Top percentile:   {self.top_pct:.1%}")
+        parts.append(f"  Max positions:    {self.max_positions}")
+        parts.append(f"  Commission:       {self.commission_bps} bps")
+        parts.append(f"  Slippage:         {self.slippage_bps} bps")
+        parts.append("```\n")
+
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name="quant-developer",
+            duration_seconds=report.duration_seconds,
+        ))
 
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text("\n".join(lines))
+        filepath.write_text("\n".join(parts))
         logger.info(f"Research note written to {filepath}")

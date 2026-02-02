@@ -50,27 +50,27 @@ class TestValidationReport:
     def test_report_contains_sections(self, sample_data):
         """Test report contains all required sections."""
         report = generate_validation_report(sample_data)
-        
-        assert "## Summary" in report
-        assert "## Performance Metrics" in report
-        assert "## Statistical Significance" in report
-        assert "## Robustness" in report
-        assert "## Recommendation" in report
+
+        assert "VALIDATED" in report or "REJECTED" in report  # Summary in header
+        assert "Performance Metrics" in report
+        assert "Statistical Significance" in report
+        assert "Robustness" in report
+        assert "Recommendation" in report
 
     def test_report_validation_passed(self, sample_data):
         """Test report shows correct status when passed."""
         report = generate_validation_report(sample_data)
-        
+
         assert "VALIDATED" in report
-        assert "Approved for paper trading" in report
+        assert "paper trading" in report.lower()
 
     def test_report_validation_failed(self, sample_data):
         """Test report shows correct status when failed."""
         sample_data["validation_passed"] = False
         report = generate_validation_report(sample_data)
-        
+
         assert "REJECTED" in report
-        assert "did not meet validation criteria" in report
+        assert "Revise strategy" in report or "Archive hypothesis" in report
 
     def test_validation_report_class(self, sample_data):
         """Test ValidationReport class."""
@@ -94,5 +94,5 @@ class TestValidationReport:
         """Test report generation with empty robustness checks."""
         sample_data["robustness"] = {}
         report = generate_validation_report(sample_data)
-        
-        assert "## Robustness" in report
+
+        assert "Robustness" in report

@@ -584,48 +584,79 @@ Respond with a JSON object containing:
         if not isinstance(config, AlphaResearcherConfig):
             return None
 
-        # Create research note content
+        from datetime import datetime as dt
+
+        from hrp.agents.report_formatting import (
+            render_footer,
+            render_header,
+            render_insights,
+            render_kpi_dashboard,
+            render_section_divider,
+            render_status_table,
+        )
+
         today = date.today().isoformat()
         promoted = sum(1 for a in self._analyses if a.status_updated)
         deferred = len(self._analyses) - promoted
 
-        content = f"""# Alpha Researcher Report - {today}
+        parts: list[str] = []
 
-## Summary
-- Hypotheses reviewed: {len(self._analyses)}
-- Promoted to testing: {promoted}
-- Deferred: {deferred}
-- Token usage: {self.token_usage.total_tokens} tokens (${self.token_usage.estimated_cost_usd:.4f})
+        # ── Header ──
+        parts.append(render_header(
+            title="Alpha Researcher Report",
+            report_type="agent-execution",
+            date_str=today,
+        ))
 
----
+        # ── KPI Dashboard ──
+        parts.append(render_kpi_dashboard([
+            {"icon": "📋", "label": "Reviewed", "value": len(self._analyses), "detail": "hypotheses"},
+            {"icon": "✅", "label": "Promoted", "value": promoted, "detail": "to testing"},
+            {"icon": "⏸️", "label": "Deferred", "value": deferred, "detail": "needs work"},
+            {"icon": "🪙", "label": "Cost", "value": f"${self.token_usage.estimated_cost_usd:.4f}", "detail": "tokens"},
+        ]))
 
-"""
+        # ── Summary table ──
+        rows = []
+        for a in self._analyses:
+            status = "Promoted" if a.status_updated else "Deferred"
+            rows.append([a.hypothesis_id, a.recommendation[:40], status])
+        parts.append(render_status_table(
+            "📋 Decision Summary",
+            ["Hypothesis", "Recommendation", "Status"],
+            rows,
+            status_col=2,
+        ))
+
+        # ── Per-hypothesis details ──
+        parts.append(render_section_divider("📊 Detailed Analysis"))
 
         for analysis in self._analyses:
-            status = "✅ Promoted to testing" if analysis.status_updated else "⏸️ Deferred"
-            content += f"""## {analysis.hypothesis_id}
+            emoji = "✅" if analysis.status_updated else "⏸️"
+            status_label = "Promoted to testing" if analysis.status_updated else "Deferred"
+            parts.append(f"### {emoji} {analysis.hypothesis_id}: **{status_label}**\n")
+            parts.append(f"**Recommendation:** {analysis.recommendation}\n")
+            parts.append(f"**Economic Rationale:**\n{analysis.economic_rationale}\n")
+            parts.append(f"**Regime Analysis:**\n{analysis.regime_notes}\n")
 
-**Status:** {status}
-**Recommendation:** {analysis.recommendation}
+            related = ", ".join(analysis.related_hypotheses) if analysis.related_hypotheses else "None identified"
+            parts.append(f"**Related Hypotheses:** {related}\n")
 
-### Economic Rationale
-{analysis.economic_rationale}
+            if analysis.refined_thesis:
+                parts.append(f"**Refined Thesis:**\n{analysis.refined_thesis}\n")
+            if analysis.refined_falsification:
+                parts.append(f"**Refined Falsification:**\n{analysis.refined_falsification}\n")
 
-### Regime Analysis
-{analysis.regime_notes}
+            parts.append("---\n")
 
-### Related Hypotheses
-{', '.join(analysis.related_hypotheses) if analysis.related_hypotheses else 'None identified'}
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name="alpha-researcher",
+            timestamp=dt.now(),
+            cost_usd=self.token_usage.estimated_cost_usd,
+        ))
 
-### Refined Thesis
-{analysis.refined_thesis if analysis.refined_thesis else 'No refinement suggested'}
-
-### Refined Falsification Criteria
-{analysis.refined_falsification if analysis.refined_falsification else 'No refinement suggested'}
-
----
-
-"""
+        content = "\n".join(parts)
 
         # Write to file
         import os

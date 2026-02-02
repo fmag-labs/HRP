@@ -22,42 +22,74 @@ class AgentReport:
     errors: list[str] = field(default_factory=list)
 
     def to_markdown(self) -> str:
-        """Generate markdown report."""
+        """Generate markdown report with institutional formatting."""
+        from hrp.agents.report_formatting import (
+            render_header, render_footer, render_kpi_dashboard,
+            render_alert_banner, get_status_emoji,
+        )
+
         duration = self.end_time - self.start_time
         duration_seconds = duration.total_seconds()
-        duration_str = _format_duration(duration_seconds)
 
-        lines = [
-            "# Agent Execution Report",
-            "",
-            f"**Agent**: {self.agent_name}",
-            f"**Status**: {self.status}",
-            f"**Start**: {self.start_time.isoformat()}",
-            f"**End**: {self.end_time.isoformat()}",
-            f"**Duration**: {duration_str}",
-            "",
-        ]
+        parts = []
 
-        # Add results section
-        if self.results:
-            lines.extend([
-                "## Results",
-                "",
-                _format_dict(self.results),
-                "",
-            ])
+        # ── Header ──
+        parts.append(render_header(
+            title=f"{self.agent_name} Execution Report",
+            report_type="agent-execution",
+            date_str=self.start_time.strftime("%Y-%m-%d"),
+        ))
 
-        # Add errors section if any
+        # ── KPI Dashboard ──
+        status_emoji = get_status_emoji(self.status)
+        error_count = len(self.errors)
+        result_count = len(self.results)
+
+        parts.append(render_kpi_dashboard([
+            {"icon": status_emoji, "label": "Status", "value": self.status.upper(), "detail": ""},
+            {"icon": "⏱️", "label": "Duration", "value": _format_duration(duration_seconds), "detail": ""},
+            {"icon": "📊", "label": "Results", "value": result_count, "detail": "fields"},
+            {"icon": "❌" if error_count > 0 else "✅", "label": "Errors", "value": error_count, "detail": ""},
+        ]))
+
+        # ── Alert banner for errors ──
         if self.errors:
-            lines.extend([
-                "## Errors",
-                "",
-            ])
-            for i, error in enumerate(self.errors, 1):
-                lines.append(f"{i}. {error}")
-            lines.append("")
+            parts.append(render_alert_banner(
+                [f"{error_count} error(s) occurred during execution"],
+                severity="critical",
+            ))
 
-        return "\n".join(lines)
+        # ── Execution Details ──
+        parts.append("## ⏱️ Execution Details\n")
+        parts.append("```")
+        parts.append(f"  Agent:     {self.agent_name}")
+        parts.append(f"  Status:    {status_emoji} {self.status.upper()}")
+        parts.append(f"  Start:     {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        parts.append(f"  End:       {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        parts.append(f"  Duration:  {_format_duration(duration_seconds)}")
+        parts.append("```\n")
+
+        # ── Results ──
+        if self.results:
+            parts.append("## 📊 Results\n")
+            parts.append(_format_dict(self.results))
+            parts.append("")
+
+        # ── Errors ──
+        if self.errors:
+            parts.append("## 🚨 Errors\n")
+            for i, error in enumerate(self.errors, 1):
+                parts.append(f"{i}. 🔴 {error}")
+            parts.append("")
+
+        # ── Footer ──
+        parts.append(render_footer(
+            agent_name=self.agent_name,
+            timestamp=self.end_time,
+            duration_seconds=duration_seconds,
+        ))
+
+        return "\n".join(parts)
 
     def save_to_file(self, path: Path) -> None:
         """Save report to file."""

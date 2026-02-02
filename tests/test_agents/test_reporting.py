@@ -55,9 +55,9 @@ class TestAgentReport:
         markdown = report.to_markdown()
 
         # Should contain key sections
-        assert "# Agent Execution Report" in markdown
+        assert "Execution Report" in markdown
         assert "test_agent" in markdown
-        assert "success" in markdown
+        assert "SUCCESS" in markdown
         assert "records_processed" in markdown
         assert "100" in markdown
 
@@ -74,7 +74,7 @@ class TestAgentReport:
 
         markdown = report.to_markdown()
 
-        assert "## Errors" in markdown
+        assert "Errors" in markdown
         assert "Connection failed" in markdown
         assert "Timeout" in markdown
 
@@ -94,7 +94,7 @@ class TestAgentReport:
 
             assert report_path.exists()
             content = report_path.read_text()
-            assert "# Agent Execution Report" in content
+            assert "Execution Report" in content
             assert "test_agent" in content
 
     def test_to_markdown_includes_duration(self):
