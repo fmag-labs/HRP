@@ -6,7 +6,7 @@ Always runs:
 - Daily price ingestion at 6:00 PM ET
 - Daily universe update at 6:05 PM ET
 - Daily feature computation at 6:10 PM ET
-- Daily backup at 2:00 AM ET
+- Weekly backup at Saturday 2:00 AM ET
 - Weekly fundamentals ingestion (Saturday 10 AM ET)
 
 --with-data-jobs adds:
@@ -59,7 +59,7 @@ def main():
         "--backup-time",
         type=str,
         default="02:00",
-        help="Time to run daily backup (HH:MM format, default: 02:00 = 2 AM ET)",
+        help="Time to run weekly backup (HH:MM format, default: 02:00 = 2 AM ET)",
     )
     parser.add_argument(
         "--backup-keep-days",
@@ -70,7 +70,7 @@ def main():
     parser.add_argument(
         "--no-backup",
         action="store_true",
-        help="Disable daily backup job",
+        help="Disable weekly backup job",
     )
     parser.add_argument(
         "--symbols",
@@ -129,10 +129,10 @@ def main():
         feature_job_time=args.feature_time,
     )
 
-    # Setup daily backup
+    # Setup weekly backup
     if not args.no_backup:
-        logger.info("Setting up daily backup job...")
-        scheduler.setup_daily_backup(
+        logger.info("Setting up weekly backup job...")
+        scheduler.setup_weekly_backup(
             backup_time=args.backup_time,
             keep_days=args.backup_keep_days,
             include_mlflow=True,

@@ -445,7 +445,7 @@ def list_backups(
 
 class BackupJob(IngestionJob):
     """
-    Scheduled job for daily database and MLflow backups.
+    Scheduled job for weekly database and MLflow backups.
 
     Creates a backup, verifies integrity, and rotates old backups.
     Integrates with the HRP job scheduler infrastructure.
@@ -457,7 +457,7 @@ class BackupJob(IngestionJob):
         backup_dir: Path | None = None,
         include_mlflow: bool = True,
         keep_days: int = 30,
-        job_id: str = "daily_backup",
+        job_id: str = "weekly_backup",
         max_retries: int = 2,
         retry_backoff: float = 60.0,
         dependencies: list[str] | None = None,

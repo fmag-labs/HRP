@@ -859,7 +859,7 @@ class TestBackupIntegration:
         job = BackupJob(
             data_dir=backup_test_env["data_dir"],
             backup_dir=backup_test_env["backup_dir"],
-            job_id="daily_backup",
+            job_id="weekly_backup",
         )
 
         # Simulate scheduled job run
