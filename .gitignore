@@ -21,6 +21,7 @@ mlruns/
 # Environment
 .env
 .env.local
+.envrc
 
 # IDE
 .vscode/
