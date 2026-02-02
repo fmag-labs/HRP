@@ -80,7 +80,12 @@ class ConnectionPool:
     """
 
     def __init__(
-        self, db_path: Union[str, Path], max_size: int = 5, idle_timeout: int = 300, read_only: bool = False
+        self,
+        db_path: Union[str, Path],
+        max_size: int = 5,
+        idle_timeout: int = 300,
+        read_only: bool = False,
+        acquire_timeout: int = 30,
     ):
         """
         Initialize connection pool.
@@ -90,11 +95,13 @@ class ConnectionPool:
             max_size: Maximum number of connections in the pool
             idle_timeout: Seconds before idle connections are closed (default: 300)
             read_only: If True, all connections will be read-only (default: False)
+            acquire_timeout: Seconds to wait for a connection before raising TimeoutError (default: 30)
         """
         self.db_path = str(db_path)
         self.max_size = max_size
         self.idle_timeout = idle_timeout
         self.read_only = read_only
+        self.acquire_timeout = acquire_timeout
         self._pool: List[duckdb.DuckDBPyConnection] = []
         self._in_use: Set[duckdb.DuckDBPyConnection] = set()
         self._lock = threading.Lock()
@@ -133,8 +140,17 @@ class ConnectionPool:
         with self._condition:
             # Wait if pool is exhausted and at max size
             while len(self._pool) == 0 and len(self._in_use) >= self.max_size:
-                logger.debug("Connection pool exhausted, waiting...")
-                self._condition.wait()
+                logger.warning(
+                    f"Connection pool exhausted (in_use={len(self._in_use)}/{self.max_size}), "
+                    f"waiting up to {self.acquire_timeout}s..."
+                )
+                if not self._condition.wait(timeout=self.acquire_timeout):
+                    # Timeout expired — check if we're still blocked
+                    if len(self._pool) == 0 and len(self._in_use) >= self.max_size:
+                        raise TimeoutError(
+                            f"Could not acquire database connection within {self.acquire_timeout}s. "
+                            f"Pool exhausted: {len(self._in_use)}/{self.max_size} connections in use."
+                        )
 
             # Get connection from pool or create new one
             conn = None
