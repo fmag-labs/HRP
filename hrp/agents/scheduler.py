@@ -527,20 +527,22 @@ class IngestionScheduler:
             "Daily ingestion pipeline configured: prices → universe → features (dependency enforced)"
         )
 
-    def setup_daily_backup(
+    def setup_weekly_backup(
         self,
         backup_time: str = "02:00",
+        day_of_week: str = "sat",
         keep_days: int = 30,
         include_mlflow: bool = True,
     ) -> None:
         """
-        Configure daily backup job.
+        Configure weekly backup job.
 
-        Schedules a backup job to run at the specified time (default 2 AM ET).
+        Schedules a backup job to run weekly on the specified day (default Saturday 2 AM ET).
         The backup includes the DuckDB database and optionally MLflow artifacts.
 
         Args:
             backup_time: Time to run backup (HH:MM format, default: 02:00)
+            day_of_week: Day of week to run backup (mon-sun, default: sat)
             keep_days: Number of days of backups to retain (default: 30)
             include_mlflow: Whether to include MLflow artifacts (default: True)
         """
@@ -558,11 +560,11 @@ class IngestionScheduler:
         # Schedule backup job
         self.add_job(
             func=backup_job.run,
-            job_id="daily_backup",
-            trigger=CronTrigger(hour=hour, minute=minute, timezone=ET_TIMEZONE),
-            name="Daily Backup",
+            job_id="weekly_backup",
+            trigger=CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=ET_TIMEZONE),
+            name="Weekly Backup",
         )
-        logger.info(f"Scheduled daily backup at {backup_time} ET (keep {keep_days} days)")
+        logger.info(f"Scheduled weekly backup on {day_of_week} at {backup_time} ET (keep {keep_days} days)")
 
     def setup_weekly_fundamentals(
         self,

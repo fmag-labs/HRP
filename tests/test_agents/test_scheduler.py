@@ -288,47 +288,47 @@ class TestSetupDailyIngestion:
         mock_price_job.assert_called_once_with(symbols=symbols)
 
 
-class TestSetupDailyBackup:
-    """Tests for daily backup setup."""
+class TestSetupWeeklyBackup:
+    """Tests for weekly backup setup."""
 
     @patch("hrp.data.backup.BackupJob")
-    def test_setup_daily_backup_creates_job(self, mock_backup_job):
-        """setup_daily_backup should create a backup job."""
+    def test_setup_weekly_backup_creates_job(self, mock_backup_job):
+        """setup_weekly_backup should create a backup job."""
         scheduler = IngestionScheduler()
 
         mock_job_instance = MagicMock()
         mock_backup_job.return_value = mock_job_instance
 
-        scheduler.setup_daily_backup()
+        scheduler.setup_weekly_backup()
 
         jobs = scheduler.list_jobs()
         job_ids = [j["id"] for j in jobs]
 
-        assert "daily_backup" in job_ids
+        assert "weekly_backup" in job_ids
         assert len(jobs) == 1
 
     @patch("hrp.data.backup.BackupJob")
-    def test_setup_daily_backup_with_custom_time(self, mock_backup_job):
-        """setup_daily_backup should respect custom time."""
+    def test_setup_weekly_backup_with_custom_time(self, mock_backup_job):
+        """setup_weekly_backup should respect custom time."""
         scheduler = IngestionScheduler()
 
         mock_job_instance = MagicMock()
         mock_backup_job.return_value = mock_job_instance
 
-        scheduler.setup_daily_backup(backup_time="03:00")
+        scheduler.setup_weekly_backup(backup_time="03:00")
 
         jobs = scheduler.list_jobs()
         assert len(jobs) == 1
 
     @patch("hrp.data.backup.BackupJob")
-    def test_setup_daily_backup_with_options(self, mock_backup_job):
-        """setup_daily_backup should pass options to BackupJob."""
+    def test_setup_weekly_backup_with_options(self, mock_backup_job):
+        """setup_weekly_backup should pass options to BackupJob."""
         scheduler = IngestionScheduler()
 
         mock_job_instance = MagicMock()
         mock_backup_job.return_value = mock_job_instance
 
-        scheduler.setup_daily_backup(keep_days=14, include_mlflow=False)
+        scheduler.setup_weekly_backup(keep_days=14, include_mlflow=False)
 
         mock_backup_job.assert_called_once_with(
             include_mlflow=False,

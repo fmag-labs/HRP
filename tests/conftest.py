@@ -210,7 +210,7 @@ def test_db_with_sources(test_db: str) -> Generator[str, None, None]:
             VALUES
                 ('price_ingestion', 'scheduled_job', 'active'),
                 ('feature_computation', 'scheduled_job', 'active'),
-                ('daily_backup', 'scheduled_job', 'active'),
+                ('weekly_backup', 'scheduled_job', 'active'),
                 ('yfinance', 'api', 'active'),
                 ('polygon', 'api', 'active'),
                 ('test', 'test', 'active')

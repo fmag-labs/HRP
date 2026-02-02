@@ -87,7 +87,7 @@ def run_features(dry_run: bool = False) -> dict:
 
 
 def run_backup(dry_run: bool = False) -> dict:
-    """Run daily backup."""
+    """Run weekly backup."""
     from hrp.data.backup import BackupJob
 
     if dry_run:
