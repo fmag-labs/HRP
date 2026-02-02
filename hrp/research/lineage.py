@@ -43,6 +43,11 @@ class EventType(str, Enum):
     PIPELINE_ORCHESTRATOR_COMPLETE = "pipeline_orchestrator_complete"
     KILL_GATE_TRIGGERED = "kill_gate_triggered"
     DATA_INGESTION = "data_ingestion"
+    CODE_MATERIALIZER_COMPLETE = "code_materializer_complete"
+    EXPERIMENT_COMPLETED = "experiment_completed"
+    CIO_AGENT_DECISION = "cio_agent_decision"
+    VALIDATION_ANALYST_COMPLETE = "validation_analyst_complete"
+    RISK_MANAGER_ASSESSMENT = "risk_manager_assessment"
     SYSTEM_ERROR = "system_error"
 
 

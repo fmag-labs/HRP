@@ -174,15 +174,30 @@ def run_agent_pipeline(dry_run: bool = False) -> dict:
         details = event.get("details", {})
         promoted_ids = details.get("reviewed_ids", [])
         for hypothesis_id in promoted_ids:
-            logger.info(f"Triggering ML Scientist for hypothesis {hypothesis_id}")
-            scientist = MLScientist(hypothesis_ids=[hypothesis_id])
-            scientist.run()
+            logger.info(f"Triggering Code Materializer for hypothesis {hypothesis_id}")
+            from hrp.agents.code_materializer import CodeMaterializer
+            materializer = CodeMaterializer(hypothesis_ids=[hypothesis_id])
+            materializer.run()
 
     watcher.register_trigger(
         event_type="alpha_researcher_complete",
         callback=on_alpha_researcher_complete,
         actor_filter="agent:alpha-researcher",
-        name="alpha_researcher_to_ml_scientist",
+        name="alpha_researcher_to_code_materializer",
+    )
+
+    def on_code_materializer_complete(event: dict) -> None:
+        hypothesis_id = event.get("hypothesis_id")
+        if hypothesis_id:
+            logger.info(f"Triggering ML Scientist for hypothesis {hypothesis_id}")
+            scientist = MLScientist(hypothesis_ids=[hypothesis_id])
+            scientist.run()
+
+    watcher.register_trigger(
+        event_type="code_materializer_complete",
+        callback=on_code_materializer_complete,
+        actor_filter="agent:code-materializer",
+        name="code_materializer_to_ml_scientist",
     )
 
     def on_experiment_completed(event: dict) -> None:
@@ -248,6 +263,41 @@ def run_agent_pipeline(dry_run: bool = False) -> dict:
         callback=on_pipeline_orchestrator_complete,
         actor_filter="agent:pipeline-orchestrator",
         name="pipeline_orchestrator_to_validation_analyst",
+    )
+
+    def on_validation_analyst_complete(event: dict) -> None:
+        details = event.get("details", {})
+        passed = details.get("hypotheses_passed", 0)
+        if passed > 0:
+            logger.info(f"Triggering Risk Manager for {passed} passed hypotheses")
+            from hrp.agents.risk_manager import RiskManager
+            risk_mgr = RiskManager(hypothesis_ids=None, send_alerts=True)
+            risk_mgr.run()
+
+    watcher.register_trigger(
+        event_type="validation_analyst_complete",
+        callback=on_validation_analyst_complete,
+        actor_filter="agent:validation-analyst",
+        name="validation_analyst_to_risk_manager",
+    )
+
+    def on_risk_manager_assessment(event: dict) -> None:
+        details = event.get("details", {})
+        passed = details.get("hypotheses_passed", 0)
+        if passed > 0:
+            logger.info(f"Triggering CIO Agent for {passed} risk-cleared hypotheses")
+            from hrp.agents.cio import CIOAgent
+            agent = CIOAgent(
+                job_id=f"cio-triggered-{date.today().strftime('%Y%m%d')}",
+                actor="agent:cio",
+            )
+            agent.execute()
+
+    watcher.register_trigger(
+        event_type="risk_manager_assessment",
+        callback=on_risk_manager_assessment,
+        actor_filter="agent:risk-manager",
+        name="risk_manager_to_cio_agent",
     )
 
     # Single poll — process all pending events, then exit
