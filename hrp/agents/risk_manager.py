@@ -188,6 +188,16 @@ class RiskManager(ResearchAgent):
         if self.send_alerts:
             self._send_veto_alerts(assessments)
 
+        self._log_agent_event(
+            event_type=EventType.RISK_MANAGER_ASSESSMENT,
+            details={
+                "hypotheses_assessed": len(assessments),
+                "hypotheses_passed": passed_count,
+                "hypotheses_vetoed": vetoed_count,
+                "duration_seconds": time.time() - start_time,
+            },
+        )
+
         return {
             "status": "complete",
             "assessments": assessments,

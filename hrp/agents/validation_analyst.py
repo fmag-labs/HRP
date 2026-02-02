@@ -216,6 +216,16 @@ class ValidationAnalyst(ResearchAgent):
             },
         )
 
+        self._log_agent_event(
+            event_type=EventType.VALIDATION_ANALYST_COMPLETE,
+            details={
+                "hypotheses_validated": len(validations),
+                "hypotheses_passed": passed_count,
+                "hypotheses_failed": failed_count,
+                "duration_seconds": duration,
+            },
+        )
+
         # 4. Write research note
         self._write_research_note(validations, duration)
 
