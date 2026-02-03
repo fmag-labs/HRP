@@ -14,6 +14,7 @@ import pandas as pd
 from loguru import logger
 
 from hrp.agents.base import ResearchAgent
+from hrp.research.hypothesis import update_pipeline_stage
 from hrp.research.lineage import EventType
 
 
@@ -1020,10 +1021,11 @@ class QuantDeveloper(ResearchAgent):
             # Update hypothesis
             self.api.update_hypothesis(
                 hypothesis_id=hypothesis_id,
-                status="backtested",
+                status="validated",
                 metadata=metadata,
                 actor=self.ACTOR,
             )
+            update_pipeline_stage(hypothesis_id, "quant_backtest", actor=self.ACTOR)
 
         except Exception as e:
             logger.error(f"Failed to update hypothesis {hypothesis_id}: {e}")
