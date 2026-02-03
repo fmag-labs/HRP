@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Literal, Optional
 import pandas as pd
 
 from hrp.agents.sdk_agent import SDKAgent
+from hrp.research.lineage import EventType
 from hrp.api.platform import PlatformAPI
 
 logger = logging.getLogger(__name__)
@@ -258,6 +259,17 @@ class CIOAgent(SDKAgent):
 
         # Generate report
         report_path = self._generate_report(decisions)
+
+        self._log_agent_event(
+            event_type=EventType.CIO_AGENT_DECISION,
+            details={
+                "decision_count": len(decisions),
+                "decisions": [
+                    {"hypothesis_id": d["hypothesis_id"], "decision": d["decision"]}
+                    for d in decisions
+                ],
+            },
+        )
 
         return {
             "status": "complete",

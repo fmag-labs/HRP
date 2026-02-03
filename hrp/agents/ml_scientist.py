@@ -221,6 +221,18 @@ class MLScientist(ResearchAgent):
                     elif status == "rejected":
                         rejected_count += 1
 
+                    # Emit experiment_completed for downstream triggers
+                    self._log_agent_event(
+                        event_type=EventType.EXPERIMENT_COMPLETED,
+                        hypothesis_id=hypothesis.get("hypothesis_id"),
+                        experiment_id=best.experiment_id if best else None,
+                        details={
+                            "status": status,
+                            "trials": len(hyp_results),
+                            "best_ic": best.mean_ic if best else None,
+                        },
+                    )
+
                     total_trials += len(hyp_results)
             except Exception as e:
                 logger.error(f"Failed to process hypothesis {hypothesis.get('id')}: {e}")
