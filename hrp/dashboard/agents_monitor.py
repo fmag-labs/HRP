@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -9,6 +10,20 @@ from typing import Any
 from hrp.api.platform import PlatformAPI
 from hrp.data.db import get_db
 from hrp.research.lineage import EventType
+
+
+def _parse_timestamp(ts: Any) -> datetime:
+    """Parse timestamp that may be string or datetime."""
+    if isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts
+    if isinstance(ts, str):
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+    return datetime.now(timezone.utc)
 
 
 def _get_lineage_events(actor: str | None = None, limit: int = 100) -> list[dict]:
@@ -36,19 +51,26 @@ def _get_lineage_events(actor: str | None = None, limit: int = 100) -> list[dict
         db = get_db()
         with db.connection() as con:
             rows = con.execute(query, params).fetchall()
-            return [
-                {
+            results = []
+            for row in rows:
+                # Parse JSON details if present
+                details = row[6]
+                if details and isinstance(details, str):
+                    try:
+                        details = json.loads(details)
+                    except json.JSONDecodeError:
+                        details = {}
+                results.append({
                     "lineage_id": row[0],
                     "event_type": row[1],
                     "timestamp": row[2],
                     "actor": row[3],
                     "hypothesis_id": row[4],
                     "experiment_id": row[5],
-                    "details": row[6],
+                    "details": details or {},
                     "parent_lineage_id": row[7],
-                }
-                for row in rows
-            ]
+                })
+            return results
     except Exception:
         # If DB access fails, return empty
         return []
@@ -132,7 +154,7 @@ def _infer_agent_status(events: list[dict]) -> str:
 
     now = datetime.now(timezone.utc)
     latest = events[0]  # Events are ordered by timestamp DESC
-    latest_time = datetime.fromisoformat(latest["timestamp"])
+    latest_time = _parse_timestamp(latest["timestamp"])
 
     # Check if event is stale (no activity in 24 hours)
     # But still show the last status, just mark as old
@@ -146,7 +168,7 @@ def _infer_agent_status(events: list[dict]) -> str:
 
     if has_start and not has_complete:
         # Started but not completed - check if within 5 minutes
-        start_time = datetime.fromisoformat(events[-1]["timestamp"])  # Oldest event
+        start_time = _parse_timestamp(events[-1]["timestamp"])  # Oldest event
         if (now - start_time).total_seconds() < 300:
             return "running"
         # If it's been longer, might be stale running
@@ -197,7 +219,7 @@ def get_all_agent_status(api: PlatformAPI | None = None) -> list[AgentStatus]:
                 None,
             )
             if start_event:
-                start_time = datetime.fromisoformat(start_event["timestamp"])
+                start_time = _parse_timestamp(start_event["timestamp"])
                 elapsed_seconds = int(
                     (datetime.now(timezone.utc) - start_time).total_seconds()
                 )
@@ -258,7 +280,7 @@ def get_timeline(
         start_date, end_date = date_range
         events = [
             e for e in events
-            if start_date <= datetime.fromisoformat(e["timestamp"]).date() <= end_date
+            if start_date <= _parse_timestamp(e["timestamp"]).date() <= end_date
         ]
 
     # Apply limit
