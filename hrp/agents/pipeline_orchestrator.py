@@ -136,6 +136,13 @@ class OrchestratorResult:
     gate_trigger_reason: KillGateReason | None = None
     time_saved_seconds: float = 0.0
     total_duration_seconds: float = 0.0
+    # Enhanced context for reporting
+    title: str = ""
+    thesis: str = ""
+    features: list[str] = field(default_factory=list)
+    model_type: str = ""
+    ml_ic: float | None = None  # Information Coefficient from ML Scientist
+    stability_score: float | None = None  # From ML experiment
 
 
 @dataclass
@@ -319,6 +326,36 @@ class PipelineOrchestrator(IngestionJob):
 
         return hypotheses
 
+    def _extract_hypothesis_context(self, hypothesis: dict[str, Any]) -> dict[str, Any]:
+        """
+        Extract hypothesis context for enhanced reporting.
+
+        Args:
+            hypothesis: Hypothesis dict with metadata
+
+        Returns:
+            Dict with context fields for OrchestratorResult
+        """
+        metadata = hypothesis.get("metadata", {})
+        qd_backtest = metadata.get("quant_developer_backtest", {})
+        ml_experiment = metadata.get("ml_scientist_experiment", {})
+
+        # Extract features from various possible locations
+        features = []
+        if ml_experiment.get("features"):
+            features = ml_experiment["features"]
+        elif qd_backtest.get("features"):
+            features = qd_backtest["features"]
+
+        return {
+            "title": hypothesis.get("title", ""),
+            "thesis": hypothesis.get("thesis", ""),
+            "features": features if isinstance(features, list) else [features] if features else [],
+            "model_type": ml_experiment.get("model_type", qd_backtest.get("model_type", "")),
+            "ml_ic": ml_experiment.get("mean_ic"),
+            "stability_score": ml_experiment.get("stability_score"),
+        }
+
     def _orchestrate_hypothesis(self, hypothesis: dict[str, Any]) -> OrchestratorResult:
         """
         Orchestrate experiments for a single hypothesis.
@@ -334,6 +371,9 @@ class PipelineOrchestrator(IngestionJob):
 
         logger.info(f"Orchestrating hypothesis {hypothesis_id}")
 
+        # Extract hypothesis context for reporting
+        context = self._extract_hypothesis_context(hypothesis)
+
         # Step 1: Run baselines (sequential)
         baselines: dict[str, BaselineResult] = {}
         if self.config.run_baselines_first:
@@ -348,7 +388,7 @@ class PipelineOrchestrator(IngestionJob):
                     hypothesis_id=hypothesis_id,
                     details={
                         "reason": KillGateReason.BASELINE_SHARPE_TOO_LOW.value,
-                        "baseline_sharpe": max(b.sharpe for b in baselines.values()),
+                        "baseline_sharpe": max(b.sharpe for b in baselines.values()) if baselines else 0.0,
                         "min_required": self.config.min_baseline_sharpe,
                     },
                 )
@@ -360,6 +400,7 @@ class PipelineOrchestrator(IngestionJob):
                     killed_by_gate=True,
                     gate_trigger_reason=KillGateReason.BASELINE_SHARPE_TOO_LOW,
                     total_duration_seconds=time.time() - start_time,
+                    **context,
                 )
 
         # Step 2: Build experiment queue
@@ -379,6 +420,7 @@ class PipelineOrchestrator(IngestionJob):
             experiments=experiments,
             killed_by_gate=False,
             total_duration_seconds=duration,
+            **context,
         )
 
     def _run_baselines(
@@ -622,7 +664,14 @@ class PipelineOrchestrator(IngestionJob):
 
     def _write_kill_gate_report(self) -> str | None:
         """
-        Write kill gate report to docs/research/.
+        Write comprehensive kill gate report in institutional quant style.
+
+        Generates a detailed research report with:
+        - Executive summary with statistical highlights
+        - Kill gate analysis with reason breakdown
+        - Per-hypothesis detailed sections
+        - Cross-hypothesis statistics
+        - Risk metrics and recommendations
 
         Returns:
             Filepath if successful, None otherwise
@@ -635,107 +684,306 @@ class PipelineOrchestrator(IngestionJob):
             render_alert_banner, render_health_gauges, render_risk_limits,
             render_section_divider, render_progress_bar, format_metric,
         )
-
         from hrp.agents.output_paths import research_note_path
 
         today = date.today().isoformat()
+
+        # ══════════════════════════════════════════════════════════════════════
+        # AGGREGATE STATISTICS
+        # ══════════════════════════════════════════════════════════════════════
         total = len(self._results)
         killed_count = sum(1 for r in self._results if r.killed_by_gate)
         passed_count = total - killed_count
         baselines_run = sum(len(r.baselines) for r in self._results)
         experiments_run = sum(len(r.experiments) for r in self._results)
-        experiments_killed = sum(sum(1 for e in r.experiments if e.killed_early) for r in self._results)
+        experiments_killed = sum(
+            sum(1 for e in r.experiments if e.killed_early)
+            for r in self._results
+        )
         time_saved = sum(r.time_saved_seconds for r in self._results)
+
+        # Collect all Sharpe ratios for distribution analysis
+        all_sharpes = []
+        all_returns = []
+        all_drawdowns = []
+        all_volatilities = []
+
+        for result in self._results:
+            for baseline in result.baselines.values():
+                all_sharpes.append(baseline.sharpe)
+                all_returns.append(baseline.total_return)
+                all_drawdowns.append(baseline.max_drawdown)
+                all_volatilities.append(baseline.volatility)
+            for exp in result.experiments:
+                all_sharpes.append(exp.sharpe)
+                all_returns.append(exp.total_return)
+                all_drawdowns.append(exp.max_drawdown)
+                all_volatilities.append(exp.volatility)
+
+        # Kill reason breakdown
+        kill_reasons: dict[str, int] = {}
+        for result in self._results:
+            if result.gate_trigger_reason:
+                reason = result.gate_trigger_reason.value
+                kill_reasons[reason] = kill_reasons.get(reason, 0) + 1
 
         parts = []
 
-        # ── Header ──
+        # ══════════════════════════════════════════════════════════════════════
+        # HEADER
+        # ══════════════════════════════════════════════════════════════════════
         parts.append(render_header(
             title="Pipeline Kill Gate Report",
             report_type="kill-gates",
             date_str=today,
-            subtitle=f"⚔️ {total} hypotheses processed | {killed_count} killed | {format_metric(time_saved, 'int')}s saved",
+            subtitle=f"⚔️ {total} hypotheses | {killed_count} killed | {passed_count} passed",
         ))
 
-        # ── KPI Dashboard ──
+        # ══════════════════════════════════════════════════════════════════════
+        # EXECUTIVE SUMMARY
+        # ══════════════════════════════════════════════════════════════════════
+        parts.append("## Executive Summary\n")
+
+        kill_rate = (killed_count / max(total, 1)) * 100
+        if kill_rate == 100:
+            verdict = "🔴 **ALL HYPOTHESES REJECTED** — No strategies meet minimum quality thresholds"
+        elif kill_rate >= 75:
+            verdict = "🟠 **HIGH REJECTION RATE** — Majority of strategies fail quality gates"
+        elif kill_rate >= 50:
+            verdict = "🟡 **MODERATE REJECTION** — Mixed quality across hypothesis pool"
+        elif kill_rate > 0:
+            verdict = "🟢 **LOW REJECTION RATE** — Most strategies pass quality filters"
+        else:
+            verdict = "✅ **ALL HYPOTHESES PASSED** — Full pipeline proceeding to validation"
+
+        parts.append(f"{verdict}\n")
+
+        # KPI Dashboard
         parts.append(render_kpi_dashboard([
             {"icon": "📋", "label": "Processed", "value": total, "detail": "hypotheses"},
-            {"icon": "⚔️", "label": "Killed", "value": killed_count, "detail": "by gates"},
+            {"icon": "⚔️", "label": "Killed", "value": killed_count, "detail": f"{kill_rate:.0f}% rejection"},
             {"icon": "🧪", "label": "Experiments", "value": experiments_run, "detail": f"{experiments_killed} killed"},
-            {"icon": "⏱️", "label": "Time Saved", "value": f"{time_saved:.0f}s", "detail": "compute"},
+            {"icon": "⏱️", "label": "Compute Saved", "value": f"{time_saved:.0f}s", "detail": "estimated"},
         ]))
 
-        # ── Alert banner ──
+        # Alert banner for high kill rates
         if killed_count > 0:
-            kill_pct = killed_count / max(total, 1) * 100
             parts.append(render_alert_banner(
-                [f"{killed_count} of {total} hypotheses killed at gates ({kill_pct:.0f}%)",
-                 f"⏱️  Estimated {time_saved:.0f}s of compute time saved"],
-                severity="warning" if kill_pct < 50 else "critical",
+                [f"Kill Rate: {kill_rate:.1f}% ({killed_count}/{total} hypotheses)",
+                 f"Compute savings: {time_saved:.0f}s of experiment time avoided"],
+                severity="warning" if kill_rate < 75 else "critical",
             ))
 
-        # ── Health Gauges ──
+        # ══════════════════════════════════════════════════════════════════════
+        # STATISTICAL DISTRIBUTION
+        # ══════════════════════════════════════════════════════════════════════
+        if all_sharpes:
+            parts.append(render_section_divider("📊 Statistical Distribution"))
+
+            sharpe_arr = np.array(all_sharpes) if all_sharpes else np.array([0])
+            return_arr = np.array(all_returns) if all_returns else np.array([0])
+            dd_arr = np.array(all_drawdowns) if all_drawdowns else np.array([0])
+
+            parts.append("### Risk-Adjusted Performance Metrics\n")
+            parts.append("| Statistic | Sharpe Ratio | Total Return | Max Drawdown |")
+            parts.append("|-----------|--------------|--------------|--------------|")
+            parts.append(f"| **Mean** | {np.mean(sharpe_arr):.4f} | {np.mean(return_arr):.2%} | {np.mean(dd_arr):.2%} |")
+            parts.append(f"| **Std Dev** | {np.std(sharpe_arr):.4f} | {np.std(return_arr):.2%} | {np.std(dd_arr):.2%} |")
+            parts.append(f"| **Min** | {np.min(sharpe_arr):.4f} | {np.min(return_arr):.2%} | {np.min(dd_arr):.2%} |")
+            parts.append(f"| **Max** | {np.max(sharpe_arr):.4f} | {np.max(return_arr):.2%} | {np.max(dd_arr):.2%} |")
+            if len(sharpe_arr) >= 4:
+                parts.append(f"| **25th %ile** | {np.percentile(sharpe_arr, 25):.4f} | {np.percentile(return_arr, 25):.2%} | {np.percentile(dd_arr, 25):.2%} |")
+                parts.append(f"| **Median** | {np.median(sharpe_arr):.4f} | {np.median(return_arr):.2%} | {np.median(dd_arr):.2%} |")
+                parts.append(f"| **75th %ile** | {np.percentile(sharpe_arr, 75):.4f} | {np.percentile(return_arr, 75):.2%} | {np.percentile(dd_arr, 75):.2%} |")
+            parts.append(f"| **Count** | {len(sharpe_arr)} | {len(return_arr)} | {len(dd_arr)} |")
+            parts.append("")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # KILL GATE ANALYSIS
+        # ══════════════════════════════════════════════════════════════════════
+        parts.append(render_section_divider("⚔️ Kill Gate Analysis"))
+
+        # Kill reason breakdown
+        if kill_reasons:
+            parts.append("### Kill Reason Distribution\n")
+            parts.append("| Reason | Count | % of Kills | Description |")
+            parts.append("|--------|-------|------------|-------------|")
+            reason_descriptions = {
+                "baseline_sharpe_too_low": "Baseline Sharpe below minimum threshold",
+                "train_sharpe_too_high": "Suspiciously high Sharpe (overfitting)",
+                "max_drawdown_exceeded": "Maximum drawdown limit breached",
+                "feature_count_too_high": "Too many features (complexity risk)",
+                "instability_too_high": "High instability score across folds",
+            }
+            for reason, count in sorted(kill_reasons.items(), key=lambda x: -x[1]):
+                pct = (count / killed_count) * 100
+                desc = reason_descriptions.get(reason, "Unknown reason")
+                parts.append(f"| `{reason}` | {count} | {pct:.1f}% | {desc} |")
+            parts.append("")
+        else:
+            parts.append("*No hypotheses killed — all passed gates*\n")
+
+        # Gate thresholds
+        parts.append("### Gate Thresholds\n")
+        parts.append(render_risk_limits({
+            "Min Baseline Sharpe": f"{self.config.min_baseline_sharpe:.2f}",
+            "Max Train Sharpe": f"{self.config.max_train_sharpe:.2f}",
+            "Max Drawdown": f"{self.config.max_drawdown_threshold:.1%}",
+            "Max Feature Count": str(self.config.max_feature_count),
+            "Max Instability": f"{self.config.max_instability_score:.2f}",
+        }))
+
+        # Health gauges
         survival_rate = (passed_count / max(total, 1)) * 100
+        exp_efficiency = ((experiments_run - experiments_killed) / max(experiments_run, 1)) * 100
         parts.append(render_health_gauges([
             {"label": "Gate Survival Rate", "value": survival_rate, "max_val": 100,
              "trend": "up" if survival_rate > 50 else "down"},
-            {"label": "Experiment Efficiency", "value": (experiments_run - experiments_killed), "max_val": max(experiments_run, 1),
-             "trend": "stable"},
+            {"label": "Experiment Efficiency", "value": exp_efficiency, "max_val": 100,
+             "trend": "stable" if exp_efficiency > 80 else "down"},
         ]))
 
-        # ── Kill Gate Settings ──
-        parts.append(render_risk_limits({
-            "Min Baseline Sharpe": str(self.config.min_baseline_sharpe),
-            "Max Train Sharpe": str(self.config.max_train_sharpe),
-            "Max Drawdown": f"{self.config.max_drawdown_threshold:.1%}",
-            "Max Feature Count": str(self.config.max_feature_count),
-        }))
-
-        # ── Hypothesis Details ──
-        parts.append(render_section_divider("📊 Hypothesis Details"))
+        # ══════════════════════════════════════════════════════════════════════
+        # PER-HYPOTHESIS DETAILED ANALYSIS
+        # ══════════════════════════════════════════════════════════════════════
+        parts.append(render_section_divider("📋 Hypothesis Analysis"))
 
         for result in self._results:
-            if result.killed_by_gate:
-                status_emoji = "🔴"
-                status_label = "KILLED"
-            else:
-                status_emoji = "✅"
-                status_label = "PASSED"
+            status_emoji = "🔴" if result.killed_by_gate else "✅"
+            status_label = "REJECTED" if result.killed_by_gate else "PASSED"
 
-            parts.append(f"### {status_emoji} {result.hypothesis_id} — **{status_label}**")
+            parts.append(f"### {status_emoji} {result.hypothesis_id} — **{status_label}**\n")
+
+            # Hypothesis context
+            if result.title:
+                parts.append(f"**{result.title}**\n")
+
+            if result.thesis:
+                thesis_short = result.thesis[:200] + "..." if len(result.thesis) > 200 else result.thesis
+                parts.append(f"> {thesis_short}\n")
+
+            # Metadata table
+            parts.append("| Attribute | Value |")
+            parts.append("|-----------|-------|")
+            gate_reason = result.gate_trigger_reason.value if result.gate_trigger_reason else "—"
+            parts.append(f"| **Gate Result** | {status_label} |")
+            parts.append(f"| **Kill Reason** | `{gate_reason}` |")
+            parts.append(f"| **Duration** | {result.total_duration_seconds:.2f}s |")
+            if result.features:
+                parts.append(f"| **Features** | `{', '.join(result.features[:5])}{'...' if len(result.features) > 5 else ''}` |")
+            if result.model_type:
+                parts.append(f"| **Model** | {result.model_type} |")
+            if result.ml_ic is not None:
+                ic_status = "⚠️ High" if result.ml_ic > 0.15 else "✅ Normal"
+                parts.append(f"| **Information Coefficient** | {result.ml_ic:.4f} {ic_status} |")
+            if result.stability_score is not None:
+                stab_status = "⚠️ Unstable" if result.stability_score > 1.0 else "✅ Stable"
+                parts.append(f"| **Stability Score** | {result.stability_score:.4f} {stab_status} |")
             parts.append("")
 
-            # Gate trigger info
-            gate_reason = result.gate_trigger_reason.value if result.gate_trigger_reason else "N/A"
-            parts.append(f"| Field | Detail |")
-            parts.append(f"|-------|--------|")
-            parts.append(f"| **Gate Trigger** | {gate_reason} |")
-            parts.append(f"| **Duration** | {result.total_duration_seconds:.1f}s |")
-            parts.append(f"| **Experiments** | {len(result.experiments)} run |")
-            parts.append("")
-
-            # Baselines
+            # Baseline metrics
             if result.baselines:
-                parts.append("**Baselines:**")
-                parts.append("```")
+                parts.append("#### Baseline Performance\n")
+                parts.append("| Metric | Sharpe | Return | Max DD | Volatility | Status |")
+                parts.append("|--------|--------|--------|--------|------------|--------|")
                 for name, baseline in result.baselines.items():
-                    bar = render_progress_bar(max(baseline.sharpe, 0), 2.0, width=10, show_pct=False)
-                    parts.append(f"  {name.ljust(15)} Sharpe={baseline.sharpe:+.2f}  Return={baseline.total_return:+.2%}  {bar}")
-                parts.append("```")
+                    sharpe_bar = render_progress_bar(
+                        max(baseline.sharpe, 0), self.config.min_baseline_sharpe * 2,
+                        width=8, show_pct=False
+                    )
+                    sharpe_status = "✅" if baseline.sharpe >= self.config.min_baseline_sharpe else "❌"
+                    dd_status = "✅" if baseline.max_drawdown <= self.config.max_drawdown_threshold else "❌"
+                    parts.append(
+                        f"| {name} | {baseline.sharpe:+.4f} {sharpe_bar} | "
+                        f"{baseline.total_return:+.2%} | {baseline.max_drawdown:.2%} {dd_status} | "
+                        f"{baseline.volatility:.2%} | {sharpe_status} |"
+                    )
                 parts.append("")
 
-            # Experiments summary
+                # Risk ratios (estimated from available data)
+                for name, baseline in result.baselines.items():
+                    if baseline.volatility > 0 and baseline.max_drawdown > 0:
+                        # Calmar ratio estimate: annualized return / max drawdown
+                        calmar_est = baseline.total_return / max(baseline.max_drawdown, 0.001)
+                        # Sortino estimate (assume downside vol ~ 70% of total vol)
+                        sortino_est = baseline.sharpe * 1.43 if baseline.sharpe > 0 else baseline.sharpe
+                        parts.append(f"**Derived Risk Ratios** (estimates)")
+                        parts.append(f"- Calmar Ratio: {calmar_est:.2f}")
+                        parts.append(f"- Sortino Ratio: {sortino_est:.2f}")
+                        parts.append(f"- Return/Vol: {baseline.total_return / max(baseline.volatility, 0.001):.2f}")
+                        parts.append("")
+                        break
+
+            # Parameter sensitivity analysis
             if result.experiments:
-                exp_killed = sum(1 for e in result.experiments if e.killed_early)
-                best_exp = max(result.experiments, key=lambda e: e.sharpe)
-                parts.append(f"**Experiments:** {exp_killed}/{len(result.experiments)} killed early")
-                parts.append(f"**Best:** {best_exp.config_name} (Sharpe={best_exp.sharpe:.2f})")
+                parts.append("#### Parameter Sensitivity Matrix\n")
+                parts.append("| Variation | Sharpe | Return | Max DD | Vol | Status |")
+                parts.append("|-----------|--------|--------|--------|-----|--------|")
+
+                # Sort by Sharpe descending
+                sorted_exps = sorted(result.experiments, key=lambda e: e.sharpe, reverse=True)
+                for exp in sorted_exps[:10]:  # Top 10
+                    kill_indicator = "⚠️" if exp.killed_early else ""
+                    sharpe_status = "✅" if exp.sharpe >= self.config.min_baseline_sharpe else "❌"
+                    parts.append(
+                        f"| {exp.config_name} | {exp.sharpe:+.4f} | "
+                        f"{exp.total_return:+.2%} | {exp.max_drawdown:.2%} | "
+                        f"{exp.volatility:.2%} | {sharpe_status}{kill_indicator} |"
+                    )
+
+                # Sensitivity statistics
+                if len(result.experiments) >= 2:
+                    exp_sharpes = [e.sharpe for e in result.experiments]
+                    exp_returns = [e.total_return for e in result.experiments]
+                    sharpe_std = np.std(exp_sharpes)
+                    return_std = np.std(exp_returns)
+                    parts.append("")
+                    parts.append(f"**Sensitivity Analysis** ({len(result.experiments)} variations)")
+                    parts.append(f"- Sharpe Std Dev: {sharpe_std:.4f} {'⚠️ High variance' if sharpe_std > 0.5 else '✅ Stable'}")
+                    parts.append(f"- Return Std Dev: {return_std:.2%}")
+                    parts.append(f"- Best/Worst Sharpe: {max(exp_sharpes):.4f} / {min(exp_sharpes):.4f}")
+
                 parts.append("")
 
-            parts.append("─" * 60)
+            parts.append("─" * 70)
             parts.append("")
 
-        # ── Footer ──
+        # ══════════════════════════════════════════════════════════════════════
+        # RECOMMENDATIONS
+        # ══════════════════════════════════════════════════════════════════════
+        parts.append(render_section_divider("💡 Recommendations"))
+
+        recommendations = []
+
+        if kill_rate == 100:
+            recommendations.append("- **Review hypothesis generation process** — All strategies rejected suggests systematic issues with signal generation or feature engineering")
+            recommendations.append("- **Lower baseline thresholds temporarily** — Consider min Sharpe of 0.3 for early-stage research")
+            recommendations.append("- **Inspect data quality** — Zero returns may indicate data pipeline issues")
+        elif kill_rate >= 75:
+            recommendations.append("- **Focus on surviving hypotheses** — Prioritize resources on strategies that passed")
+            recommendations.append("- **Analyze common failure patterns** — Identify shared characteristics of rejected strategies")
+        elif kill_rate >= 50:
+            recommendations.append("- **Mixed results warrant careful analysis** — Review borderline cases manually")
+        else:
+            recommendations.append("- **Proceed to validation stage** — Passed hypotheses ready for out-of-sample testing")
+
+        if "baseline_sharpe_too_low" in kill_reasons:
+            recommendations.append(f"- **{kill_reasons['baseline_sharpe_too_low']} hypotheses killed for low Sharpe** — Consider alternative signal transformations or feature combinations")
+
+        if "train_sharpe_too_high" in kill_reasons:
+            recommendations.append(f"- **{kill_reasons['train_sharpe_too_high']} hypotheses flagged for overfitting** — Implement stricter cross-validation or reduce model complexity")
+
+        if experiments_run == 0 and killed_count == total:
+            recommendations.append("- **No experiments ran** — All hypotheses killed at baseline gate before parameter sweeps")
+
+        for rec in recommendations:
+            parts.append(rec)
+
+        parts.append("")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # FOOTER
+        # ══════════════════════════════════════════════════════════════════════
         parts.append(render_footer(agent_name="pipeline-orchestrator"))
 
         content = "\n".join(parts)
