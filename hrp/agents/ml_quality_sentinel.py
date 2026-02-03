@@ -723,9 +723,43 @@ class MLQualitySentinel(ResearchAgent):
     # ==========================================================================
 
     def _get_experiment(self, experiment_id: str) -> dict:
-        """Get experiment by ID from MLflow."""
+        """Get experiment by ID from MLflow.
+
+        Normalizes the nested structure from api.get_experiment() to a flat
+        dict matching the format expected by audit check functions.
+        """
         try:
-            return self.api.get_experiment(experiment_id) or {}
+            raw = self.api.get_experiment(experiment_id) or {}
+
+            # Flatten metrics and tags to top level so check functions
+            # can access e.g. experiment.get("mean_ic") directly
+            metrics = raw.get("metrics", {})
+            tags = raw.get("tags", {})
+            params = raw.get("params", {})
+
+            flat = {
+                "id": raw.get("experiment_id", experiment_id),
+                "mlflow_run_id": raw.get("experiment_id", experiment_id),
+                "hypothesis_id": tags.get("hypothesis_id", "unknown"),
+                "mean_ic": metrics.get("mean_ic"),
+                "train_sharpe": metrics.get("train_sharpe"),
+                "test_sharpe": metrics.get("test_sharpe"),
+                "sharpe": metrics.get("sharpe_ratio"),
+                "r2": metrics.get("r2") or metrics.get("mean_r2"),
+                "feature_count": int(params.get("n_features", 0) or 0),
+                "sample_count": int(params.get("sample_count", 1000) or 1000),
+            }
+
+            # Extract fold ICs
+            fold_ics = []
+            for i in range(10):
+                fold_ic = metrics.get(f"fold_{i}_ic")
+                if fold_ic is not None:
+                    fold_ics.append({"ic": fold_ic})
+            if fold_ics:
+                flat["fold_results"] = fold_ics
+
+            return flat
         except Exception as e:
             logger.warning(f"Failed to get experiment {experiment_id}: {e}")
             return {"id": experiment_id}
