@@ -92,22 +92,47 @@ api.execute_write(sql, params)        # INSERT/UPDATE/DELETE
 | **Fundamental** | `market_cap`, `pe_ratio`, `pb_ratio`, `dividend_yield`, `ev_ebitda`, `shares_outstanding` |
 | **Fundamental TS** | `ts_revenue`, `ts_eps`, `ts_book_value`, `ts_market_cap`, `ts_pe_ratio`, `ts_pb_ratio`, `ts_dividend_yield`, `ts_ev_ebitda`, `ts_shares_outstanding` |
 
+## Hypothesis Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft : create_hypothesis()
+    draft --> testing : Alpha Researcher
+    draft --> deleted : delete_hypothesis()
+    testing --> validated : ML Scientist
+    testing --> rejected : Kill Gate / CIO
+    testing --> draft : reopen
+    validated --> deployed : Human CIO ONLY
+    validated --> rejected : CIO / Human reject
+    validated --> testing : demote for rework
+    rejected --> draft : reopen
+    deployed --> validated : undeploy
+    deleted --> [*]
+```
+
+**6 Statuses:** `draft` → `testing` → `validated` → `deployed` (plus `rejected`, `deleted`)
+
+Pipeline progress tracked via lineage events, not status changes. See `docs/agents/decision-pipeline.md`.
+
 ## Agents
 
 All agents follow `agent.run()` pattern. Agent pipeline chain:
-**Signal Scientist -> Alpha Researcher -> ML Scientist -> ML Quality Sentinel -> Quant Developer -> Kill Gate Enforcer**
+**Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Quant Developer → Kill Gate Enforcer → Validation Analyst → Risk Manager → CIO Agent → Human CIO**
 
-| Agent | Purpose | Key module |
-|-------|---------|------------|
-| SignalScientist | Automated signal discovery (IC-based) | `hrp.agents` |
-| AlphaResearcher | Reviews draft hypotheses, promotes to testing | `hrp.agents` |
-| MLScientist | Walk-forward validation of testing hypotheses | `hrp.agents` |
-| MLQualitySentinel | Audits experiments for overfitting | `hrp.agents` |
-| ValidationAnalyst | Pre-deployment stress testing | `hrp.agents` |
-| KillGateEnforcer | Enforces kill gates on hypotheses | `hrp.agents` |
-| CIOAgent | Scores hypotheses across 4 dimensions (Statistical/Risk/Economic/Cost) | `hrp.agents` |
-| RiskManager | Portfolio risk assessment, independent veto power | `hrp.agents` |
-| ReportGenerator | Daily/weekly research summaries | `hrp.agents` |
+| Agent | Purpose | Status Changes | Key module |
+|-------|---------|----------------|------------|
+| SignalScientist | Automated signal discovery (IC-based) | → `draft` | `hrp.agents` |
+| AlphaResearcher | Reviews draft hypotheses, promotes to testing | `draft` → `testing` | `hrp.agents` |
+| MLScientist | Walk-forward validation of testing hypotheses | `testing` → `validated` | `hrp.agents` |
+| MLQualitySentinel | Audits experiments for overfitting | None (metadata only) | `hrp.agents` |
+| QuantDeveloper | Production backtesting with costs | None (metadata only) | `hrp.agents` |
+| KillGateEnforcer | Enforces kill gates on hypotheses | → `rejected` (hard kill) | `hrp.agents` |
+| ValidationAnalyst | Pre-deployment stress testing | `validated` → `testing` (fail) | `hrp.agents` |
+| RiskManager | Portfolio risk assessment, veto power | None (veto via lineage) | `hrp.agents` |
+| CIOAgent | Scores hypotheses across 4 dimensions | → `rejected` (KILL) | `hrp.agents` |
+| ReportGenerator | Daily/weekly research summaries | None | `hrp.agents` |
+
+**Only Human CIO can set `deployed` status.**
 
 ## Key Modules
 

@@ -21,32 +21,66 @@ from hrp.data.db import get_db
 class EventType(str, Enum):
     """Supported lineage event types."""
 
+    # === Hypothesis lifecycle events ===
     HYPOTHESIS_CREATED = "hypothesis_created"
     HYPOTHESIS_UPDATED = "hypothesis_updated"
     HYPOTHESIS_DELETED = "hypothesis_deleted"
     HYPOTHESIS_FLAGGED = "hypothesis_flagged"
+
+    # === Experiment events ===
     EXPERIMENT_RUN = "experiment_run"
     EXPERIMENT_LINKED = "experiment_linked"
+    EXPERIMENT_COMPLETED = "experiment_completed"
+
+    # === Validation events ===
     VALIDATION_PASSED = "validation_passed"
     VALIDATION_FAILED = "validation_failed"
+
+    # === Deployment events ===
     DEPLOYMENT_APPROVED = "deployment_approved"
     DEPLOYMENT_REJECTED = "deployment_rejected"
+
+    # === Generic agent events ===
     AGENT_RUN_COMPLETE = "agent_run_complete"
     AGENT_RUN_START = "agent_run_start"
-    ML_QUALITY_SENTINEL_AUDIT = "ml_quality_sentinel_audit"
+
+    # === Agent-specific events (semantic) ===
+    # Signal Scientist
+    SIGNAL_SCAN_COMPLETE = "signal_scan_complete"
+
+    # Alpha Researcher
     ALPHA_RESEARCHER_REVIEW = "alpha_researcher_review"
-    VALIDATION_ANALYST_REVIEW = "validation_analyst_review"
-    RISK_REVIEW_COMPLETE = "risk_review_complete"
-    RISK_VETO = "risk_veto"
-    QUANT_DEVELOPER_BACKTEST_COMPLETE = "quant_developer_backtest_complete"
     ALPHA_RESEARCHER_COMPLETE = "alpha_researcher_complete"
+
+    # ML Scientist
+    ML_SCIENTIST_VALIDATION = "ml_scientist_validation"
+
+    # ML Quality Sentinel
+    ML_QUALITY_SENTINEL_AUDIT = "ml_quality_sentinel_audit"
+
+    # Quant Developer
+    QUANT_DEVELOPER_BACKTEST_COMPLETE = "quant_developer_backtest_complete"
+
+    # Kill Gate Enforcer
     KILL_GATE_ENFORCER_COMPLETE = "kill_gate_enforcer_complete"
     KILL_GATE_TRIGGERED = "kill_gate_triggered"
-    DATA_INGESTION = "data_ingestion"
-    EXPERIMENT_COMPLETED = "experiment_completed"
-    CIO_AGENT_DECISION = "cio_agent_decision"
+
+    # Validation Analyst
+    VALIDATION_ANALYST_REVIEW = "validation_analyst_review"
     VALIDATION_ANALYST_COMPLETE = "validation_analyst_complete"
+
+    # Risk Manager
     RISK_MANAGER_ASSESSMENT = "risk_manager_assessment"
+    RISK_REVIEW_COMPLETE = "risk_review_complete"
+    RISK_VETO = "risk_veto"
+
+    # CIO Agent
+    CIO_AGENT_DECISION = "cio_agent_decision"
+
+    # === Data events ===
+    DATA_INGESTION = "data_ingestion"
+
+    # === System events ===
     SYSTEM_ERROR = "system_error"
 
 

@@ -74,10 +74,11 @@ Supports multiple model types:
 
 | Condition | New Status | Action |
 |-----------|------------|--------|
-| `stability_score <= threshold` & positive IC | `validated` | Proceed to deployment review |
+| `mean_ic >= 0.03` AND `stability_score <= 1.0` | `validated` | Proceed to ML Quality Sentinel |
+| `0.02 <= mean_ic < 0.03` AND `stability_score <= 1.5` | `testing` | Keep in testing for further work |
 | `stability_score > threshold` | `rejected` | Unstable across time |
 | IC sign flips across folds | `rejected` | Inconsistent direction |
-| Mean IC < 0 | `rejected` | No predictive power |
+| Mean IC < 0.02 | `rejected` | Below promising thresholds |
 
 ---
 
@@ -280,4 +281,5 @@ def should_validate(result: ModelExperimentResult) -> bool:
 
 ## Document History
 
+- **2026-02-02:** Added TESTING → TESTING transition for promising results (IC 0.02-0.03, stability ≤ 1.5)
 - **2026-01-26:** Initial agent definition created

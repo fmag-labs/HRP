@@ -32,6 +32,24 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 }
 
 
+# Valid pipeline stages (tracks position in agent pipeline independent of status)
+PipelineStage = Literal[
+    "created",          # Initial state after hypothesis creation
+    "signal_discovery", # Signal Scientist processing
+    "alpha_review",     # Alpha Researcher review
+    "ml_training",      # ML Scientist walk-forward validation
+    "quality_audit",    # ML Quality Sentinel audit
+    "quant_backtest",   # Quant Developer production backtest
+    "kill_gate",        # Kill Gate Enforcer evaluation
+    "stress_test",      # Validation Analyst stress testing
+    "risk_review",      # Risk Manager assessment
+    "cio_review",       # CIO Agent scoring
+    "human_approval",   # Awaiting human CIO decision
+    "deployed",         # Successfully deployed
+    "archived",         # Rejected/deleted (terminal)
+]
+
+
 @dataclass
 class HypothesisRecord:
     """Dataclass representing a hypothesis record."""
@@ -42,6 +60,7 @@ class HypothesisRecord:
     testable_prediction: str
     falsification_criteria: str
     status: str
+    pipeline_stage: str
     created_at: datetime
     created_by: str
     updated_at: datetime | None
@@ -99,11 +118,12 @@ def _row_to_record(row: tuple) -> HypothesisRecord:
         testable_prediction=row[3],
         falsification_criteria=row[4],
         status=row[5],
-        created_at=row[6],
-        created_by=row[7],
-        updated_at=row[8],
-        outcome=row[9],
-        confidence_score=float(row[10]) if row[10] is not None else None,
+        pipeline_stage=row[6],
+        created_at=row[7],
+        created_by=row[8],
+        updated_at=row[9],
+        outcome=row[10],
+        confidence_score=float(row[11]) if row[11] is not None else None,
     )
 
 
@@ -172,7 +192,7 @@ def get_hypothesis(hypothesis_id: str, db=None) -> dict | None:
 
     query = """
         SELECT hypothesis_id, title, thesis, testable_prediction,
-               falsification_criteria, status, created_at, created_by,
+               falsification_criteria, status, pipeline_stage, created_at, created_by,
                updated_at, outcome, confidence_score
         FROM hypotheses
         WHERE hypothesis_id = ?
@@ -188,6 +208,7 @@ def get_hypothesis(hypothesis_id: str, db=None) -> dict | None:
 def list_hypotheses(
     status: str | None = None,
     actor: str | None = None,
+    pipeline_stage: str | None = None,
     db=None,
 ) -> list[dict]:
     """
@@ -196,6 +217,7 @@ def list_hypotheses(
     Args:
         status: Filter by status (e.g., 'draft', 'testing')
         actor: Filter by creator (e.g., 'user', 'agent:discovery')
+        pipeline_stage: Filter by pipeline stage (e.g., 'ml_training', 'cio_review')
 
     Returns:
         List of hypothesis dictionaries
@@ -204,7 +226,7 @@ def list_hypotheses(
 
     query = """
         SELECT hypothesis_id, title, thesis, testable_prediction,
-               falsification_criteria, status, created_at, created_by,
+               falsification_criteria, status, pipeline_stage, created_at, created_by,
                updated_at, outcome, confidence_score
         FROM hypotheses
         WHERE status != 'deleted'
@@ -218,6 +240,10 @@ def list_hypotheses(
     if actor:
         query += " AND created_by = ?"
         params.append(actor)
+
+    if pipeline_stage:
+        query += " AND pipeline_stage = ?"
+        params.append(pipeline_stage)
 
     query += " ORDER BY created_at DESC"
 
@@ -315,6 +341,61 @@ def update_hypothesis(
         hypothesis_id=hypothesis_id,
         actor="system",
         details={"status": status, "outcome": outcome, "confidence_score": confidence_score},
+    )
+
+    return True
+
+
+def update_pipeline_stage(
+    hypothesis_id: str,
+    pipeline_stage: str,
+    actor: str = "system",
+    db=None,
+) -> bool:
+    """
+    Update the pipeline stage of a hypothesis.
+
+    This tracks the hypothesis's position in the agent pipeline independent of status.
+    Agents should call this when they start processing a hypothesis.
+
+    Args:
+        hypothesis_id: The hypothesis ID
+        pipeline_stage: New pipeline stage (see PipelineStage type)
+        actor: Who is updating (e.g., 'agent:ml_scientist')
+
+    Returns:
+        True if updated, False if not found
+    """
+    valid_stages = {
+        "created", "signal_discovery", "alpha_review", "ml_training",
+        "quality_audit", "quant_backtest", "kill_gate", "stress_test",
+        "risk_review", "cio_review", "human_approval", "deployed", "archived"
+    }
+    if pipeline_stage not in valid_stages:
+        raise ValueError(f"Invalid pipeline_stage: {pipeline_stage}. Valid: {valid_stages}")
+
+    db = db or get_db()
+
+    # Verify hypothesis exists
+    current = get_hypothesis(hypothesis_id)
+    if not current:
+        logger.warning(f"Hypothesis {hypothesis_id} not found")
+        return False
+
+    query = """
+        UPDATE hypotheses
+        SET pipeline_stage = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE hypothesis_id = ?
+    """
+    db.execute(query, (pipeline_stage, hypothesis_id))
+
+    logger.info(f"Updated hypothesis {hypothesis_id} pipeline_stage to {pipeline_stage}")
+
+    _log_lineage(
+        event_type="hypothesis_updated",
+        hypothesis_id=hypothesis_id,
+        actor=actor,
+        details={"pipeline_stage": pipeline_stage},
     )
 
     return True

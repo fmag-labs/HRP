@@ -175,6 +175,7 @@ class AlphaResearcher(SDKAgent):
         self.hypothesis_ids = hypothesis_ids or (base_config.hypothesis_ids if config else None)
         self.api = api or PlatformAPI()
         self._analyses: list[HypothesisAnalysis] = []
+        self._strategy_specs: list[StrategySpec] = []
 
     def execute(self) -> dict[str, Any]:
         """
@@ -238,6 +239,7 @@ class AlphaResearcher(SDKAgent):
 
             for spec in new_specs:
                 strategies_generated.append(spec.name)
+                self._strategy_specs.append(spec)
 
                 # Write strategy spec document
                 if self.config.write_strategy_docs:
@@ -575,8 +577,96 @@ Respond with a JSON object containing:
             },
         )
 
+    def _get_pipeline_status(self) -> dict[str, int]:
+        """Get hypothesis counts by status for pipeline context."""
+        counts = {}
+        for status in ["draft", "testing", "validated", "deployed", "rejected"]:
+            try:
+                hypotheses = self.api.list_hypotheses(status=status)
+                counts[status] = len(hypotheses) if hypotheses else 0
+            except Exception:
+                counts[status] = 0
+        return counts
+
+    def _get_recent_experiments(self, limit: int = 5) -> list[dict]:
+        """Get recent experiment summaries for statistical context."""
+        from hrp.research.lineage import get_lineage
+
+        try:
+            events = get_lineage(event_type="experiment_completed", limit=limit)
+        except Exception:
+            return []
+
+        summaries = []
+        for event in events:
+            exp_id = event.get("experiment_id")
+            if exp_id:
+                details = event.get("details", {})
+                metrics = details.get("metrics", {})
+                summaries.append({
+                    "id": exp_id[:12] if len(exp_id) > 12 else exp_id,
+                    "hypothesis_id": event.get("hypothesis_id", "N/A"),
+                    "sharpe": metrics.get("sharpe_ratio", "N/A"),
+                    "max_dd": metrics.get("max_drawdown", "N/A"),
+                })
+        return summaries
+
+    def _get_hypothesis_lineage(self, hypothesis_id: str, limit: int = 5) -> list[dict]:
+        """Get decision history timeline for a hypothesis."""
+        from hrp.research.lineage import get_lineage
+
+        try:
+            return get_lineage(hypothesis_id=hypothesis_id, limit=limit)
+        except Exception:
+            return []
+
+    def _calculate_hypothesis_dimensions(self, analysis: HypothesisAnalysis) -> list[dict]:
+        """Calculate CIO-style 4D scoring for hypothesis quality assessment."""
+        # Score economic rationale quality (longer, more detailed = higher score)
+        econ_text = analysis.economic_rationale or ""
+        if len(econ_text) > 200:
+            econ_score = 0.85
+        elif len(econ_text) > 100:
+            econ_score = 0.7
+        elif len(econ_text) > 50:
+            econ_score = 0.55
+        else:
+            econ_score = 0.4
+
+        # Score regime awareness
+        regime_text = analysis.regime_notes or ""
+        if len(regime_text) > 100:
+            regime_score = 0.8
+        elif len(regime_text) > 50:
+            regime_score = 0.65
+        else:
+            regime_score = 0.45
+
+        # Score novelty (fewer related = more novel)
+        if not analysis.related_hypotheses:
+            novelty_score = 0.9
+        elif len(analysis.related_hypotheses) <= 2:
+            novelty_score = 0.7
+        else:
+            novelty_score = 0.55
+
+        # Score falsifiability (presence of refined criteria)
+        if analysis.refined_falsification and len(analysis.refined_falsification) > 50:
+            falsif_score = 0.85
+        elif analysis.refined_falsification:
+            falsif_score = 0.65
+        else:
+            falsif_score = 0.45
+
+        return [
+            {"label": "Economic", "score": econ_score},
+            {"label": "Regime", "score": regime_score},
+            {"label": "Novelty", "score": novelty_score},
+            {"label": "Falsifiable", "score": falsif_score},
+        ]
+
     def _write_research_note(self, strategies_generated: list[str] | None = None) -> str | None:
-        """Write research note to docs/research/."""
+        """Write comprehensive research note with Jim Simons-grade detail."""
         if not self._analyses:
             return None
 
@@ -591,6 +681,9 @@ Respond with a JSON object containing:
             render_header,
             render_insights,
             render_kpi_dashboard,
+            render_pipeline_flow,
+            render_risk_limits,
+            render_scorecard,
             render_section_divider,
             render_status_table,
         )
@@ -600,74 +693,231 @@ Respond with a JSON object containing:
         deferred = len(self._analyses) - promoted
         is_generation_run = bool(strategies_generated)
 
-        if is_generation_run:
-            slug = "02-alpha-researcher-generation"
-            title = "Alpha Researcher — Strategy Generation"
-        else:
-            slug = "02-alpha-researcher-review"
-            title = "Alpha Researcher — Hypothesis Review"
+        # Gather additional context
+        pipeline_status = self._get_pipeline_status()
+        recent_experiments = self._get_recent_experiments(limit=5)
+
+        slug = "02-alpha-researcher-generation" if is_generation_run else "02-alpha-researcher-review"
+        title = "Alpha Researcher - Strategy Generation" if is_generation_run else "Alpha Researcher - Hypothesis Review"
 
         parts: list[str] = []
 
-        # ── Header ──
-        parts.append(render_header(
-            title=title,
-            report_type="agent-execution",
-            date_str=today,
-        ))
+        # ═══ HEADER ═══
+        parts.append(render_header(title=title, report_type="agent-execution", date_str=today))
 
-        # ── KPI Dashboard ──
+        # ═══ EXECUTIVE SUMMARY ═══
+        parts.append(render_section_divider("Executive Summary"))
+        if promoted > 0:
+            parts.append(f"**{promoted} hypothesis(es) promoted to testing** - ready for ML Scientist validation")
+        if deferred > 0:
+            parts.append(f"**{deferred} hypothesis(es) deferred** - require additional refinement")
+        if is_generation_run and strategies_generated:
+            parts.append(f"**{len(strategies_generated)} new strategies generated** from economic first principles")
+        parts.append("")
+
+        # ═══ KPI DASHBOARD - Pipeline Status ═══
         kpis = [
-            {"icon": "📋", "label": "Reviewed", "value": len(self._analyses), "detail": "hypotheses"},
-            {"icon": "✅", "label": "Promoted", "value": promoted, "detail": "to testing"},
-            {"icon": "⏸️", "label": "Deferred", "value": deferred, "detail": "needs work"},
-            {"icon": "🪙", "label": "Cost", "value": f"${self.token_usage.estimated_cost_usd:.4f}", "detail": "tokens"},
+            {"icon": "📝", "label": "Draft", "value": pipeline_status.get("draft", 0), "detail": "hypotheses"},
+            {"icon": "🧪", "label": "Testing", "value": pipeline_status.get("testing", 0), "detail": "in validation"},
+            {"icon": "✅", "label": "Validated", "value": pipeline_status.get("validated", 0), "detail": "ready"},
+            {"icon": "🚀", "label": "Deployed", "value": pipeline_status.get("deployed", 0), "detail": "live"},
         ]
-        if is_generation_run:
-            kpis.insert(3, {"icon": "🧬", "label": "Strategies", "value": len(strategies_generated), "detail": "generated"})
         parts.append(render_kpi_dashboard(kpis))
 
-        # ── Summary table ──
-        rows = []
-        for a in self._analyses:
-            status = "Promoted" if a.status_updated else "Deferred"
-            rows.append([a.hypothesis_id, a.recommendation[:40], status])
-        parts.append(render_status_table(
-            "📋 Decision Summary",
-            ["Hypothesis", "Recommendation", "Status"],
-            rows,
-            status_col=2,
-        ))
+        # Secondary KPIs - This run
+        kpis2 = [
+            {"icon": "📋", "label": "Reviewed", "value": len(self._analyses), "detail": "this run"},
+            {"icon": "✅", "label": "Promoted", "value": promoted, "detail": "to testing"},
+            {"icon": "⏸", "label": "Deferred", "value": deferred, "detail": "needs work"},
+            {"icon": "🪙", "label": "Cost", "value": f"${self.token_usage.estimated_cost_usd:.4f}", "detail": "API"},
+        ]
+        if is_generation_run and strategies_generated:
+            kpis2.insert(3, {"icon": "🧬", "label": "Strategies", "value": len(strategies_generated), "detail": "generated"})
+        parts.append(render_kpi_dashboard(kpis2[:5]))
 
-        # ── Per-hypothesis details ──
-        parts.append(render_section_divider("📊 Detailed Analysis"))
+        # ═══ PIPELINE FLOW ═══
+        parts.append(render_pipeline_flow([
+            {"icon": "📝", "label": "Draft", "count": pipeline_status.get("draft", 0)},
+            {"icon": "🧪", "label": "Testing", "count": pipeline_status.get("testing", 0)},
+            {"icon": "✅", "label": "Validated", "count": pipeline_status.get("validated", 0)},
+            {"icon": "🚀", "label": "Deployed", "count": pipeline_status.get("deployed", 0)},
+        ]))
+
+        # ═══ HYPOTHESIS DEEP DIVES ═══
+        parts.append(render_section_divider("Hypothesis Analysis"))
 
         for analysis in self._analyses:
-            emoji = "✅" if analysis.status_updated else "⏸️"
+            # Get original hypothesis for context
+            hypothesis = None
+            try:
+                hypothesis = self.api.get_hypothesis(analysis.hypothesis_id)
+            except Exception:
+                pass
+
+            emoji = "✅" if analysis.status_updated else "⏸"
             status_label = "Promoted to testing" if analysis.status_updated else "Deferred"
-            parts.append(f"### {emoji} {analysis.hypothesis_id}: **{status_label}**\n")
-            parts.append(f"**Recommendation:** {analysis.recommendation}\n")
-            parts.append(f"**Economic Rationale:**\n{analysis.economic_rationale}\n")
-            parts.append(f"**Regime Analysis:**\n{analysis.regime_notes}\n")
 
-            related = ", ".join(analysis.related_hypotheses) if analysis.related_hypotheses else "None identified"
-            parts.append(f"**Related Hypotheses:** {related}\n")
-
-            if analysis.refined_thesis:
-                parts.append(f"**Refined Thesis:**\n{analysis.refined_thesis}\n")
-            if analysis.refined_falsification:
-                parts.append(f"**Refined Falsification:**\n{analysis.refined_falsification}\n")
-
-            parts.append("---\n")
-
-        # ── Strategies Generated (generation runs only) ──
-        if is_generation_run:
-            parts.append(render_section_divider("🧬 Strategies Generated"))
-            for name in strategies_generated:
-                parts.append(f"- {name}")
+            # Title with hypothesis name
+            hyp_title = hypothesis.get("title", analysis.hypothesis_id) if hypothesis else analysis.hypothesis_id
+            parts.append(f"### {emoji} {analysis.hypothesis_id}: {hyp_title}")
+            parts.append(f"**Status:** {status_label} | **Recommendation:** {analysis.recommendation}")
             parts.append("")
 
-        # ── Footer ──
+            # Multi-dimensional scorecard
+            dimensions = self._calculate_hypothesis_dimensions(analysis)
+            overall = sum(d["score"] for d in dimensions) / len(dimensions)
+            parts.append(render_scorecard(
+                title="Quality Assessment",
+                dimensions=dimensions,
+                overall_score=overall,
+                decision=analysis.recommendation,
+            ))
+
+            # Economic Rationale (FULL, not truncated)
+            parts.append("**Economic Rationale:**")
+            if analysis.economic_rationale and analysis.economic_rationale.lower() != "test":
+                parts.append(f"> {analysis.economic_rationale}")
+            else:
+                parts.append("> *Analysis pending or minimal data provided*")
+            parts.append("")
+
+            # Regime Analysis
+            parts.append("**Regime Analysis:**")
+            if analysis.regime_notes and analysis.regime_notes.lower() != "test":
+                parts.append(f"> {analysis.regime_notes}")
+            else:
+                parts.append("> *Regime context not yet analyzed*")
+            parts.append("")
+
+            # Related Hypotheses & Novelty
+            parts.append("**Related Hypotheses & Novelty:**")
+            if analysis.related_hypotheses:
+                for related_id in analysis.related_hypotheses:
+                    parts.append(f"- {related_id}")
+                parts.append("*Novelty: Variant of existing research*")
+            else:
+                parts.append("- None identified")
+                parts.append("*Novelty: Novel research direction*")
+            parts.append("")
+
+            # Refined Thesis
+            if analysis.refined_thesis:
+                parts.append("**Refined Thesis:**")
+                parts.append(f"> {analysis.refined_thesis}")
+                parts.append("")
+
+            # Refined Falsification
+            if analysis.refined_falsification:
+                parts.append("**Refined Falsification:**")
+                parts.append(f"> {analysis.refined_falsification}")
+                parts.append("")
+
+            # Lineage trail for this hypothesis
+            lineage = self._get_hypothesis_lineage(analysis.hypothesis_id, limit=5)
+            if lineage:
+                parts.append("**Decision History:**")
+                parts.append("```")
+                for event in lineage[-5:]:
+                    ts = str(event.get("timestamp", ""))[:16].replace("T", " ")
+                    actor = str(event.get("actor", "")).replace("agent:", "")
+                    etype = str(event.get("event_type", "")).replace("_", " ").title()
+                    parts.append(f"  {ts} | {actor:20} | {etype}")
+                parts.append("```")
+                parts.append("")
+
+            parts.append("---")
+            parts.append("")
+
+        # ═══ STRATEGY SPECIFICATIONS ═══
+        if is_generation_run and self._strategy_specs:
+            parts.append(render_section_divider("Strategy Specifications"))
+
+            for spec in self._strategy_specs:
+                parts.append(f"### {spec.title} (`{spec.name}`)")
+                parts.append(f"**Source:** {spec.source}")
+                parts.append("")
+
+                # Economic rationale
+                parts.append("**Economic Rationale:**")
+                parts.append(f"> {spec.economic_rationale}")
+                parts.append("")
+
+                # Trading logic
+                parts.append(f"**Universe:** {spec.universe}")
+                parts.append(f"**Long Logic:** {spec.long_logic}")
+                if spec.short_logic:
+                    parts.append(f"**Short Logic:** {spec.short_logic}")
+                parts.append(f"**Holding Period:** {spec.holding_period_days} trading days")
+                parts.append(f"**Rebalance:** {spec.rebalance_cadence}")
+                parts.append("")
+
+                # Risk constraints
+                parts.append(render_risk_limits({
+                    k.replace("_", " ").title(): str(v)
+                    for k, v in spec.risk_constraints.items()
+                }))
+
+                # Regime behavior
+                parts.append("**Regime Behavior:**")
+                for regime, behavior in spec.regime_behavior.items():
+                    if "outperform" in behavior.lower():
+                        regime_emoji = "📈"
+                    elif "underperform" in behavior.lower():
+                        regime_emoji = "📉"
+                    else:
+                        regime_emoji = "➡"
+                    parts.append(f"- {regime_emoji} **{regime.capitalize()}:** {behavior}")
+                parts.append("")
+
+                # Baseline requirement
+                parts.append(f"**Baseline:** {spec.baseline_requirement}")
+                parts.append("")
+
+                # Failure modes
+                parts.append("**Failure Modes:**")
+                for i, mode in enumerate(spec.failure_modes, 1):
+                    parts.append(f"{i}. {mode}")
+                parts.append("")
+                parts.append("---")
+                parts.append("")
+
+        # ═══ STATISTICAL CONTEXT ═══
+        if recent_experiments:
+            parts.append(render_section_divider("Recent Experiment Performance"))
+            rows = []
+            for exp in recent_experiments:
+                sharpe = exp.get("sharpe", "N/A")
+                if isinstance(sharpe, (int, float)):
+                    sharpe = f"{sharpe:.2f}"
+                max_dd = exp.get("max_dd", "N/A")
+                if isinstance(max_dd, (int, float)):
+                    max_dd = f"{max_dd:.1%}"
+                rows.append([exp["id"], exp["hypothesis_id"], str(sharpe), str(max_dd)])
+            parts.append(render_status_table(
+                "Top Experiments",
+                ["Experiment", "Hypothesis", "Sharpe", "Max DD"],
+                rows,
+            ))
+
+        # ═══ ACTION ITEMS ═══
+        action_items = []
+        for analysis in self._analyses:
+            if analysis.status_updated:
+                action_items.append({
+                    "priority": "high",
+                    "category": "validation",
+                    "action": f"{analysis.hypothesis_id}: Run ML Scientist walk-forward validation"
+                })
+            else:
+                action_items.append({
+                    "priority": "medium",
+                    "category": "research",
+                    "action": f"{analysis.hypothesis_id}: Strengthen economic rationale before re-review"
+                })
+        if action_items:
+            parts.append(render_insights("Next Actions", action_items))
+
+        # ═══ FOOTER ═══
         parts.append(render_footer(
             agent_name="alpha-researcher",
             timestamp=dt.now(),

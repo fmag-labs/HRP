@@ -14,6 +14,24 @@ This document describes the complete decision flow from signal discovery to stra
 6. **Event-Driven Architecture**: Agents communicate through lineage events in the database
 7. **Automated Handoffs**: Once initiated, the pipeline runs autonomously until human approval
 
+### Status Model (6 statuses)
+
+The hypothesis lifecycle uses a **simple 6-status model** with pipeline progress tracked via lineage events:
+
+| Status | Meaning | Who Can Set |
+|--------|---------|-------------|
+| `draft` | Initial hypothesis, awaiting review | Signal Scientist, Alpha Researcher, User |
+| `testing` | Under validation, experiments in progress | Alpha Researcher, ML Scientist |
+| `validated` | Passed ML validation, ready for human approval | ML Scientist (agents stop here) |
+| `rejected` | Terminated (can be reopened as draft) | Kill Gate Enforcer, CIO Agent, Human |
+| `deployed` | Approved for paper trading | **Human CIO only** |
+| `deleted` | Soft-deleted (terminal state) | Any actor |
+
+**Pipeline Stage Tracking:** Agents log their progress via lineage events (e.g., `kill_gate_enforcer_complete`, `validation_analyst_complete`) rather than changing status. This allows:
+- Clear audit trail of which agents processed each hypothesis
+- Ability to see pipeline position without status explosion
+- Metadata updates (quality flags, scores) without status changes
+
 ---
 
 ## Complete Decision Pipeline Flow
@@ -57,37 +75,37 @@ This document describes the complete decision flow from signal discovery to stra
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ KILL GATE         │────▶│ VALIDATED → AUDITED: Multi-scenario validation pass   │
-│ ENFORCER     │      │ VALIDATED → VALIDATED: Single scenario, limited scope │
+│ KILL GATE        │────▶│ VALIDATED: Multi-scenario validation (metadata update)│
+│ ENFORCER         │      │ TESTING ← REJECTED: Kill gate triggered              │
 │ Scenario Analysis│      └──────────────────────────────────────────────────────┘
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ VALIDATION       │────▶│ AUDITED → PASSED: Stress tests pass                   │
-│ ANALYST          │      │ AUDITED → FAILED: Sensitivity / stability / cost fail │
+│ VALIDATION       │────▶│ VALIDATED: Stress tests pass (metadata + lineage)    │
+│ ANALYST          │      │ TESTING ← demoted: Sensitivity / stability fail      │
 │ Stress Testing   │      └──────────────────────────────────────────────────────┘
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ RISK MANAGER     │────▶│ PASSED → PASSED: Risk limits satisfied                │
-│ Risk Review      │      │ PASSED → VETOED: Exceeds drawdown / correlation limit │
+│ RISK MANAGER     │────▶│ VALIDATED: Risk limits satisfied (logs risk_review)  │
+│ Risk Review      │      │ VALIDATED + VETO: Logs risk_veto event, blocks deploy│
 │ (VETO POWER)     │      └──────────────────────────────────────────────────────┘
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ CIO AGENT        │────▶│ PASSED → CONTINUE: Score ≥ 0.75                     │
-│ Multi-Dimensional│      │ PASSED → CONDITIONAL: Score 0.50-0.74               │
-│ Scoring          │      │ PASSED → KILL: Score < 0.50                         │
+│ CIO AGENT        │────▶│ VALIDATED: Score ≥ 0.75 (CONTINUE recommendation)   │
+│ Multi-Dimensional│      │ VALIDATED: Score 0.50-0.74 (CONDITIONAL)            │
+│ Scoring          │      │ REJECTED: Score < 0.50 (KILL)                       │
 └────────┬─────────┘      └──────────────────────────────────────────────────────┘
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ HUMAN CIO        │────▶│ CONTINUE → DEPLOYED: Human approves deployment       │
-│ Final Approval   │      │ CONTINUE → ARCHIVED: Human rejects                   │
-│ (ONLY HUMAN)     │      │ KILL → REJECTED: Strategy terminated                │
+│ HUMAN CIO        │────▶│ VALIDATED → DEPLOYED: Human approves deployment      │
+│ Final Approval   │      │ VALIDATED → REJECTED: Human rejects                  │
+│ (ONLY HUMAN)     │      │ (Archived hypotheses use REJECTED + outcome text)   │
 └──────────────────┘      └──────────────────────────────────────────────────────┘
          │
          ▼
@@ -165,9 +183,9 @@ graph TB
 
 | Source Agent | Lineage Event | Target Agent | Trigger Condition |
 |--------------|---------------|--------------|-------------------|
-| Signal Scientist | `hypothesis_created` | Alpha Researcher | New hypothesis in 'draft' status |
+| Signal Scientist | `signal_scan_complete`, `hypothesis_created` | Alpha Researcher | New hypothesis in 'draft' status |
 | Alpha Researcher | `alpha_researcher_complete` | ML Scientist | Hypothesis promoted to testing |
-| ML Scientist | `experiment_completed` | ML Quality Sentinel | Walk-forward validation finished |
+| ML Scientist | `ml_scientist_validation`, `experiment_completed` | ML Quality Sentinel | Walk-forward validation finished |
 | ML Quality Sentinel | `ml_quality_sentinel_audit` | Quant Developer | Overall quality check passed |
 | Quant Developer | `quant_developer_backtest_complete` | Kill Gate Enforcer | Strategy spec and backtest ready |
 | Kill Gate Enforcer | `kill_gate_enforcer_complete` | Validation Analyst | All 5 kill gates passed |
@@ -419,67 +437,78 @@ graph LR
 
 **Agent:** `KillGateEnforcer`
 **Trigger:** Validated hypothesis with production backtest
-**Output:** Multi-scenario validation results
+**Output:** Multi-scenario validation results + kill gate report
 
 | Gate Type | Criteria | Pass | Fail | Next Step |
 |-----------|----------|------|------|-----------|
-| **Scenario Coverage** | ≥ 3 scenarios tested | Promote to AUDITED | Keep as VALIDATED | → Validation Analyst |
-| **Cross-Scenario Consistency** | Sharpe CV ≤ 0.30 across scenarios | Promote to AUDITED | Keep as VALIDATED | → Validation Analyst |
-| **Worst-Case Performance** | Min Sharpe ≥ 0.3 across scenarios | Promote to AUDITED | Keep as VALIDATED | → Validation Analyst |
+| **Baseline Sharpe** | ≥ 0.5 | Log `kill_gate_enforcer_complete` | Log `kill_gate_triggered` | → Validation Analyst or REJECTED |
+| **Max Drawdown** | ≤ 30% | Log `kill_gate_enforcer_complete` | Log `kill_gate_triggered` | → Validation Analyst or REJECTED |
+| **Stability Score** | ≤ 1.5 | Log `kill_gate_enforcer_complete` | Log `kill_gate_triggered` | → Validation Analyst or REJECTED |
+| **Feature Count** | ≤ 50 | Log `kill_gate_enforcer_complete` | Log `kill_gate_triggered` | → Validation Analyst or REJECTED |
+| **Sharpe Decay** | ≤ 50% | Log `kill_gate_enforcer_complete` | Log `kill_gate_triggered` | → Validation Analyst or REJECTED |
 
-**Kill Gates:** None (single-scenario validation allowed for limited scope)
+**Kill Gates:** Hard failures trigger `VALIDATED → REJECTED` status change
+
+**On Pass:**
+- Logs `kill_gate_enforcer_complete` lineage event
+- Updates hypothesis metadata with kill gate results
+- Proceeds to Validation Analyst (status remains VALIDATED)
 
 **On Fail:**
-- Hypothesis remains in `VALIDATED` status
-- Proceeds to Validation Analyst with limited scope warning
-- Can be re-tested with additional scenarios later
+- Logs `kill_gate_triggered` lineage event with failure details
+- Status changes to `REJECTED` (hard kill) or stays `VALIDATED` (soft warning)
 
-**Status Change:** `VALIDATED` → `AUDITED` (multi-scenario) or `VALIDATED` (single-scenario)
+**Status Change:** `VALIDATED` → `REJECTED` (on hard kill) or no change (on pass/soft warning)
 
 ---
 
 ### Stage 7: Stress Testing (Validation Analyst)
 
 **Agent:** `ValidationAnalyst`
-**Trigger:** Hypothesis in AUDITED or VALIDATED status
+**Trigger:** Hypothesis in VALIDATED status (passed kill gates)
 **Output:** Stress test report with sensitivity analysis
 
 | Gate Type | Criteria | Pass | Fail | Next Step |
 |-----------|----------|------|------|-----------|
-| **Parameter Sensitivity** | Varied/Baseline Sharpe ≥ 0.5 | Promote to PASSED | Demote to VALIDATED | → Risk Manager or Back to TESTING |
-| **Time Stability** | ≥ 67% of periods profitable | Promote to PASSED | Demote to VALIDATED | → Risk Manager or Back to TESTING |
-| **Regime Stability** | ≥ 2 of 3 regimes profitable | Promote to PASSED | Demote to VALIDATED | → Risk Manager or Back to TESTING |
-| **Execution Realism** | Survives slippage stress test | Promote to PASSED | Demote to VALIDATED | → Risk Manager or Back to TESTING |
+| **Parameter Sensitivity** | Varied/Baseline Sharpe ≥ 0.5 | Log `validation_analyst_complete` | Demote to TESTING | → Risk Manager or Back to TESTING |
+| **Time Stability** | ≥ 67% of periods profitable | Log `validation_analyst_complete` | Demote to TESTING | → Risk Manager or Back to TESTING |
+| **Regime Stability** | ≥ 2 of 3 regimes profitable | Log `validation_analyst_complete` | Demote to TESTING | → Risk Manager or Back to TESTING |
+| **Execution Realism** | Survives slippage stress test | Log `validation_analyst_complete` | Demote to TESTING | → Risk Manager or Back to TESTING |
 
 **Kill Gates:**
 - Parameter sensitivity ratio < 0.3 (highly fragile)
 - < 33% of periods profitable (fails in most time periods)
 - Profitable in 0 regimes (fails in all market conditions)
 
+**On Pass:**
+- Logs `validation_analyst_complete` lineage event
+- Updates hypothesis metadata with stress test results
+- Proceeds to Risk Manager (status remains VALIDATED)
+
 **On Fail:**
-- Hypothesis demoted to `VALIDATED` with stress test report
+- Hypothesis demoted to `TESTING` with stress test report
 - Specific failures identified (e.g., "Fails in bear market regime")
 - Re-submission allowed after strategy refinement
 
-**Status Change:** `AUDITED` → `PASSED`
+**Status Change:** `VALIDATED` → `TESTING` (on fail) or no change (on pass)
 
 ---
 
 ### Stage 8: Risk Review (Risk Manager)
 
 **Agent:** `RiskManager`
-**Trigger:** Hypothesis in PASSED status
+**Trigger:** Hypothesis in VALIDATED status (passed stress tests)
 **Output:** Risk assessment with portfolio impact analysis
 
 **IMPORTANT:** Risk Manager has **VETO POWER** - can reject strategies but CANNOT approve deployment
 
 | Gate Type | Criteria | Pass | Fail | Next Step |
 |-----------|----------|------|------|-----------|
-| **Drawdown Risk** | Max DD ≤ 15%, Duration ≤ 126 days | No veto | VETO | → CIO Agent or Archive |
-| **Concentration Risk** | ≥ 10 positions, No position > 10% | No veto | VETO | → CIO Agent or Archive |
-| **Sector Exposure** | No sector > 25% of portfolio | No veto | VETO | → CIO Agent or Archive |
-| **Correlation Check** | Correlation with existing positions ≤ 0.60 | No veto | VETO | → CIO Agent or Archive |
-| **Volatility Check** | Strategy volatility ≤ 20% | No veto | VETO | → CIO Agent or Archive |
+| **Drawdown Risk** | Max DD ≤ 15%, Duration ≤ 126 days | Log `risk_review_complete` | Log `risk_veto` | → CIO Agent or blocked |
+| **Concentration Risk** | ≥ 10 positions, No position > 10% | Log `risk_review_complete` | Log `risk_veto` | → CIO Agent or blocked |
+| **Sector Exposure** | No sector > 25% of portfolio | Log `risk_review_complete` | Log `risk_veto` | → CIO Agent or blocked |
+| **Correlation Check** | Correlation with existing positions ≤ 0.60 | Log `risk_review_complete` | Log `risk_veto` | → CIO Agent or blocked |
+| **Volatility Check** | Strategy volatility ≤ 20% | Log `risk_review_complete` | Log `risk_veto` | → CIO Agent or blocked |
 
 **Kill Gates:**
 - Max drawdown > 20% (excessive risk)
@@ -487,20 +516,25 @@ graph LR
 - Position correlation > 0.70 (no diversification value)
 - Sector exposure > 30% (concentrated bet)
 
-**On Fail:**
-- Hypothesis marked as `VETOED` by Risk Manager
+**On Pass:**
+- Logs `risk_review_complete` lineage event
+- Proceeds to CIO Agent (status remains VALIDATED)
+
+**On Veto:**
+- Logs `risk_veto` lineage event with veto rationale
+- Status remains VALIDATED but **blocked from deployment**
 - Email alert sent to human CIO with veto rationale
 - Can be overridden by Human CIO (rare)
-- Otherwise archived with veto reason
+- Human can reject to REJECTED status if final
 
-**Status Change:** `PASSED` → `PASSED` (if no veto) or `PASSED` → `VETOED` (if vetoed)
+**Status Change:** No automatic status change - veto is tracked via lineage event
 
 ---
 
 ### Stage 9: CIO Scoring (CIO Agent)
 
 **Agent:** `CIOAgent`
-**Trigger:** Hypothesis in PASSED status (passed Risk Manager)
+**Trigger:** Hypothesis in VALIDATED status (passed Risk Manager, no veto)
 **Output:** Multi-dimensional score with deployment recommendation
 
 **Decision Thresholds:**
@@ -531,19 +565,22 @@ Total Score = (Statistical × 0.40) + (Risk × 0.25) + (Economic × 0.20) + (Cos
 | **PIVOT** | Any | Ask Human CIO for direction (good idea, bad execution) |
 
 **On KILL:**
-- Hypothesis archived with CIO Agent rationale
+- Logs `cio_agent_decision` with decision="KILL"
+- Status changes to `REJECTED` with CIO Agent rationale in outcome
 - All MLflow runs preserved for analysis
-- Can be revived later if market conditions change
+- Can be reopened as DRAFT later if market conditions change
 
 **On PIVOT:**
-- Hypothesis paused pending human direction
+- Logs `cio_agent_decision` with decision="PIVOT"
+- Status remains `VALIDATED` - paused pending human direction
 - CIO Agent provides pivot suggestions (e.g., "Try different sector focus")
 
 **On CONTINUE/CONDITIONAL:**
+- Logs `cio_agent_decision` with decision and scores
 - Forwarded to Human CIO for final decision
 - Full dossier prepared: all agent reports, scores, rationale
 
-**Status Change:** `PASSED` → `PASSED` (no change, waiting for human)
+**Status Change:** `VALIDATED` → `REJECTED` (on KILL) or no change (on CONTINUE/CONDITIONAL/PIVOT)
 
 ---
 
@@ -575,9 +612,9 @@ Total Score = (Statistical × 0.40) + (Risk × 0.25) + (Economic × 0.20) + (Cos
 
 | Decision | Action | Status Change |
 |----------|--------|---------------|
-| **APPROVE** | Deploy to paper trading | `PASSED` → `DEPLOYED` |
-| **REJECT** | Archive with reason | `PASSED` → `REJECTED` |
-| **CONDITIONAL** | Request modifications | `PASSED` → `TESTING` (with conditions) |
+| **APPROVE** | Deploy to paper trading | `VALIDATED` → `DEPLOYED` |
+| **REJECT** | Archive with reason | `VALIDATED` → `REJECTED` |
+| **CONDITIONAL** | Request modifications | `VALIDATED` → `TESTING` (with conditions) |
 
 **On APPROVE:**
 - Strategy deployed to paper trading portfolio
@@ -913,21 +950,27 @@ Domain-specific implementations:
 ### Status Flow Diagram
 
 ```
-DRAFT → TESTING → VALIDATED → AUDITED → PASSED → DEPLOYED
-  ↓        ↓           ↓           ↓         ↓
-ARCHIVE  REJECTED  TESTING    VALIDATED  VETOED/REJECTED
-         (any)    (feedback) (limited)  (kill)
+DRAFT → TESTING → VALIDATED → DEPLOYED
+  ↓        ↓           ↓           ↓
+DELETED  REJECTED   REJECTED    VALIDATED
+         (or DRAFT) (or DRAFT)  (undeploy)
 ```
 
-**Status Definitions:**
+**Status Definitions (6 statuses in code):**
 - **DRAFT**: Initial hypothesis, needs review
-- **TESTING**: Under validation, not yet proven
-- **VALIDATED**: Passed ML validation, needs more testing
-- **AUDITED**: Passed multi-scenario validation
-- **PASSED**: Passed all automated checks, ready for CIO review
-- **DEPLOYED**: Approved for paper trading
-- **VETOED**: Rejected by Risk Manager (human override possible)
-- **REJECTED**: Terminated (archived, can be revived)
+- **TESTING**: Under validation, experiments in progress
+- **VALIDATED**: Passed ML validation, ready for human approval
+- **REJECTED**: Terminated (archived, can be reopened as DRAFT)
+- **DEPLOYED**: Approved for paper trading (HUMAN ONLY)
+- **DELETED**: Soft-deleted (terminal state)
+
+**Pipeline Stage Tracking:**
+The agent pipeline tracks progress through stages via:
+1. **Lineage events** - Each agent logs events (e.g., `kill_gate_enforcer_complete`)
+2. **Hypothesis metadata** - Agents can add `quality_flags`, scores, etc.
+3. **CIO decisions table** - Stores multi-dimensional scoring results
+
+This allows the 6-status model to support the full 10-stage pipeline without status explosion.
 
 ---
 

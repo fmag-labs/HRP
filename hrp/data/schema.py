@@ -200,6 +200,45 @@ def migrate_remove_cio_foreign_keys(db_path: Union[str, None] = None) -> None:
     logger.info("CIO tables FK migration complete")
 
 
+def migrate_add_pipeline_stage_column(db_path: Union[str, None] = None) -> None:
+    """Add pipeline_stage column to hypotheses table.
+
+    This migration adds:
+        - pipeline_stage VARCHAR: Tracks position in agent pipeline independent of status
+
+    Pipeline stages: created, signal_discovery, alpha_review, ml_training, quality_audit,
+    quant_backtest, kill_gate, stress_test, risk_review, cio_review, human_approval,
+    deployed, archived.
+
+    The migration is idempotent - safe to run multiple times.
+    """
+    db = get_db(db_path)
+
+    # Check if column exists
+    result = db.fetchdf("DESCRIBE hypotheses")
+    columns = result["column_name"].tolist()
+
+    if "pipeline_stage" not in columns:
+        db.execute("ALTER TABLE hypotheses ADD COLUMN pipeline_stage VARCHAR DEFAULT 'created'")
+        logger.info("Added pipeline_stage column to hypotheses table")
+
+        # Infer pipeline stage from existing status for existing hypotheses
+        # deployed → deployed, validated → cio_review, testing → ml_training, draft → created
+        db.execute("""
+            UPDATE hypotheses SET pipeline_stage = CASE
+                WHEN status = 'deployed' THEN 'deployed'
+                WHEN status = 'validated' THEN 'cio_review'
+                WHEN status = 'testing' THEN 'ml_training'
+                WHEN status = 'rejected' THEN 'archived'
+                WHEN status = 'deleted' THEN 'archived'
+                ELSE 'created'
+            END
+        """)
+        logger.info("Inferred pipeline_stage from status for existing hypotheses")
+    else:
+        logger.debug("pipeline_stage column already exists in hypotheses table")
+
+
 def migrate_add_sector_columns(db_path: Union[str, None] = None) -> None:
     """Add sector and industry columns to symbols table.
 
@@ -272,6 +311,7 @@ TABLES = {
             testable_prediction TEXT NOT NULL,
             falsification_criteria TEXT,
             status VARCHAR DEFAULT 'draft',
+            pipeline_stage VARCHAR DEFAULT 'created',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_by VARCHAR DEFAULT 'user',
             updated_at TIMESTAMP,
@@ -279,6 +319,9 @@ TABLES = {
             confidence_score DECIMAL(3,2),
             metadata JSON,
             CHECK (status IN ('draft', 'testing', 'validated', 'rejected', 'deployed', 'deleted')),
+            CHECK (pipeline_stage IN ('created', 'signal_discovery', 'alpha_review', 'ml_training',
+                   'quality_audit', 'quant_backtest', 'kill_gate', 'stress_test', 'risk_review',
+                   'cio_review', 'human_approval', 'deployed', 'archived')),
             CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1))
         )
     """,
@@ -436,20 +479,39 @@ TABLES = {
             details JSON,
             parent_lineage_id INTEGER,
             CHECK (event_type IN (
+                   -- Hypothesis lifecycle events
                    'hypothesis_created', 'hypothesis_updated', 'hypothesis_deleted', 'hypothesis_flagged',
+                   -- Experiment events
                    'experiment_run', 'experiment_linked', 'experiment_completed',
+                   'experiment_started', 'backtest_run',
+                   -- Validation events
                    'validation_passed', 'validation_failed',
-                   'deployment_approved', 'deployment_rejected',
+                   -- Deployment events
+                   'deployment_approved', 'deployment_rejected', 'deployment_requested',
+                   -- Generic agent events
                    'agent_run_complete', 'agent_run_start',
-                   'ml_quality_sentinel_audit', 'alpha_researcher_review', 'validation_analyst_review',
-                   'risk_review_complete', 'risk_veto',
-                   'quant_developer_backtest_complete', 'alpha_researcher_complete',
+                   -- Signal Scientist
+                   'signal_scan_complete',
+                   -- Alpha Researcher
+                   'alpha_researcher_review', 'alpha_researcher_complete',
+                   -- ML Scientist
+                   'ml_scientist_validation',
+                   -- ML Quality Sentinel
+                   'ml_quality_sentinel_audit',
+                   -- Quant Developer
+                   'quant_developer_backtest_complete',
+                   -- Kill Gate Enforcer
                    'kill_gate_enforcer_complete', 'kill_gate_triggered',
-                   'data_ingestion', 'system_error',
+                   -- Validation Analyst
+                   'validation_analyst_review', 'validation_analyst_complete',
+                   -- Risk Manager
+                   'risk_manager_assessment', 'risk_review_complete', 'risk_veto',
+                   -- CIO Agent
                    'cio_agent_decision',
-                   'validation_analyst_complete', 'risk_manager_assessment',
-                   'experiment_started', 'backtest_run', 'deployment_requested',
-                   'data_ingested', 'feature_computed', 'universe_update', 'other'))
+                   -- Data events
+                   'data_ingestion', 'data_ingested', 'feature_computed', 'universe_update',
+                   -- System events
+                   'system_error', 'other'))
         )
     """,
     "agent_checkpoints": """
@@ -559,6 +621,7 @@ def create_tables(db_path: Union[str, None] = None) -> None:
     # Run migrations (idempotent)
     migrate_agent_token_usage_identity(db_path)
     migrate_add_sector_columns(db_path)
+    migrate_add_pipeline_stage_column(db_path)
     migrate_remove_cio_foreign_keys(db_path)
 
 
