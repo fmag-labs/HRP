@@ -1,6 +1,6 @@
-# Agent Definition: Pipeline Orchestrator
+# Agent Definition: Kill Gate Enforcer
 
-**Date:** January 29, 2026
+**Date:** February 2, 2026
 **Status:** Implemented
 **Type:** Custom (deterministic - extends `ResearchAgent`)
 
@@ -10,11 +10,11 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Name** | Pipeline Orchestrator |
-| **Actor ID** | `agent:pipeline-orchestrator` |
+| **Name** | Kill Gate Enforcer |
+| **Actor ID** | `agent:kill-gate-enforcer` |
 | **Type** | Custom (deterministic) |
-| **Role** | Experiment coordination, baseline management, early kill gates |
-| **Implementation** | `hrp/agents/pipeline_orchestrator.py` |
+| **Role** | Quality gate enforcement, early termination of unpromising research |
+| **Implementation** | `hrp/agents/kill_gate_enforcer.py` |
 | **Trigger** | Lineage event (after Quant Developer) + Scheduled (daily) |
 | **Upstream** | Quant Developer (backtest results) |
 | **Downstream** | Validation Analyst (stress testing) |
@@ -23,14 +23,14 @@
 
 ## Purpose
 
-Coordinates parallel experiment execution with intelligent resource management and early stopping. The Pipeline Orchestrator:
+Enforces hard quality thresholds to terminate unpromising research early and save compute resources. The Kill Gate Enforcer:
 
-1. **Runs baselines first** - Establish performance floor before expensive experiments
-2. **Queues parallel experiments** - Execute multiple configs efficiently
-3. **Applies early kill gates** - Save compute by stopping unpromising runs early
+1. **Runs baselines first** - Establish performance floor
+2. **Applies 5 kill gates** - Terminate hypotheses failing quality thresholds
+3. **Generates detailed reports** - Document why hypotheses were killed
 4. **Logs all artifacts** - Full MLflow lineage for reproducibility
-5. **Tracks resource usage** - Monitor compute, time saved from kill gates
-6. **Triggers downstream** Validation Analyst via lineage events
+5. **Tracks compute savings** - Monitor time saved from early termination
+6. **Triggers downstream** - Validation Analyst via lineage events for passing hypotheses
 
 ---
 
@@ -41,9 +41,9 @@ Coordinates parallel experiment execution with intelligent resource management a
 Run simple baselines first to establish performance floor:
 
 ```python
-from hrp.agents import PipelineOrchestrator
+from hrp.agents import KillGateEnforcer
 
-orchestrator = PipelineOrchestrator(
+enforcer = KillGateEnforcer(
     run_baselines_first=True,
     baseline_types=[
         "equal_weight_long_short",
@@ -51,7 +51,7 @@ orchestrator = PipelineOrchestrator(
         "market_cap_weighted",
     ],
 )
-result = orchestrator.run()
+result = enforcer.run()
 
 print(f"Baselines run: {result['baselines_run']}")
 print(f"Experiments passed baseline: {result['experiments_passed']}")
@@ -93,10 +93,10 @@ Build experiment queue from parameter grids and execute in parallel:
 
 ```python
 # Build experiment queue from validated hypotheses
-queue = orchestrator._build_experiment_queue(hypothesis_id)
+queue = enforcer._build_experiment_queue(hypothesis_id)
 
 # Run experiments in parallel with resource management
-results = orchestrator._run_parallel_experiments(
+results = enforcer._run_parallel_experiments(
     queue,
     max_parallel_jobs=4,
     batch_size=10,
@@ -121,7 +121,7 @@ Every killed hypothesis generates a report:
 
 **Hypothesis ID**: HYP-2026-XXX
 **Kill Date**: YYYY-MM-DD HH:MM:SS
-**Killed By**: agent:pipeline_orchestrator
+**Killed By**: agent:kill_gate_enforcer
 **Reason**: Early termination to save compute resources
 
 ## Hypothesis Summary
@@ -156,7 +156,7 @@ Every killed hypothesis generates a report:
 
 ```python
 @dataclass
-class PipelineOrchestratorConfig:
+class KillGateEnforcerConfig:
     hypothesis_ids: list[str] | None = None  # None = all ready for orchestration
 
     # Baseline settings
@@ -250,7 +250,7 @@ class PipelineOrchestratorConfig:
 
 ## Structural Regime Scenarios
 
-**Updated:** Pipeline Orchestrator uses HMM-based structural regimes.
+**Updated:** Kill Gate Enforcer uses HMM-based structural regimes.
 
 ### Regime Matrix
 
@@ -274,11 +274,11 @@ class PipelineOrchestratorConfig:
 ### Primary: Lineage Event Trigger
 
 ```python
-# Pipeline Orchestrator listens for Quant Developer completion
+# Kill Gate Enforcer listens for Quant Developer completion
 scheduler.register_lineage_trigger(
     event_type="QUANT_DEVELOPER_BACKTEST_COMPLETE",
     actor_filter="agent:quant-developer",
-    callback=trigger_pipeline_orchestrator,
+    callback=trigger_kill_gate_enforcer,
 )
 ```
 
@@ -286,7 +286,7 @@ scheduler.register_lineage_trigger(
 
 ```python
 # Daily orchestration at 6 AM ET
-scheduler.setup_daily_pipeline_orchestrator(
+scheduler.setup_daily_kill_gate_enforcer(
     orchestration_time='06:00',
 )
 ```
@@ -294,8 +294,8 @@ scheduler.setup_daily_pipeline_orchestrator(
 ### Tertiary: MCP On-Demand
 
 ```python
-# MCP tool: run_pipeline_orchestrator
-result = run_pipeline_orchestrator(hypothesis_id="HYP-2026-001")
+# MCP tool: run_kill_gate_enforcer
+result = run_kill_gate_enforcer(hypothesis_id="HYP-2026-001")
 ```
 
 ---
@@ -343,7 +343,7 @@ if memory_usage() > threshold:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Pipeline Orchestrator                                     │
+│  Kill Gate Enforcer                                     │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  1. Receive Hypothesis Queue                               │
@@ -399,7 +399,7 @@ if memory_usage() > threshold:
 
 ## Explicit Non-Responsibilities
 
-The Pipeline Orchestrator does NOT:
+The Kill Gate Enforcer does NOT:
 
 - ❌ Create strategies (Alpha Researcher's job)
 - ❌ Implement backtests (Quant Developer's job)

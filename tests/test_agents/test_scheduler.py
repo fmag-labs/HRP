@@ -965,7 +965,7 @@ class TestResearchAgentTriggers:
         assert "alpha_researcher_to_ml_scientist" in trigger_names
         assert "ml_scientist_to_quality_sentinel" in trigger_names
         assert "ml_quality_sentinel_to_quant_developer" in trigger_names
-        assert "quant_developer_to_pipeline_orchestrator" in trigger_names
-        assert "pipeline_orchestrator_to_validation_analyst" in trigger_names
+        assert "quant_developer_to_kill_gate_enforcer" in trigger_names
+        assert "kill_gate_enforcer_to_validation_analyst" in trigger_names
         assert "validation_analyst_to_risk_manager" in trigger_names
         assert "risk_manager_to_cio_agent" in trigger_names

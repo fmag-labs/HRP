@@ -1117,61 +1117,60 @@ class IngestionScheduler:
             f"(strategy_generation={enable_strategy_generation}, target_count={generation_target_count})"
         )
 
-    def setup_daily_pipeline_orchestrator(
+    def setup_daily_kill_gate_enforcer(
         self,
-        orchestration_time: str = "06:00",
+        enforcement_time: str = "06:00",
         enable_early_kill: bool = True,
         min_baseline_sharpe: float = 0.5,
     ) -> None:
         """
-        Schedule daily Pipeline Orchestrator run.
+        Schedule daily Kill Gate Enforcer run.
 
-        The Pipeline Orchestrator:
+        The Kill Gate Enforcer:
         - Runs baseline experiments first (sequential)
-        - Queues parallel experiments for validated hypotheses
-        - Applies early kill gates to save compute
-        - Generates kill gate reports
+        - Applies 5 kill gates to terminate unpromising hypotheses
+        - Generates kill gate reports with detailed rationale
 
         Args:
-            orchestration_time: Time to run orchestration (HH:MM format, default: 06:00)
+            enforcement_time: Time to run enforcement (HH:MM format, default: 06:00)
             enable_early_kill: Enable early kill gates (default: True)
             min_baseline_sharpe: Minimum baseline Sharpe to proceed (default: 0.5)
         """
-        from hrp.agents.pipeline_orchestrator import (
-            PipelineOrchestrator,
-            PipelineOrchestratorConfig,
+        from hrp.agents.kill_gate_enforcer import (
+            KillGateEnforcer,
+            KillGateEnforcerConfig,
         )
 
         # Parse and validate time
-        hour, minute = _parse_time(orchestration_time, "orchestration_time")
+        hour, minute = _parse_time(enforcement_time, "enforcement_time")
 
-        # Create a wrapper function that runs Pipeline Orchestrator
-        def run_pipeline_orchestrator():
-            config = PipelineOrchestratorConfig(
+        # Create a wrapper function that runs Kill Gate Enforcer
+        def run_kill_gate_enforcer():
+            config = KillGateEnforcerConfig(
                 enable_early_kill=enable_early_kill,
                 min_baseline_sharpe=min_baseline_sharpe,
             )
-            orchestrator = PipelineOrchestrator(config=config)
-            result = orchestrator.run()
+            enforcer = KillGateEnforcer(config=config)
+            result = enforcer.run()
 
             # Log results
             if result["status"] == "complete":
                 report = result["report"]
                 logger.info(
-                    f"Pipeline Orchestrator completed: processed={report['hypotheses_processed']}, "
+                    f"Kill Gate Enforcer completed: processed={report['hypotheses_processed']}, "
                     f"killed={report['hypotheses_killed']}, "
                     f"time_saved={report['time_saved_seconds']:.0f}s"
                 )
 
-        # Schedule daily Pipeline Orchestrator job
+        # Schedule daily Kill Gate Enforcer job
         self.add_job(
-            func=run_pipeline_orchestrator,
-            job_id="daily_pipeline_orchestrator",
+            func=run_kill_gate_enforcer,
+            job_id="daily_kill_gate_enforcer",
             trigger=CronTrigger(hour=hour, minute=minute, timezone=ET_TIMEZONE),
-            name="Daily Pipeline Orchestrator",
+            name="Daily Kill Gate Enforcer",
         )
         logger.info(
-            f"Scheduled daily Pipeline Orchestrator at {orchestration_time} ET "
+            f"Scheduled daily Kill Gate Enforcer at {enforcement_time} ET "
             f"(early_kill={enable_early_kill}, min_sharpe={min_baseline_sharpe})"
         )
 
@@ -1190,8 +1189,8 @@ class IngestionScheduler:
         - Alpha Researcher (alpha_researcher_complete) → ML Scientist
         - ML Scientist (experiment_completed) → ML Quality Sentinel
         - ML Quality Sentinel (ml_quality_sentinel_audit, passed) → Quant Developer
-        - Quant Developer (quant_developer_backtest_complete) → Pipeline Orchestrator
-        - Pipeline Orchestrator (pipeline_orchestrator_complete) → Validation Analyst
+        - Quant Developer (quant_developer_backtest_complete) → Kill Gate Enforcer
+        - Kill Gate Enforcer (kill_gate_enforcer_complete) → Validation Analyst
         - Validation Analyst (validation_analyst_complete) → Risk Manager
         - Risk Manager (risk_manager_assessment) → CIO Agent
 
@@ -1202,7 +1201,7 @@ class IngestionScheduler:
             The configured LineageEventWatcher instance
         """
         from hrp.agents.alpha_researcher import AlphaResearcher
-        from hrp.agents.pipeline_orchestrator import PipelineOrchestrator
+        from hrp.agents.kill_gate_enforcer import KillGateEnforcer
         from hrp.agents.research_agents import (
             MLQualitySentinel,
             MLScientist,
@@ -1308,31 +1307,31 @@ class IngestionScheduler:
             name="ml_quality_sentinel_to_quant_developer",
         )
 
-        # Trigger 5: Quant Developer → Pipeline Orchestrator
-        # When Quant Developer completes backtest, Pipeline Orchestrator coordinates experiments
+        # Trigger 5: Quant Developer → Kill Gate Enforcer
+        # When Quant Developer completes backtest, Kill Gate Enforcer applies gates
         def on_quant_developer_complete(event: dict) -> None:
             hypothesis_id = event.get("hypothesis_id")
 
             if hypothesis_id:
                 logger.info(
-                    f"Triggering Pipeline Orchestrator for hypothesis {hypothesis_id}"
+                    f"Triggering Kill Gate Enforcer for hypothesis {hypothesis_id}"
                 )
                 try:
-                    orchestrator = PipelineOrchestrator(hypothesis_ids=[hypothesis_id])
-                    orchestrator.run()
+                    enforcer = KillGateEnforcer(hypothesis_ids=[hypothesis_id])
+                    enforcer.run()
                 except Exception as e:
-                    logger.error(f"Pipeline Orchestrator trigger failed: {e}")
+                    logger.error(f"Kill Gate Enforcer trigger failed: {e}")
 
         watcher.register_trigger(
             event_type="quant_developer_backtest_complete",
             callback=on_quant_developer_complete,
             actor_filter="agent:quant-developer",
-            name="quant_developer_to_pipeline_orchestrator",
+            name="quant_developer_to_kill_gate_enforcer",
         )
 
-        # Trigger 6: Pipeline Orchestrator → Validation Analyst
-        # When Pipeline Orchestrator completes, Validation Analyst stress tests
-        def on_pipeline_orchestrator_complete(event: dict) -> None:
+        # Trigger 6: Kill Gate Enforcer → Validation Analyst
+        # When Kill Gate Enforcer completes, Validation Analyst stress tests
+        def on_kill_gate_enforcer_complete(event: dict) -> None:
             details = event.get("details", {})
             hypotheses_processed = details.get("hypotheses_processed", 0)
             hypotheses_killed = details.get("hypotheses_killed", 0)
@@ -1352,10 +1351,10 @@ class IngestionScheduler:
                     logger.error(f"Validation Analyst trigger failed: {e}")
 
         watcher.register_trigger(
-            event_type="pipeline_orchestrator_complete",
-            callback=on_pipeline_orchestrator_complete,
-            actor_filter="agent:pipeline-orchestrator",
-            name="pipeline_orchestrator_to_validation_analyst",
+            event_type="kill_gate_enforcer_complete",
+            callback=on_kill_gate_enforcer_complete,
+            actor_filter="agent:kill-gate-enforcer",
+            name="kill_gate_enforcer_to_validation_analyst",
         )
 
         # Trigger 7: Validation Analyst → Risk Manager

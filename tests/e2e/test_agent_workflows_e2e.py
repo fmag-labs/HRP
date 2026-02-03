@@ -29,7 +29,7 @@ from hrp.agents.research_agents import (
     ValidationAnalyst,
 )
 from hrp.agents.alpha_researcher import AlphaResearcher, AlphaResearcherConfig
-from hrp.agents.pipeline_orchestrator import PipelineOrchestrator, PipelineOrchestratorConfig
+from hrp.agents.kill_gate_enforcer import KillGateEnforcer, KillGateEnforcerConfig
 from hrp.agents.scheduler import IngestionScheduler, LineageEventWatcher
 from hrp.api.platform import PlatformAPI
 from hrp.research.lineage import EventType, LineageEvent
@@ -161,7 +161,7 @@ class TestEventDrivenPipeline:
         saving computation resources.
         """
         # Configure kill gates
-        config = PipelineOrchestratorConfig(
+        config = KillGateEnforcerConfig(
             enable_early_kill=True,
             min_baseline_sharpe=2.0,  # High threshold to trigger kill
             max_train_sharpe=2.5,
@@ -170,12 +170,12 @@ class TestEventDrivenPipeline:
         )
 
         with patch('hrp.api.platform.PlatformAPI', return_value=mock_platform_api):
-            orchestrator = PipelineOrchestrator(
+            enforcer = KillGateEnforcer(
                 hypothesis_ids=[e2e_hypothesis_id],
                 config=config,
             )
 
-            result = orchestrator.run()
+            result = enforcer.run()
 
             # Verify kill gate behavior
             report = result['report']
@@ -336,12 +336,12 @@ class TestConcurrency:
 
         mock_platform_api.run_backtest.side_effect = mock_run_backtest
 
-        config = PipelineOrchestratorConfig(
+        config = KillGateEnforcerConfig(
             max_parallel_experiments=3,  # Limit concurrency
         )
 
         with patch('hrp.api.platform.PlatformAPI', return_value=mock_platform_api):
-            orchestrator = PipelineOrchestrator(
+            enforcer = KillGateEnforcer(
                 hypothesis_ids=hypothesis_ids,
                 config=config,
             )
@@ -369,7 +369,7 @@ class TestConcurrency:
 
         mock_platform_api.run_backtest.side_effect = mock_run_backtest
 
-        config = PipelineOrchestratorConfig(
+        config = KillGateEnforcerConfig(
             max_parallel_experiments=2,
         )
 
@@ -826,7 +826,7 @@ class TestAgentUtilities:
 class TestAgentPerformanceBenchmarks:
     """Performance benchmarks for critical agent workflows."""
 
-    def test_pipeline_orchestrator_throughput(self, mock_platform_api):
+    def test_kill_gate_enforcer_throughput(self, mock_platform_api):
         """
         Benchmark: Measure Pipeline Orchestrator throughput.
 

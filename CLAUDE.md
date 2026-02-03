@@ -94,7 +94,7 @@ api.execute_write(sql, params)        # INSERT/UPDATE/DELETE
 ## Agents
 
 All agents follow `agent.run()` pattern. Agent pipeline chain:
-**Signal Scientist -> Alpha Researcher -> ML Scientist -> ML Quality Sentinel -> Quant Developer -> Pipeline Orchestrator**
+**Signal Scientist -> Alpha Researcher -> ML Scientist -> ML Quality Sentinel -> Quant Developer -> Kill Gate Enforcer**
 
 | Agent | Purpose | Key module |
 |-------|---------|------------|
@@ -103,7 +103,7 @@ All agents follow `agent.run()` pattern. Agent pipeline chain:
 | MLScientist | Walk-forward validation of testing hypotheses | `hrp.agents` |
 | MLQualitySentinel | Audits experiments for overfitting | `hrp.agents` |
 | ValidationAnalyst | Pre-deployment stress testing | `hrp.agents` |
-| PipelineOrchestrator | End-to-end pipeline with kill gates | `hrp.agents` |
+| KillGateEnforcer | Enforces kill gates on hypotheses | `hrp.agents` |
 | CIOAgent | Scores hypotheses across 4 dimensions (Statistical/Risk/Economic/Cost) | `hrp.agents` |
 | RiskManager | Portfolio risk assessment, independent veto power | `hrp.agents` |
 | ReportGenerator | Daily/weekly research summaries | `hrp.agents` |

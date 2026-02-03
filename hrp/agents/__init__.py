@@ -49,16 +49,16 @@ from hrp.agents.research_agents import (
     ValidationCheck,
     ValidationSeverity,
 )
-from hrp.agents.pipeline_orchestrator import (
+from hrp.agents.kill_gate_enforcer import (
     BaselineResult,
     BaselineType,
     ExperimentConfig,
     ExperimentResult,
+    KillGateEnforcer,
+    KillGateEnforcerConfig,
+    KillGateEnforcerReport,
     KillGateReason,
-    OrchestratorResult,
-    PipelineOrchestrator,
-    PipelineOrchestratorConfig,
-    PipelineOrchestratorReport,
+    KillGateResult,
 )
 from hrp.agents.scheduler import IngestionScheduler, LineageEventWatcher, LineageTrigger
 from hrp.agents.sdk_agent import AgentCheckpoint, SDKAgent, SDKAgentConfig, TokenUsage
@@ -122,11 +122,11 @@ __all__ = [
     "IngestionScheduler",
     "LineageEventWatcher",
     "LineageTrigger",
-    # Pipeline Orchestrator
-    "PipelineOrchestrator",
-    "PipelineOrchestratorConfig",
-    "PipelineOrchestratorReport",
-    "OrchestratorResult",
+    # Kill Gate Enforcer
+    "KillGateEnforcer",
+    "KillGateEnforcerConfig",
+    "KillGateEnforcerReport",
+    "KillGateResult",
     "BaselineResult",
     "BaselineType",
     "ExperimentConfig",

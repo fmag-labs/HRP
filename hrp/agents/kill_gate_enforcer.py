@@ -1,17 +1,17 @@
 """
-Pipeline Orchestrator Agent - Coordinates parallel experiment execution.
+Kill Gate Enforcer Agent - Enforces early termination gates to save compute.
 
-Orchestrates multiple experiments with intelligent resource management and
-early stopping to save compute and focus resources on promising hypotheses.
+Applies hard quality thresholds to terminate unpromising research early,
+saving compute resources for promising hypotheses.
 
 Performs:
-1. Runs baseline experiments first (sequential)
-2. Queues parallel experiments (hyperparameters, feature subsets)
-3. Applies early kill gates to save compute
+1. Runs baseline experiments to establish performance floor
+2. Applies 5 kill gates (Sharpe, drawdown, features, overfitting, instability)
+3. Terminates hypotheses that fail gates with detailed reports
 4. Logs all artifacts to MLflow
-5. Generates kill gate reports
+5. Generates comprehensive kill gate reports
 
-Type: Orchestration & Coordination (deterministic workflow)
+Type: Quality Gate Enforcement (deterministic workflow)
 
 Trigger: Event-driven (QUANT_DEVELOPER_COMPLETE) or Scheduled (daily)
 """
@@ -53,8 +53,8 @@ class KillGateReason(str, Enum):
 
 
 @dataclass
-class PipelineOrchestratorConfig:
-    """Configuration for Pipeline Orchestrator agent."""
+class KillGateEnforcerConfig:
+    """Configuration for Kill Gate Enforcer agent."""
 
     # Which hypotheses to orchestrate
     hypothesis_ids: list[str] | None = None  # None = all ready for orchestration
@@ -126,7 +126,7 @@ class ExperimentResult:
 
 
 @dataclass
-class OrchestratorResult:
+class KillGateResult:
     """Result from orchestrating a single hypothesis."""
 
     hypothesis_id: str
@@ -146,7 +146,7 @@ class OrchestratorResult:
 
 
 @dataclass
-class PipelineOrchestratorReport:
+class KillGateEnforcerReport:
     """Complete Pipeline Orchestrator run report."""
 
     report_date: date
@@ -159,41 +159,47 @@ class PipelineOrchestratorReport:
     kill_gate_report_path: str | None
 
 
-class PipelineOrchestrator(IngestionJob):
+class KillGateEnforcer(IngestionJob):
     """
-    Orchestrates parallel experiment execution with early kill gates.
+    Enforces kill gates to terminate unpromising research early.
 
-    This agent coordinates the research pipeline by:
-    1. Running simple baselines first to establish performance floor
-    2. Building experiment queue from validated hypotheses
-    3. Running experiments in parallel with resource management
-    4. Applying early kill gates to save compute on bad ideas
-    5. Logging all artifacts to MLflow for traceability
+    This agent applies hard quality thresholds to save compute by:
+    1. Running baselines to establish performance floor
+    2. Applying 5 kill gates (Sharpe, drawdown, features, overfitting, instability)
+    3. Terminating hypotheses that fail gates with detailed reports
+    4. Logging all artifacts to MLflow for traceability
 
-    The orchestrator does NOT:
+    Kill Gates Applied:
+    - Baseline Sharpe < 0.5 (below minimum threshold)
+    - Train Sharpe > 3.0 (suspiciously good, likely overfit)
+    - Max Drawdown > 30% (excessive risk)
+    - Feature Count > 50 (curse of dimensionality)
+    - Sharpe Decay > 50% (train >> test, severe overfitting)
+
+    The Kill Gate Enforcer does NOT:
     - Create strategies (Alpha Researcher)
     - Implement backtests (Quant Developer)
     - Train ML models (ML Scientist)
-    - Judge performance (Validation Analyst, CIO)
+    - Judge performance qualitatively (Validation Analyst, CIO)
 
-    Its role is purely coordination and resource optimization.
+    Its role is purely gate enforcement and resource optimization.
     """
 
-    DEFAULT_JOB_ID = "pipeline_orchestrator"
-    ACTOR = "agent:pipeline-orchestrator"
+    DEFAULT_JOB_ID = "kill_gate_enforcer"
+    ACTOR = "agent:kill-gate-enforcer"
 
     def __init__(
         self,
         hypothesis_ids: list[str] | None = None,
-        config: PipelineOrchestratorConfig | None = None,
+        config: KillGateEnforcerConfig | None = None,
         api: PlatformAPI | None = None,
     ):
         """
-        Initialize the Pipeline Orchestrator.
+        Initialize the Kill Gate Enforcer.
 
         Args:
-            hypothesis_ids: Specific hypotheses to orchestrate (None = all ready)
-            config: Orchestrator configuration
+            hypothesis_ids: Specific hypotheses to evaluate (None = all ready)
+            config: Kill gate configuration
             api: PlatformAPI instance (created if not provided)
         """
         super().__init__(
@@ -202,9 +208,9 @@ class PipelineOrchestrator(IngestionJob):
         )
 
         self.hypothesis_ids = hypothesis_ids
-        self.config = config or PipelineOrchestratorConfig()
+        self.config = config or KillGateEnforcerConfig()
         self.api = api or PlatformAPI()
-        self._results: list[OrchestratorResult] = []
+        self._results: list[KillGateResult] = []
 
     def execute(self) -> dict[str, Any]:
         """
@@ -259,7 +265,7 @@ class PipelineOrchestrator(IngestionJob):
 
         # 3. Generate report
         duration = time.time() - start_time
-        report = PipelineOrchestratorReport(
+        report = KillGateEnforcerReport(
             report_date=date.today(),
             hypotheses_processed=len(hypotheses),
             hypotheses_killed=hypotheses_killed,
@@ -272,7 +278,7 @@ class PipelineOrchestrator(IngestionJob):
 
         # 4. Log completion event
         log_event(
-            event_type=EventType.PIPELINE_ORCHESTRATOR_COMPLETE.value,
+            event_type=EventType.KILL_GATE_ENFORCER_COMPLETE.value,
             actor=self.ACTOR,
             details={
                 "hypotheses_processed": report.hypotheses_processed,
@@ -320,7 +326,7 @@ class PipelineOrchestrator(IngestionJob):
                 hypotheses.extend(self.api.list_hypotheses_with_metadata(
                     status=status,
                     metadata_filter='%quant_developer_backtest%',
-                    metadata_exclude='%pipeline_orchestrator%',
+                    metadata_exclude='%kill_gate_enforcer%',
                     limit=10,
                 ))
 
@@ -334,7 +340,7 @@ class PipelineOrchestrator(IngestionJob):
             hypothesis: Hypothesis dict with metadata
 
         Returns:
-            Dict with context fields for OrchestratorResult
+            Dict with context fields for KillGateResult
         """
         metadata = hypothesis.get("metadata", {})
         qd_backtest = metadata.get("quant_developer_backtest", {})
@@ -356,7 +362,7 @@ class PipelineOrchestrator(IngestionJob):
             "stability_score": ml_experiment.get("stability_score"),
         }
 
-    def _orchestrate_hypothesis(self, hypothesis: dict[str, Any]) -> OrchestratorResult:
+    def _orchestrate_hypothesis(self, hypothesis: dict[str, Any]) -> KillGateResult:
         """
         Orchestrate experiments for a single hypothesis.
 
@@ -364,7 +370,7 @@ class PipelineOrchestrator(IngestionJob):
             hypothesis: Hypothesis dict with metadata
 
         Returns:
-            OrchestratorResult with all experiment results
+            KillGateResult with all experiment results
         """
         start_time = time.time()
         hypothesis_id = hypothesis["hypothesis_id"]
@@ -393,7 +399,7 @@ class PipelineOrchestrator(IngestionJob):
                     },
                 )
 
-                return OrchestratorResult(
+                return KillGateResult(
                     hypothesis_id=hypothesis_id,
                     baselines=baselines,
                     experiments=[],
@@ -414,7 +420,7 @@ class PipelineOrchestrator(IngestionJob):
 
         duration = time.time() - start_time
 
-        return OrchestratorResult(
+        return KillGateResult(
             hypothesis_id=hypothesis_id,
             baselines=baselines,
             experiments=experiments,
@@ -984,7 +990,7 @@ class PipelineOrchestrator(IngestionJob):
         # ══════════════════════════════════════════════════════════════════════
         # FOOTER
         # ══════════════════════════════════════════════════════════════════════
-        parts.append(render_footer(agent_name="pipeline-orchestrator"))
+        parts.append(render_footer(agent_name="kill-gate-enforcer"))
 
         content = "\n".join(parts)
 

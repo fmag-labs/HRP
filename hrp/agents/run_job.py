@@ -144,7 +144,7 @@ def run_agent_pipeline(dry_run: bool = False) -> dict:
 
     # Create watcher with all triggers configured
     from hrp.agents.alpha_researcher import AlphaResearcher
-    from hrp.agents.pipeline_orchestrator import PipelineOrchestrator
+    from hrp.agents.kill_gate_enforcer import KillGateEnforcer
     from hrp.agents.research_agents import (
         MLQualitySentinel,
         MLScientist,
@@ -220,18 +220,18 @@ def run_agent_pipeline(dry_run: bool = False) -> dict:
     def on_quant_developer_complete(event: dict) -> None:
         hypothesis_id = event.get("hypothesis_id")
         if hypothesis_id:
-            logger.info(f"Triggering Pipeline Orchestrator for hypothesis {hypothesis_id}")
-            orchestrator = PipelineOrchestrator(hypothesis_ids=[hypothesis_id])
-            orchestrator.run()
+            logger.info(f"Triggering Kill Gate Enforcer for hypothesis {hypothesis_id}")
+            enforcer = KillGateEnforcer(hypothesis_ids=[hypothesis_id])
+            enforcer.run()
 
     watcher.register_trigger(
         event_type="quant_developer_backtest_complete",
         callback=on_quant_developer_complete,
         actor_filter="agent:quant-developer",
-        name="quant_developer_to_pipeline_orchestrator",
+        name="quant_developer_to_kill_gate_enforcer",
     )
 
-    def on_pipeline_orchestrator_complete(event: dict) -> None:
+    def on_kill_gate_enforcer_complete(event: dict) -> None:
         details = event.get("details", {})
         hypotheses_processed = details.get("hypotheses_processed", 0)
         hypotheses_killed = details.get("hypotheses_killed", 0)
@@ -244,10 +244,10 @@ def run_agent_pipeline(dry_run: bool = False) -> dict:
             analyst.run()
 
     watcher.register_trigger(
-        event_type="pipeline_orchestrator_complete",
-        callback=on_pipeline_orchestrator_complete,
-        actor_filter="agent:pipeline-orchestrator",
-        name="pipeline_orchestrator_to_validation_analyst",
+        event_type="kill_gate_enforcer_complete",
+        callback=on_kill_gate_enforcer_complete,
+        actor_filter="agent:kill-gate-enforcer",
+        name="kill_gate_enforcer_to_validation_analyst",
     )
 
     def on_validation_analyst_complete(event: dict) -> None:

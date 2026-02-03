@@ -165,7 +165,7 @@ def main():
         scheduler.setup_quality_monitoring(send_alerts=True)
         scheduler.setup_weekly_cio_review()
         scheduler.setup_weekly_alpha_researcher()
-        scheduler.setup_daily_pipeline_orchestrator()
+        scheduler.setup_daily_kill_gate_enforcer()
         scheduler.setup_research_agent_triggers()
 
     # Start scheduler

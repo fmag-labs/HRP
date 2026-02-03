@@ -86,7 +86,7 @@ def run_pipeline_tests(args):
         '-v',
     ]
     if args.coverage:
-        cmd.extend(['--cov=hrp.agents.pipeline_orchestrator', '--cov-report=term'])
+        cmd.extend(['--cov=hrp.agents.kill_gate_enforcer', '--cov-report=term'])
     return run_command(cmd, "Pipeline Tests")
 
 

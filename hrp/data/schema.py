@@ -444,7 +444,7 @@ TABLES = {
                    'ml_quality_sentinel_audit', 'alpha_researcher_review', 'validation_analyst_review',
                    'risk_review_complete', 'risk_veto',
                    'quant_developer_backtest_complete', 'alpha_researcher_complete',
-                   'pipeline_orchestrator_complete', 'kill_gate_triggered',
+                   'kill_gate_enforcer_complete', 'kill_gate_triggered',
                    'data_ingestion', 'system_error',
                    'cio_agent_decision',
                    'validation_analyst_complete', 'risk_manager_assessment',

@@ -40,7 +40,7 @@ class EventType(str, Enum):
     RISK_VETO = "risk_veto"
     QUANT_DEVELOPER_BACKTEST_COMPLETE = "quant_developer_backtest_complete"
     ALPHA_RESEARCHER_COMPLETE = "alpha_researcher_complete"
-    PIPELINE_ORCHESTRATOR_COMPLETE = "pipeline_orchestrator_complete"
+    KILL_GATE_ENFORCER_COMPLETE = "kill_gate_enforcer_complete"
     KILL_GATE_TRIGGERED = "kill_gate_triggered"
     DATA_INGESTION = "data_ingestion"
     EXPERIMENT_COMPLETED = "experiment_completed"

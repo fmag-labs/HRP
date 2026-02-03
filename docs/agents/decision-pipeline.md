@@ -20,7 +20,7 @@ This document describes the complete decision flow from signal discovery to stra
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                         HRP DECISION PIPELINE                                   │
+│                         HRP DECISION KILL GATE                                   │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────┐
@@ -36,14 +36,15 @@ This document describes the complete decision flow from signal discovery to stra
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ ML SCIENTIST     │────▶│ TESTING → VALIDATED: Walk-forward validation pass    │
-│ Model Training   │      │ TESTING → REJECTED: Stability score > 1.0           │
+│ ML SCIENTIST     │────▶│ TESTING → VALIDATED: IC ≥ 0.03, stability ≤ 1.0      │
+│ Model Training   │      │ TESTING → TESTING: IC ≥ 0.02, stability ≤ 1.5       │
+│                  │      │ TESTING → REJECTED: Below promising thresholds       │
 └────────┬─────────┘      └──────────────────────────────────────────────────────┘
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ ML QUALITY       │────▶│ VALIDATED → VALIDATED: No overfitting signals        │
-│ SENTINEL         │      │ VALIDATED → TESTING: Flagged for overfitting         │
+│ ML QUALITY       │────▶│ NO STATUS CHANGE: Adds quality_flags metadata only   │
+│ SENTINEL         │      │ Flags critical issues for downstream review          │
 │ Training Audit   │      └──────────────────────────────────────────────────────┘
 └────────┬─────────┘
          │
@@ -56,8 +57,8 @@ This document describes the complete decision flow from signal discovery to stra
          │
          ▼
 ┌──────────────────┐      ┌──────────────────────────────────────────────────────┐
-│ PIPELINE         │────▶│ VALIDATED → AUDITED: Multi-scenario validation pass   │
-│ ORCHESTRATOR     │      │ VALIDATED → VALIDATED: Single scenario, limited scope │
+│ KILL GATE         │────▶│ VALIDATED → AUDITED: Multi-scenario validation pass   │
+│ ENFORCER     │      │ VALIDATED → VALIDATED: Single scenario, limited scope │
 │ Scenario Analysis│      └──────────────────────────────────────────────────────┘
 └────────┬─────────┘
          │
@@ -115,10 +116,10 @@ graph TB
 
     %% Quality Gate
     MQS -->|passed| QD[Quant Developer<br/>Custom Agent]
-    MQS -->|critical issues| Reject2[Reject Hypothesis]
+    MQS -->|critical issues| Flag[Flag for Review]
 
     %% Implementation Phase
-    QD -->|quant_developer_complete| PO[Pipeline Orchestrator<br/>SDK Agent]
+    QD -->|quant_developer_complete| PO[Kill Gate Enforcer<br/>SDK Agent]
 
     %% Kill Gates
     PO -->|passed 5 kill gates| VA[Validation Analyst<br/>SDK Agent]
@@ -168,8 +169,8 @@ graph TB
 | Alpha Researcher | `alpha_researcher_complete` | ML Scientist | Hypothesis promoted to testing |
 | ML Scientist | `experiment_completed` | ML Quality Sentinel | Walk-forward validation finished |
 | ML Quality Sentinel | `ml_quality_sentinel_audit` | Quant Developer | Overall quality check passed |
-| Quant Developer | `quant_developer_backtest_complete` | Pipeline Orchestrator | Strategy spec and backtest ready |
-| Pipeline Orchestrator | `pipeline_orchestrator_complete` | Validation Analyst | All 5 kill gates passed |
+| Quant Developer | `quant_developer_backtest_complete` | Kill Gate Enforcer | Strategy spec and backtest ready |
+| Kill Gate Enforcer | `kill_gate_enforcer_complete` | Validation Analyst | All 5 kill gates passed |
 | Validation Analyst | `validation_analyst_complete` | Risk Manager | Stress testing passed |
 | Risk Manager | `risk_manager_assessment` | CIO Agent | No veto issued |
 | CIO Agent | `cio_agent_decision` | Human CIO | Decision (CONTINUE/CONDITIONAL) ready |
@@ -185,7 +186,7 @@ graph TB
 | **ML Scientist** | SDK | Experiments | Testing hypotheses | Walk-forward validation results |
 | **ML Quality Sentinel** | SDK | Audit reports | Completed experiments | Quality flags (passed/failed) |
 | **Quant Developer** | Custom | Strategy specs | Audited experiments | Strategy YAML, code templates |
-| **Pipeline Orchestrator** | SDK | Deployment packages | Strategy specs | Kill gate reports (5 types) |
+| **Kill Gate Enforcer** | SDK | Deployment packages | Strategy specs | Kill gate reports (5 types) |
 | **Validation Analyst** | SDK | Stress test reports | Validated strategies | Pre-deployment validation |
 | **Risk Manager** | Custom | Risk assessments | Stress-tested strategies | Veto or approval |
 | **CIO Agent** | Custom | CIO decisions | Risk-approved strategies | 4-way decision scores |
@@ -211,7 +212,7 @@ graph LR
         MLS[ML Scientist]
         MQS[ML Quality Sentinel]
         QD[Quant Developer]
-        PO[Pipeline Orchestrator]
+        PO[Kill Gate Enforcer]
         VA[Validation Analyst]
         RM[Risk Manager]
         CA[CIO Agent]
@@ -365,24 +366,24 @@ graph LR
 
 | Gate Type | Criteria | Pass | Fail | Next Step |
 |-----------|----------|------|------|-----------|
-| **Sharpe Decay** | Train/Test Sharpe decay ≤ 50% | No flag | Flag for overfitting | → Quant Developer or Back to TESTING |
-| **Target Leakage** | Feature-target correlation < 0.95 | No flag | Flag for leakage | → Quant Developer or Back to TESTING |
-| **Feature Count** | ≤ 50 features | No flag | Flag for overfitting | → Quant Developer or Back to TESTING |
-| **Fold Stability** | CV of IC ≤ 2.0 | No flag | Flag for instability | → Quant Developer or Back to TESTING |
-| **Suspicious Results** | IC ≤ 0.15 AND Sharpe ≤ 3.0 | No flag | Flag for too good to be true | → Quant Developer or Back to TESTING |
+| **Sharpe Decay** | Train/Test Sharpe decay ≤ 50% | No flag | Flag for overfitting | → Quant Developer (flagged) |
+| **Target Leakage** | Feature-target correlation < 0.95 | No flag | Flag for leakage | → Quant Developer (flagged) |
+| **Feature Count** | ≤ 50 features | No flag | Flag for overfitting | → Quant Developer (flagged) |
+| **Fold Stability** | CV of IC ≤ 2.0 | No flag | Flag for instability | → Quant Developer (flagged) |
+| **Suspicious Results** | IC ≤ 0.15 AND Sharpe ≤ 3.0 | No flag | Flag for too good to be true | → Quant Developer (flagged) |
 
-**Kill Gates:**
+**Quality Flag Thresholds:**
 - Sharpe decay > 50% (severe overfitting)
 - Target leakage correlation > 0.95 (data leak)
 - Feature count > 50 (overfitting risk)
 - Suspiciously good: IC > 0.15 OR Sharpe > 3.0
 
-**On Fail:**
-- Hypothesis demoted to `TESTING` with audit report
+**On Flag:**
+- Hypothesis metadata updated with `quality_flags` array
 - Specific issues identified (e.g., "Feature count: 55")
-- Re-submission allowed after fixing issues
+- Proceeds to Quant Developer with flags for downstream review
 
-**Status Change:** `VALIDATED` → `TESTING` (if flagged) or `VALIDATED` (if passes)
+**Status Change:** None (metadata only) - ML Quality Sentinel does not modify hypothesis status
 
 ---
 
@@ -394,10 +395,10 @@ graph LR
 
 | Gate Type | Criteria | Pass | Fail | Next Step |
 |-----------|----------|------|------|-----------|
-| **Baseline Sharpe** | ≥ 0.5 | Promote to VALIDATED | Demote to TESTING | → Pipeline Orchestrator or Back to TESTING |
-| **Max Drawdown** | ≤ 30% | Promote to VALIDATED | Demote to TESTING | → Pipeline Orchestrator or Back to TESTING |
-| **Execution Costs** | Slippage ≤ 10 bps, turnover ≤ 50% | Promote to VALIDATED | Demote to TESTING | → Pipeline Orchestrator or Back to TESTING |
-| **Trade Frequency** | ≥ 100 trades/year | Promote to VALIDATED | Demote to TESTING | → Pipeline Orchestrator or Back to TESTING |
+| **Baseline Sharpe** | ≥ 0.5 | Promote to VALIDATED | Demote to TESTING | → Kill Gate Enforcer or Back to TESTING |
+| **Max Drawdown** | ≤ 30% | Promote to VALIDATED | Demote to TESTING | → Kill Gate Enforcer or Back to TESTING |
+| **Execution Costs** | Slippage ≤ 10 bps, turnover ≤ 50% | Promote to VALIDATED | Demote to TESTING | → Kill Gate Enforcer or Back to TESTING |
+| **Trade Frequency** | ≥ 100 trades/year | Promote to VALIDATED | Demote to TESTING | → Kill Gate Enforcer or Back to TESTING |
 
 **Kill Gates:**
 - Baseline Sharpe < 0.5 (below minimum threshold)
@@ -414,9 +415,9 @@ graph LR
 
 ---
 
-### Stage 6: Experiment Orchestration (Pipeline Orchestrator)
+### Stage 6: Experiment Orchestration (Kill Gate Enforcer)
 
-**Agent:** `PipelineOrchestrator`
+**Agent:** `KillGateEnforcer`
 **Trigger:** Validated hypothesis with production backtest
 **Output:** Multi-scenario validation results
 
@@ -608,10 +609,10 @@ Total Score = (Statistical × 0.40) + (Risk × 0.25) + (Economic × 0.20) + (Cos
 | **Model Training** | Unstable | Stability score > 2.0 | Demote to TESTING |
 | **Model Training** | Too weak | Mean IC < 0.01 | Demote to TESTING |
 | **Model Training** | Suspicious | Train Sharpe > 3.0 | Demote to TESTING |
-| **Training Audit** | Sharpe decay | Decay > 50% | Demote to TESTING |
-| **Training Audit** | Target leakage | Correlation > 0.95 | Demote to TESTING |
-| **Training Audit** | Feature count | > 50 features | Demote to TESTING |
-| **Training Audit** | Too good to be true | IC > 0.15 OR Sharpe > 3.0 | Demote to TESTING |
+| **Training Audit** | Sharpe decay | Decay > 50% | Flag for review (no status change) |
+| **Training Audit** | Target leakage | Correlation > 0.95 | Flag for review (no status change) |
+| **Training Audit** | Feature count | > 50 features | Flag for review (no status change) |
+| **Training Audit** | Too good to be true | IC > 0.15 OR Sharpe > 3.0 | Flag for review (no status change) |
 | **Production Backtest** | Below threshold | Baseline Sharpe < 0.5 | Demote to TESTING |
 | **Production Backtest** | Excessive risk | Max DD > 30% | Demote to TESTING |
 | **Production Backtest** | Execution costs | Slippage > 20 bps | Demote to TESTING |
@@ -662,8 +663,8 @@ Total Score = (Statistical × 0.40) + (Risk × 0.25) + (Economic × 0.20) + (Cos
 - ML Scientist: Event-driven (after alpha_researcher_complete)
 - ML Quality Sentinel: Daily (6 AM) + event-driven
 - Quant Developer: Event-driven (after ml_quality_sentinel_audit)
-- Pipeline Orchestrator: Event-driven (after quant_developer_complete)
-- Validation Analyst: Event-driven (after pipeline_orchestrator_complete)
+- Kill Gate Enforcer: Event-driven (after quant_developer_complete)
+- Validation Analyst: Event-driven (after kill_gate_enforcer_complete)
 - Risk Manager: Event-driven (after validation_analyst_complete)
 - CIO Agent: Weekly (Friday 5 PM) + event-driven
 
@@ -860,7 +861,7 @@ Built on standardized agent framework with common patterns:
 - Alpha Researcher
 - ML Scientist
 - ML Quality Sentinel
-- Pipeline Orchestrator
+- Kill Gate Enforcer
 - Validation Analyst
 
 **Characteristics:**
@@ -932,11 +933,12 @@ ARCHIVE  REJECTED  TESTING    VALIDATED  VETOED/REJECTED
 
 ## Document Version
 
-**Version:** 1.1
-**Last Updated:** 2026-01-30
+**Version:** 1.2
+**Last Updated:** 2026-02-02
 **Author:** HRP Research Platform
 **Status:** Final
 
 **Change Log:**
+- v1.2 (2026-02-02): Fixed ML Scientist and ML Quality Sentinel status transitions to match codebase — ML Scientist now shows TESTING→TESTING path, ML Quality Sentinel correctly documented as metadata-only (no status changes)
 - v1.1 (2026-01-30): Merged agent-interaction-diagram.md — added Mermaid diagrams, trigger matrix, responsibility matrix, data flow diagram, agent types
 - v1.0 (2026-01-29): Initial version with complete decision pipeline
