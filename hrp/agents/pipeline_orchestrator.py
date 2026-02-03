@@ -400,15 +400,15 @@ class PipelineOrchestrator(IngestionJob):
         metadata = hypothesis.get("metadata", {})
         backtest_results = metadata.get("quant_developer_backtest", {})
 
-        # If we have existing backtest results, use those as baseline
-        if backtest_results and "baseline" in backtest_results:
-            base = backtest_results["baseline"]
+        # QD stores base metrics at top level (sharpe, max_drawdown, etc.)
+        # Use these as the baseline for kill gate evaluation
+        if backtest_results and "sharpe" in backtest_results:
             baselines["baseline"] = BaselineResult(
                 baseline_type=BaselineType.EQUAL_WEIGHT_LONG_SHORT,
-                sharpe=base.get("sharpe", 0.0),
-                total_return=base.get("total_return", 0.0),
-                max_drawdown=base.get("max_drawdown", 0.0),
-                volatility=base.get("volatility", 0.0),
+                sharpe=float(backtest_results.get("sharpe", 0.0)),
+                total_return=float(backtest_results.get("total_return", 0.0)),
+                max_drawdown=float(backtest_results.get("max_drawdown", 0.0)),
+                volatility=float(backtest_results.get("volatility", 0.0)),
                 mlflow_run_id=backtest_results.get("mlflow_run_id", ""),
             )
 
@@ -425,7 +425,9 @@ class PipelineOrchestrator(IngestionJob):
             True if baseline passes, False if should be killed
         """
         if not baselines:
-            return True  # No baselines to check, proceed
+            # No baseline data available - fail the gate (don't proceed blindly)
+            logger.warning("No baseline data found - failing kill gate")
+            return False
 
         max_sharpe = max(b.sharpe for b in baselines.values())
         return max_sharpe >= self.config.min_baseline_sharpe
