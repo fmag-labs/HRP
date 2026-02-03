@@ -21,7 +21,8 @@ from hrp.data.quality.report import QualityReport, QualityReportGenerator
 @st.cache_data(ttl=300)
 def get_quality_report(as_of_date: date) -> QualityReport:
     """Generate or retrieve cached quality report."""
-    generator = QualityReportGenerator()
+    # Use read_only=False to match the dashboard's read-write connection mode
+    generator = QualityReportGenerator(read_only=False)
     report = generator.generate_report(as_of_date)
     # Store report for historical tracking
     generator.store_report(report)
@@ -31,7 +32,8 @@ def get_quality_report(as_of_date: date) -> QualityReport:
 @st.cache_data(ttl=600)
 def get_health_trend(days: int = 90) -> pd.DataFrame:
     """Get historical health scores for trend chart."""
-    generator = QualityReportGenerator()
+    # Use read_only=False to match the dashboard's read-write connection mode
+    generator = QualityReportGenerator(read_only=False)
     trend_data = generator.get_health_trend(days=days)
     if not trend_data:
         return pd.DataFrame(columns=["date", "health_score"])
