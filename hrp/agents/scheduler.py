@@ -1187,11 +1187,14 @@ class IngestionScheduler:
 
         Full trigger chain:
         - Signal Scientist (hypothesis_created) → Alpha Researcher
-        - Alpha Researcher (alpha_researcher_complete) → ML Scientist (for promoted hypotheses)
+        - Alpha Researcher (alpha_researcher_complete) → Code Materializer
+        - Code Materializer (code_materializer_complete) → ML Scientist
         - ML Scientist (experiment_completed) → ML Quality Sentinel
         - ML Quality Sentinel (ml_quality_sentinel_audit, passed) → Quant Developer
         - Quant Developer (quant_developer_backtest_complete) → Pipeline Orchestrator
         - Pipeline Orchestrator (pipeline_orchestrator_complete) → Validation Analyst
+        - Validation Analyst (validation_analyst_complete) → Risk Manager
+        - Risk Manager (risk_manager_assessment) → CIO Agent
 
         Args:
             poll_interval_seconds: How often to poll lineage table (default: 60s)
@@ -1233,13 +1236,33 @@ class IngestionScheduler:
             name="signal_scientist_to_alpha_researcher",
         )
 
-        # Trigger 2: Alpha Researcher → ML Scientist
-        # When Alpha Researcher completes, ML Scientist validates promoted hypotheses
+        # Trigger 2: Alpha Researcher → Code Materializer
+        # When Alpha Researcher completes, Code Materializer generates strategy code
         def on_alpha_researcher_complete(event: dict) -> None:
             details = event.get("details", {})
             promoted_ids = details.get("reviewed_ids", [])  # Hypotheses promoted to testing
 
             for hypothesis_id in promoted_ids:
+                logger.info(f"Triggering Code Materializer for hypothesis {hypothesis_id}")
+                try:
+                    from hrp.agents.code_materializer import CodeMaterializer
+                    materializer = CodeMaterializer(hypothesis_ids=[hypothesis_id])
+                    materializer.run()
+                except Exception as e:
+                    logger.error(f"Code Materializer trigger failed: {e}")
+
+        watcher.register_trigger(
+            event_type="alpha_researcher_complete",
+            callback=on_alpha_researcher_complete,
+            actor_filter="agent:alpha-researcher",
+            name="alpha_researcher_to_code_materializer",
+        )
+
+        # Trigger 3: Code Materializer → ML Scientist
+        # When Code Materializer completes, ML Scientist validates the hypothesis
+        def on_code_materializer_complete(event: dict) -> None:
+            hypothesis_id = event.get("hypothesis_id")
+            if hypothesis_id:
                 logger.info(f"Triggering ML Scientist for hypothesis {hypothesis_id}")
                 try:
                     scientist = MLScientist(hypothesis_ids=[hypothesis_id])
@@ -1248,13 +1271,13 @@ class IngestionScheduler:
                     logger.error(f"ML Scientist trigger failed: {e}")
 
         watcher.register_trigger(
-            event_type="alpha_researcher_complete",
-            callback=on_alpha_researcher_complete,
-            actor_filter="agent:alpha-researcher",
-            name="alpha_researcher_to_ml_scientist",
+            event_type="code_materializer_complete",
+            callback=on_code_materializer_complete,
+            actor_filter="agent:code-materializer",
+            name="code_materializer_to_ml_scientist",
         )
 
-        # Trigger 3: ML Scientist → ML Quality Sentinel
+        # Trigger 4: ML Scientist → ML Quality Sentinel
         # When ML Scientist completes an experiment, Quality Sentinel audits it
         def on_experiment_completed(event: dict) -> None:
             details = event.get("details", {})
@@ -1281,7 +1304,7 @@ class IngestionScheduler:
             name="ml_scientist_to_quality_sentinel",
         )
 
-        # Trigger 4: ML Quality Sentinel → Quant Developer
+        # Trigger 5: ML Quality Sentinel → Quant Developer
         # When Quality Sentinel completes audit, Quant Developer runs backtests
         def on_quality_audit(event: dict) -> None:
             details = event.get("details", {})
@@ -1306,7 +1329,7 @@ class IngestionScheduler:
             name="ml_quality_sentinel_to_quant_developer",
         )
 
-        # Trigger 5: Quant Developer → Pipeline Orchestrator
+        # Trigger 6: Quant Developer → Pipeline Orchestrator
         # When Quant Developer completes backtest, Pipeline Orchestrator coordinates experiments
         def on_quant_developer_complete(event: dict) -> None:
             hypothesis_id = event.get("hypothesis_id")
@@ -1328,7 +1351,7 @@ class IngestionScheduler:
             name="quant_developer_to_pipeline_orchestrator",
         )
 
-        # Trigger 6: Pipeline Orchestrator → Validation Analyst
+        # Trigger 7: Pipeline Orchestrator → Validation Analyst
         # When Pipeline Orchestrator completes, Validation Analyst stress tests
         def on_pipeline_orchestrator_complete(event: dict) -> None:
             details = event.get("details", {})
@@ -1354,6 +1377,52 @@ class IngestionScheduler:
             callback=on_pipeline_orchestrator_complete,
             actor_filter="agent:pipeline-orchestrator",
             name="pipeline_orchestrator_to_validation_analyst",
+        )
+
+        # Trigger 8: Validation Analyst → Risk Manager
+        # When Validation Analyst completes, Risk Manager assesses risk
+        def on_validation_analyst_complete(event: dict) -> None:
+            details = event.get("details", {})
+            passed = details.get("hypotheses_passed", 0)
+            if passed > 0:
+                logger.info(f"Triggering Risk Manager for {passed} passed hypotheses")
+                try:
+                    from hrp.agents.risk_manager import RiskManager
+                    risk_mgr = RiskManager(hypothesis_ids=None, send_alerts=True)
+                    risk_mgr.run()
+                except Exception as e:
+                    logger.error(f"Risk Manager trigger failed: {e}")
+
+        watcher.register_trigger(
+            event_type="validation_analyst_complete",
+            callback=on_validation_analyst_complete,
+            actor_filter="agent:validation-analyst",
+            name="validation_analyst_to_risk_manager",
+        )
+
+        # Trigger 9: Risk Manager → CIO Agent
+        # When Risk Manager completes assessment, CIO Agent scores hypotheses
+        def on_risk_manager_assessment(event: dict) -> None:
+            details = event.get("details", {})
+            passed = details.get("hypotheses_passed", 0)
+            if passed > 0:
+                logger.info(f"Triggering CIO Agent for {passed} risk-cleared hypotheses")
+                try:
+                    from hrp.agents.cio import CIOAgent
+                    from datetime import date
+                    agent = CIOAgent(
+                        job_id=f"cio-triggered-{date.today().strftime('%Y%m%d')}",
+                        actor="agent:cio",
+                    )
+                    agent.execute()
+                except Exception as e:
+                    logger.error(f"CIO Agent trigger failed: {e}")
+
+        watcher.register_trigger(
+            event_type="risk_manager_assessment",
+            callback=on_risk_manager_assessment,
+            actor_filter="agent:risk-manager",
+            name="risk_manager_to_cio_agent",
         )
 
         # Store watcher reference
