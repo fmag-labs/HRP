@@ -260,6 +260,20 @@ class KillGateEnforcer(IngestionJob):
 
                 total_time_saved += result.time_saved_seconds
 
+                # Mark as processed by Kill Gate Enforcer (idempotency stamp)
+                self.api.update_hypothesis(
+                    hypothesis_id=hypothesis.get("hypothesis_id"),
+                    metadata={
+                        "kill_gate_enforcer": {
+                            "run_id": self.job_id,
+                            "run_date": date.today().isoformat(),
+                            "result": "killed" if result.killed_by_gate else "passed",
+                            "gate_trigger_reason": result.gate_trigger_reason.value if result.gate_trigger_reason else None,
+                        }
+                    },
+                    actor=self.ACTOR,
+                )
+
             except Exception as e:
                 logger.error(f"Failed to orchestrate {hypothesis.get('hypothesis_id')}: {e}")
 
