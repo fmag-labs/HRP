@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import duckdb
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 from hrp.api.platform import PlatformAPI
+from hrp.data.db import get_db
 from hrp.research.lineage import EventType
 
 
-# Database path
-DB_PATH = Path.home() / "hrp-data" / "hrp.duckdb"
-
-
-def _get_lineage_read_only(actor: str | None = None, limit: int = 100) -> list[dict]:
-    """Get lineage events using read-only database connection."""
+def _get_lineage_events(actor: str | None = None, limit: int = 100) -> list[dict]:
+    """Get lineage events using shared database connection."""
     conditions = []
     params = []
 
@@ -38,8 +33,8 @@ def _get_lineage_read_only(actor: str | None = None, limit: int = 100) -> list[d
     params.append(limit)
 
     try:
-        con = duckdb.connect(str(DB_PATH), read_only=True)
-        try:
+        db = get_db()
+        with db.connection() as con:
             rows = con.execute(query, params).fetchall()
             return [
                 {
@@ -54,10 +49,8 @@ def _get_lineage_read_only(actor: str | None = None, limit: int = 100) -> list[d
                 }
                 for row in rows
             ]
-        finally:
-            con.close()
-    except Exception as e:
-        # If read-only fails (DB doesn't exist or other error), return empty
+    except Exception:
+        # If DB access fails, return empty
         return []
 
 
@@ -188,7 +181,7 @@ def get_all_agent_status(api: PlatformAPI | None = None) -> list[AgentStatus]:
 
     for agent_id, agent_info in AGENT_REGISTRY.items():
         # Get recent events for this agent (using read-only DB access)
-        events = _get_lineage_read_only(actor=agent_info["actor"], limit=50)
+        events = _get_lineage_events(actor=agent_info["actor"], limit=50)
 
         # Infer status
         status = _infer_agent_status(events)
@@ -248,7 +241,7 @@ def get_timeline(
             continue
 
         # Use read-only database access
-        agent_events = _get_lineage_read_only(actor=agent_info["actor"], limit=limit)
+        agent_events = _get_lineage_events(actor=agent_info["actor"], limit=limit)
 
         # Enrich events with agent display name
         for event in agent_events:
