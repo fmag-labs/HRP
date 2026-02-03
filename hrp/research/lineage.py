@@ -49,11 +49,6 @@ class EventType(str, Enum):
     VALIDATION_ANALYST_COMPLETE = "validation_analyst_complete"
     RISK_MANAGER_ASSESSMENT = "risk_manager_assessment"
     SYSTEM_ERROR = "system_error"
-    CODE_MATERIALIZER_COMPLETE = "code_materializer_complete"
-    EXPERIMENT_COMPLETED = "experiment_completed"
-    CIO_AGENT_DECISION = "cio_agent_decision"
-    VALIDATION_ANALYST_COMPLETE = "validation_analyst_complete"
-    RISK_MANAGER_ASSESSMENT = "risk_manager_assessment"
 
 
 @dataclass

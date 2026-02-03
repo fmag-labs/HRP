@@ -18,6 +18,32 @@ from hrp.research.lineage import EventType
 
 
 @dataclass
+class HypothesisBacktestResult:
+    """Detailed backtest result for a single hypothesis."""
+
+    hypothesis_id: str
+    title: str
+    # Base backtest metrics
+    sharpe: float
+    total_return: float
+    max_drawdown: float
+    volatility: float
+    win_rate: float
+    # Period analysis (yearly)
+    period_metrics: list[dict[str, Any]]
+    # Regime analysis
+    regime_metrics: dict[str, Any]
+    # Parameter variations
+    parameter_variations: list[dict[str, Any]]
+    # Trade statistics
+    num_trades: int
+    avg_trade_value: float
+    # Features used
+    features: list[str]
+    model_type: str
+
+
+@dataclass
 class QuantDeveloperReport:
     """Complete Quant Developer run report."""
 
@@ -25,7 +51,7 @@ class QuantDeveloperReport:
     hypotheses_processed: int
     backtests_completed: int
     backtests_failed: int
-    results: list[str]  # hypothesis_ids with successful backtests
+    results: list[HypothesisBacktestResult]  # Detailed per-hypothesis results
     duration_seconds: float
 
 
@@ -124,7 +150,7 @@ class QuantDeveloper(ResearchAgent):
             }
 
         # 2. Process each hypothesis
-        backtest_results: list[str] = []
+        backtest_results: list[HypothesisBacktestResult] = []
         failed_count = 0
 
         for hypothesis in hypotheses:
@@ -673,7 +699,7 @@ class QuantDeveloper(ResearchAgent):
     # Backtest Methods
     # =========================================================================
 
-    def _backtest_hypothesis(self, hypothesis: dict[str, Any]) -> str | None:
+    def _backtest_hypothesis(self, hypothesis: dict[str, Any]) -> HypothesisBacktestResult | None:
         """
         Run full backtest workflow for a single hypothesis.
 
@@ -691,7 +717,7 @@ class QuantDeveloper(ResearchAgent):
             hypothesis: Hypothesis dict with metadata
 
         Returns:
-            hypothesis_id if successful, None if failed
+            HypothesisBacktestResult if successful, None if failed
         """
         hypothesis_id = hypothesis.get("hypothesis_id")
 
@@ -777,7 +803,32 @@ class QuantDeveloper(ResearchAgent):
                 hypothesis_id=hypothesis_id,
             )
 
-            return hypothesis_id
+            # 13. Build detailed result for report
+            return HypothesisBacktestResult(
+                hypothesis_id=hypothesis_id,
+                title=hypothesis.get("title", "Unknown"),
+                sharpe=getattr(backtest_result, "sharpe_ratio", 0),
+                total_return=getattr(backtest_result, "total_return", 0),
+                max_drawdown=getattr(backtest_result, "max_drawdown", 0),
+                volatility=getattr(backtest_result, "volatility", 0),
+                win_rate=getattr(backtest_result, "win_rate", 0),
+                period_metrics=time_metrics,
+                regime_metrics=regime_metrics,
+                parameter_variations=[
+                    {
+                        "variation_name": v.variation_name,
+                        "params": v.params,
+                        "sharpe": v.sharpe,
+                        "max_drawdown": v.max_drawdown,
+                        "total_return": v.total_return,
+                    }
+                    for v in param_results
+                ],
+                num_trades=trade_stats.get("num_trades", 0),
+                avg_trade_value=trade_stats.get("avg_trade_value", 0),
+                features=ml_config.get("features", []),
+                model_type=ml_config.get("model_type", "unknown"),
+            )
 
         except Exception as e:
             logger.error(f"Backtest workflow failed for {hypothesis_id}: {e}")
@@ -844,22 +895,26 @@ class QuantDeveloper(ResearchAgent):
 
     def _write_research_note(self, report: QuantDeveloperReport) -> None:
         """
-        Write research note to output/research/.
+        Write comprehensive research note to output/research/.
+
+        Includes per-hypothesis:
+        - Base backtest metrics (Sharpe, return, drawdown, volatility, win rate)
+        - Yearly performance breakdown
+        - Regime analysis (HMM-based)
+        - Parameter sensitivity matrix
+        - Trade statistics
 
         Args:
-            report: QuantDeveloperReport with run results
+            report: QuantDeveloperReport with detailed results
         """
-        from pathlib import Path
-
         from hrp.agents.report_formatting import (
             render_footer,
             render_header,
+            render_health_gauges,
             render_kpi_dashboard,
             render_section_divider,
             render_status_table,
         )
-        from hrp.utils.config import get_config
-
         from hrp.agents.output_paths import research_note_path
 
         report_date = report.report_date.isoformat()
@@ -867,14 +922,18 @@ class QuantDeveloper(ResearchAgent):
 
         parts: list[str] = []
 
-        # ── Header ──
+        # ══════════════════════════════════════════════════════════════════════
+        # HEADER
+        # ══════════════════════════════════════════════════════════════════════
         parts.append(render_header(
             title="Quant Developer Report",
             report_type="agent-execution",
             date_str=report_date,
         ))
 
-        # ── KPI Dashboard ──
+        # ══════════════════════════════════════════════════════════════════════
+        # EXECUTIVE SUMMARY KPIs
+        # ══════════════════════════════════════════════════════════════════════
         parts.append(render_kpi_dashboard([
             {"icon": "📋", "label": "Processed", "value": report.hypotheses_processed, "detail": "hypotheses"},
             {"icon": "✅", "label": "Completed", "value": report.backtests_completed, "detail": "backtests"},
@@ -882,16 +941,9 @@ class QuantDeveloper(ResearchAgent):
             {"icon": "⏱️", "label": "Duration", "value": f"{report.duration_seconds:.1f}s", "detail": "elapsed"},
         ]))
 
-        # ── Backtest Results ──
-        if report.results:
-            rows = [[hyp_id, "✅ Complete"] for hyp_id in report.results]
-            parts.append(render_status_table(
-                "🧪 Backtest Results",
-                ["Hypothesis", "Status"],
-                rows,
-            ))
-
-        # ── Configuration ──
+        # ══════════════════════════════════════════════════════════════════════
+        # CONFIGURATION
+        # ══════════════════════════════════════════════════════════════════════
         parts.append(render_section_divider("⚙️ Configuration"))
         parts.append("```")
         parts.append(f"  Signal method:    {self.signal_method}")
@@ -901,7 +953,72 @@ class QuantDeveloper(ResearchAgent):
         parts.append(f"  Slippage:         {self.slippage_bps} bps")
         parts.append("```\n")
 
-        # ── Footer ──
+        # ══════════════════════════════════════════════════════════════════════
+        # PER-HYPOTHESIS DETAILED RESULTS
+        # ══════════════════════════════════════════════════════════════════════
+        if report.results:
+            for result in report.results:
+                parts.append(render_section_divider(f"📊 {result.hypothesis_id}"))
+                parts.append(f"**{result.title}**\n")
+                parts.append(f"Model: `{result.model_type}` | Features: `{', '.join(result.features)}`\n")
+
+                # ── Base Backtest Metrics ──
+                parts.append("### 📈 Base Backtest Metrics\n")
+                parts.append("| Metric | Value |")
+                parts.append("|--------|-------|")
+                parts.append(f"| Sharpe Ratio | {result.sharpe:.4f} |")
+                parts.append(f"| Total Return | {result.total_return:.2%} |")
+                parts.append(f"| Max Drawdown | {result.max_drawdown:.2%} |")
+                parts.append(f"| Volatility | {result.volatility:.2%} |")
+                parts.append(f"| Win Rate | {result.win_rate:.2%} |")
+                parts.append(f"| Trades | {result.num_trades} |")
+                parts.append(f"| Avg Trade Value | ${result.avg_trade_value:,.0f} |")
+                parts.append("")
+
+                # ── Yearly Performance ──
+                if result.period_metrics:
+                    parts.append("### 📅 Yearly Performance\n")
+                    parts.append("| Year | Sharpe | Return | Max DD | Days |")
+                    parts.append("|------|--------|--------|--------|------|")
+                    for pm in result.period_metrics:
+                        year = pm.get("period", "?")
+                        sharpe = pm.get("sharpe", 0)
+                        ret = pm.get("total_return", 0)
+                        dd = pm.get("max_drawdown", 0)
+                        days = pm.get("num_days", 0)
+                        parts.append(f"| {year} | {sharpe:.2f} | {ret:.1%} | {dd:.1%} | {days} |")
+                    parts.append("")
+
+                # ── Regime Analysis ──
+                if result.regime_metrics:
+                    parts.append("### 🌡️ Regime Analysis (HMM)\n")
+                    parts.append("| Regime | Sharpe | Return | Days |")
+                    parts.append("|--------|--------|--------|------|")
+                    for regime_id, metrics in result.regime_metrics.items():
+                        sharpe = metrics.get("sharpe", 0)
+                        ret = metrics.get("total_return", 0)
+                        days = metrics.get("num_days", 0)
+                        parts.append(f"| {regime_id} | {sharpe:.2f} | {ret:.1%} | {days} |")
+                    parts.append("")
+
+                # ── Parameter Sensitivity ──
+                if result.parameter_variations:
+                    parts.append("### 🔧 Parameter Sensitivity\n")
+                    parts.append("| Variation | Sharpe | Return | Max DD |")
+                    parts.append("|-----------|--------|--------|--------|")
+                    for pv in result.parameter_variations:
+                        name = pv.get("variation_name", "?")
+                        sharpe = pv.get("sharpe", 0)
+                        ret = pv.get("total_return", 0)
+                        dd = pv.get("max_drawdown", 0)
+                        parts.append(f"| {name} | {sharpe:.2f} | {ret:.1%} | {dd:.1%} |")
+                    parts.append("")
+
+                parts.append("")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # FOOTER
+        # ══════════════════════════════════════════════════════════════════════
         parts.append(render_footer(
             agent_name="quant-developer",
             duration_seconds=report.duration_seconds,
