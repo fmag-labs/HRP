@@ -37,25 +37,36 @@ mcp = FastMCP(
 # Actor identifier for all MCP tool calls
 ACTOR = "agent:claude-interactive"
 
-# Cached read-only API instance for queries (never holds write lock)
-_api_ro: Optional[PlatformAPI] = None
-
 
 def get_api(read_only: bool = True) -> PlatformAPI:
-    """Get or create a PlatformAPI instance.
+    """Get or create a PlatformAPI instance with short-lived connections.
+
+    IMPORTANT: We use use_singleton=False because DuckDB uses file-level locking.
+    Even read-only connections hold locks that prevent other processes (agents)
+    from acquiring write locks. Non-singleton instances release locks when closed.
+
+    The caller should use the API as a context manager or call close() explicitly:
+
+        # Option 1: Context manager (preferred)
+        with get_api() as api:
+            result = api.list_hypotheses()
+
+        # Option 2: Explicit close
+        api = get_api()
+        try:
+            result = api.list_hypotheses()
+        finally:
+            api.close()
 
     Args:
-        read_only: If True, returns a cached read-only instance (default).
-                   If False, returns a new read-write instance for mutations.
+        read_only: If True, returns a read-only instance (default).
+                   If False, returns a read-write instance for mutations.
+
+    Returns:
+        A PlatformAPI instance with use_singleton=False. Connections are
+        released when close() is called or the context manager exits.
     """
-    if read_only:
-        global _api_ro
-        if _api_ro is None:
-            _api_ro = PlatformAPI(read_only=True)
-            logger.info("PlatformAPI (read-only) initialized for MCP server")
-        return _api_ro
-    # Write operations get a fresh instance so the lock is short-lived
-    return PlatformAPI(read_only=False)
+    return PlatformAPI(read_only=read_only, use_singleton=False)
 
 
 # =============================================================================
@@ -79,17 +90,17 @@ def list_hypotheses(
     Returns:
         List of hypothesis summaries with id, title, status, and dates
     """
-    api = get_api()
-    hypotheses = api.list_hypotheses(status=status, limit=limit)
+    with get_api() as api:
+        hypotheses = api.list_hypotheses(status=status, limit=limit)
 
-    # Format each hypothesis
-    formatted = [format_hypothesis(h) for h in hypotheses]
+        # Format each hypothesis
+        formatted = [format_hypothesis(h) for h in hypotheses]
 
-    return format_response(
-        success=True,
-        data=formatted,
-        message=f"Found {len(formatted)} hypotheses",
-    )
+        return format_response(
+            success=True,
+            data=formatted,
+            message=f"Found {len(formatted)} hypotheses",
+        )
 
 
 @mcp.tool()
@@ -104,21 +115,21 @@ def get_hypothesis(hypothesis_id: str) -> dict[str, Any]:
     Returns:
         Full hypothesis details including thesis, prediction, falsification criteria
     """
-    api = get_api()
-    hypothesis = api.get_hypothesis(hypothesis_id)
+    with get_api() as api:
+        hypothesis = api.get_hypothesis(hypothesis_id)
 
-    if hypothesis is None:
+        if hypothesis is None:
+            return format_response(
+                success=False,
+                message=f"Hypothesis {hypothesis_id} not found",
+                error=f"No hypothesis found with ID: {hypothesis_id}",
+            )
+
         return format_response(
-            success=False,
-            message=f"Hypothesis {hypothesis_id} not found",
-            error=f"No hypothesis found with ID: {hypothesis_id}",
+            success=True,
+            data=format_hypothesis(hypothesis),
+            message=f"Retrieved hypothesis {hypothesis_id}",
         )
-
-    return format_response(
-        success=True,
-        data=format_hypothesis(hypothesis),
-        message=f"Retrieved hypothesis {hypothesis_id}",
-    )
 
 
 @mcp.tool()
@@ -143,20 +154,20 @@ def create_hypothesis(
     Returns:
         The newly created hypothesis ID
     """
-    api = get_api(read_only=False)
-    hypothesis_id = api.create_hypothesis(
-        title=title,
-        thesis=thesis,
-        prediction=prediction,
-        falsification=falsification,
-        actor=ACTOR,
-    )
+    with get_api(read_only=False) as api:
+        hypothesis_id = api.create_hypothesis(
+            title=title,
+            thesis=thesis,
+            prediction=prediction,
+            falsification=falsification,
+            actor=ACTOR,
+        )
 
-    return format_response(
-        success=True,
-        data={"hypothesis_id": hypothesis_id},
-        message=f"Created hypothesis {hypothesis_id}",
-    )
+        return format_response(
+            success=True,
+            data={"hypothesis_id": hypothesis_id},
+            message=f"Created hypothesis {hypothesis_id}",
+        )
 
 
 @mcp.tool()
@@ -177,19 +188,19 @@ def update_hypothesis(
     Returns:
         Confirmation of the update
     """
-    api = get_api(read_only=False)
-    api.update_hypothesis(
-        hypothesis_id=hypothesis_id,
-        status=status,
-        outcome=outcome,
-        actor=ACTOR,
-    )
+    with get_api(read_only=False) as api:
+        api.update_hypothesis(
+            hypothesis_id=hypothesis_id,
+            status=status,
+            outcome=outcome,
+            actor=ACTOR,
+        )
 
-    return format_response(
-        success=True,
-        data={"hypothesis_id": hypothesis_id, "status": status},
-        message=f"Updated hypothesis {hypothesis_id} to status '{status}'",
-    )
+        return format_response(
+            success=True,
+            data={"hypothesis_id": hypothesis_id, "status": status},
+            message=f"Updated hypothesis {hypothesis_id} to status '{status}'",
+        )
 
 
 @mcp.tool()
@@ -204,14 +215,14 @@ def get_experiments_for_hypothesis(hypothesis_id: str) -> dict[str, Any]:
     Returns:
         List of experiment IDs associated with the hypothesis
     """
-    api = get_api()
-    experiment_ids = api.get_experiments_for_hypothesis(hypothesis_id)
+    with get_api() as api:
+        experiment_ids = api.get_experiments_for_hypothesis(hypothesis_id)
 
-    return format_response(
-        success=True,
-        data={"hypothesis_id": hypothesis_id, "experiment_ids": experiment_ids},
-        message=f"Found {len(experiment_ids)} experiments for {hypothesis_id}",
-    )
+        return format_response(
+            success=True,
+            data={"hypothesis_id": hypothesis_id, "experiment_ids": experiment_ids},
+            message=f"Found {len(experiment_ids)} experiments for {hypothesis_id}",
+        )
 
 
 # =============================================================================
@@ -234,15 +245,15 @@ def get_universe(as_of_date: Optional[str] = None) -> dict[str, Any]:
     Returns:
         List of ticker symbols in the universe
     """
-    api = get_api()
-    target_date = parse_date(as_of_date) or date.today()
-    symbols = api.get_universe(target_date)
+    with get_api() as api:
+        target_date = parse_date(as_of_date) or date.today()
+        symbols = api.get_universe(target_date)
 
-    return format_response(
-        success=True,
-        data={"as_of_date": str(target_date), "symbols": symbols, "count": len(symbols)},
-        message=f"Universe contains {len(symbols)} symbols as of {target_date}",
-    )
+        return format_response(
+            success=True,
+            data={"as_of_date": str(target_date), "symbols": symbols, "count": len(symbols)},
+            message=f"Universe contains {len(symbols)} symbols as of {target_date}",
+        )
 
 
 @mcp.tool()
@@ -266,7 +277,6 @@ def get_features(
     Returns:
         DataFrame with symbols as rows and features as columns
     """
-    api = get_api()
     target_date = parse_date(as_of_date)
 
     if target_date is None:
@@ -276,13 +286,14 @@ def get_features(
             error="Missing required parameter: as_of_date",
         )
 
-    df = api.get_features(symbols, features, target_date)
+    with get_api() as api:
+        df = api.get_features(symbols, features, target_date)
 
-    return format_response(
-        success=True,
-        data=df,
-        message=f"Retrieved {len(features)} features for {len(symbols)} symbols",
-    )
+        return format_response(
+            success=True,
+            data=df,
+            message=f"Retrieved {len(features)} features for {len(symbols)} symbols",
+        )
 
 
 @mcp.tool()
@@ -306,7 +317,6 @@ def get_prices(
     Returns:
         DataFrame with columns: symbol, date, open, high, low, close, adj_close, volume
     """
-    api = get_api()
     start = parse_date(start_date)
     end = parse_date(end_date)
 
@@ -317,30 +327,31 @@ def get_prices(
             error="Missing required date parameters",
         )
 
-    df = api.get_prices(symbols, start, end)
+    with get_api() as api:
+        df = api.get_prices(symbols, start, end)
 
-    # Return summary for large datasets
-    summary = {
-        "symbols": symbols,
-        "start_date": str(start),
-        "end_date": str(end),
-        "total_rows": len(df),
-        "columns": list(df.columns) if not df.empty else [],
-    }
+        # Return summary for large datasets
+        summary = {
+            "symbols": symbols,
+            "start_date": str(start),
+            "end_date": str(end),
+            "total_rows": len(df),
+            "columns": list(df.columns) if not df.empty else [],
+        }
 
-    # Include sample data for small datasets, summary for large ones
-    if len(df) <= 100:
-        return format_response(
-            success=True,
-            data=df,
-            message=f"Retrieved {len(df)} price records",
-        )
-    else:
-        return format_response(
-            success=True,
-            data=summary,
-            message=f"Retrieved {len(df)} price records (summary only - data too large)",
-        )
+        # Include sample data for small datasets, summary for large ones
+        if len(df) <= 100:
+            return format_response(
+                success=True,
+                data=df,
+                message=f"Retrieved {len(df)} price records",
+            )
+        else:
+            return format_response(
+                success=True,
+                data=summary,
+                message=f"Retrieved {len(df)} price records (summary only - data too large)",
+            )
 
 
 @mcp.tool()
@@ -355,14 +366,14 @@ def get_available_features() -> dict[str, Any]:
     Returns:
         List of feature definitions with names, descriptions, and versions
     """
-    api = get_api()
-    formatted = api.get_available_features()
+    with get_api() as api:
+        formatted = api.get_available_features()
 
-    return format_response(
-        success=True,
-        data=formatted,
-        message=f"Found {len(formatted)} available features",
-    )
+        return format_response(
+            success=True,
+            data=formatted,
+            message=f"Found {len(formatted)} available features",
+        )
 
 
 @mcp.tool()
@@ -379,7 +390,6 @@ def is_trading_day(check_date: str) -> dict[str, Any]:
     Returns:
         Boolean indicating if the date is a trading day
     """
-    api = get_api()
     target_date = parse_date(check_date)
 
     if target_date is None:
@@ -389,13 +399,14 @@ def is_trading_day(check_date: str) -> dict[str, Any]:
             error="Missing required parameter: check_date",
         )
 
-    is_trading = api.is_trading_day(target_date)
+    with get_api() as api:
+        is_trading = api.is_trading_day(target_date)
 
-    return format_response(
-        success=True,
-        data={"date": str(target_date), "is_trading_day": is_trading},
-        message=f"{target_date} {'is' if is_trading else 'is not'} a trading day",
-    )
+        return format_response(
+            success=True,
+            data={"date": str(target_date), "is_trading_day": is_trading},
+            message=f"{target_date} {'is' if is_trading else 'is not'} a trading day",
+        )
 
 
 # =============================================================================
@@ -436,7 +447,6 @@ def run_backtest(
     """
     from hrp.research.config import BacktestConfig
 
-    api = get_api(read_only=False)
     start = parse_date(start_date)
     end = parse_date(end_date)
 
@@ -458,32 +468,33 @@ def run_backtest(
         name=name or f"backtest_{hypothesis_id}",
     )
 
-    # Run backtest
-    experiment_id = api.run_backtest(
-        config=config,
-        hypothesis_id=hypothesis_id,
-        actor=ACTOR,
-    )
+    with get_api(read_only=False) as api:
+        # Run backtest
+        experiment_id = api.run_backtest(
+            config=config,
+            hypothesis_id=hypothesis_id,
+            actor=ACTOR,
+        )
 
-    # Get results
-    experiment = api.get_experiment(experiment_id)
-    metrics = experiment.get("metrics", {}) if experiment else {}
+        # Get results
+        experiment = api.get_experiment(experiment_id)
+        metrics = experiment.get("metrics", {}) if experiment else {}
 
-    return format_response(
-        success=True,
-        data={
-            "experiment_id": experiment_id,
-            "hypothesis_id": hypothesis_id,
-            "metrics": {
-                "sharpe_ratio": metrics.get("sharpe_ratio"),
-                "total_return": metrics.get("total_return"),
-                "max_drawdown": metrics.get("max_drawdown"),
-                "cagr": metrics.get("cagr"),
-                "volatility": metrics.get("volatility"),
+        return format_response(
+            success=True,
+            data={
+                "experiment_id": experiment_id,
+                "hypothesis_id": hypothesis_id,
+                "metrics": {
+                    "sharpe_ratio": metrics.get("sharpe_ratio"),
+                    "total_return": metrics.get("total_return"),
+                    "max_drawdown": metrics.get("max_drawdown"),
+                    "cagr": metrics.get("cagr"),
+                    "volatility": metrics.get("volatility"),
+                },
             },
-        },
-        message=f"Backtest complete. Sharpe: {metrics.get('sharpe_ratio', 'N/A'):.2f}",
-    )
+            message=f"Backtest complete. Sharpe: {metrics.get('sharpe_ratio', 'N/A'):.2f}",
+        )
 
 
 @mcp.tool()
@@ -498,21 +509,21 @@ def get_experiment(experiment_id: str) -> dict[str, Any]:
     Returns:
         Full experiment details including params, metrics, and tags
     """
-    api = get_api()
-    experiment = api.get_experiment(experiment_id)
+    with get_api() as api:
+        experiment = api.get_experiment(experiment_id)
 
-    if experiment is None:
+        if experiment is None:
+            return format_response(
+                success=False,
+                message=f"Experiment {experiment_id} not found",
+                error=f"No experiment found with ID: {experiment_id}",
+            )
+
         return format_response(
-            success=False,
-            message=f"Experiment {experiment_id} not found",
-            error=f"No experiment found with ID: {experiment_id}",
+            success=True,
+            data=format_experiment(experiment),
+            message=f"Retrieved experiment {experiment_id}",
         )
-
-    return format_response(
-        success=True,
-        data=format_experiment(experiment),
-        message=f"Retrieved experiment {experiment_id}",
-    )
 
 
 @mcp.tool()
@@ -533,14 +544,14 @@ def compare_experiments(
     Returns:
         DataFrame with experiments as rows and metrics as columns
     """
-    api = get_api()
-    comparison_df = api.compare_experiments(experiment_ids, metrics)
+    with get_api() as api:
+        comparison_df = api.compare_experiments(experiment_ids, metrics)
 
-    return format_response(
-        success=True,
-        data=comparison_df,
-        message=f"Compared {len(experiment_ids)} experiments",
-    )
+        return format_response(
+            success=True,
+            data=comparison_df,
+            message=f"Compared {len(experiment_ids)} experiments",
+        )
 
 
 @mcp.tool()
@@ -558,61 +569,61 @@ def analyze_results(experiment_id: str) -> dict[str, Any]:
     Returns:
         Formatted analysis text and key insights
     """
-    api = get_api()
-    experiment = api.get_experiment(experiment_id)
+    with get_api() as api:
+        experiment = api.get_experiment(experiment_id)
 
-    if experiment is None:
+        if experiment is None:
+            return format_response(
+                success=False,
+                message=f"Experiment {experiment_id} not found",
+                error=f"No experiment found with ID: {experiment_id}",
+            )
+
+        metrics = experiment.get("metrics", {})
+        params = experiment.get("params", {})
+
+        # Generate analysis text
+        sharpe = metrics.get("sharpe_ratio", 0)
+        total_return = metrics.get("total_return", 0)
+        max_dd = metrics.get("max_drawdown", 0)
+        cagr = metrics.get("cagr", 0)
+
+        # Assess performance
+        if sharpe >= 1.5:
+            sharpe_assessment = "Excellent risk-adjusted returns"
+        elif sharpe >= 1.0:
+            sharpe_assessment = "Good risk-adjusted returns"
+        elif sharpe >= 0.5:
+            sharpe_assessment = "Moderate risk-adjusted returns"
+        else:
+            sharpe_assessment = "Poor risk-adjusted returns"
+
+        analysis = {
+            "experiment_id": experiment_id,
+            "summary": {
+                "sharpe_ratio": sharpe,
+                "sharpe_assessment": sharpe_assessment,
+                "total_return_pct": total_return * 100 if total_return else None,
+                "cagr_pct": cagr * 100 if cagr else None,
+                "max_drawdown_pct": max_dd * 100 if max_dd else None,
+            },
+            "parameters": params,
+            "all_metrics": metrics,
+            "interpretation": (
+                f"The strategy achieved a Sharpe ratio of {sharpe:.2f} "
+                f"({sharpe_assessment}). "
+                f"Total return was {total_return*100:.1f}% with a maximum drawdown "
+                f"of {abs(max_dd)*100:.1f}%."
+                if sharpe and total_return and max_dd
+                else "Insufficient data for full analysis."
+            ),
+        }
+
         return format_response(
-            success=False,
-            message=f"Experiment {experiment_id} not found",
-            error=f"No experiment found with ID: {experiment_id}",
+            success=True,
+            data=analysis,
+            message=sharpe_assessment,
         )
-
-    metrics = experiment.get("metrics", {})
-    params = experiment.get("params", {})
-
-    # Generate analysis text
-    sharpe = metrics.get("sharpe_ratio", 0)
-    total_return = metrics.get("total_return", 0)
-    max_dd = metrics.get("max_drawdown", 0)
-    cagr = metrics.get("cagr", 0)
-
-    # Assess performance
-    if sharpe >= 1.5:
-        sharpe_assessment = "Excellent risk-adjusted returns"
-    elif sharpe >= 1.0:
-        sharpe_assessment = "Good risk-adjusted returns"
-    elif sharpe >= 0.5:
-        sharpe_assessment = "Moderate risk-adjusted returns"
-    else:
-        sharpe_assessment = "Poor risk-adjusted returns"
-
-    analysis = {
-        "experiment_id": experiment_id,
-        "summary": {
-            "sharpe_ratio": sharpe,
-            "sharpe_assessment": sharpe_assessment,
-            "total_return_pct": total_return * 100 if total_return else None,
-            "cagr_pct": cagr * 100 if cagr else None,
-            "max_drawdown_pct": max_dd * 100 if max_dd else None,
-        },
-        "parameters": params,
-        "all_metrics": metrics,
-        "interpretation": (
-            f"The strategy achieved a Sharpe ratio of {sharpe:.2f} "
-            f"({sharpe_assessment}). "
-            f"Total return was {total_return*100:.1f}% with a maximum drawdown "
-            f"of {abs(max_dd)*100:.1f}%."
-            if sharpe and total_return and max_dd
-            else "Insufficient data for full analysis."
-        ),
-    }
-
-    return format_response(
-        success=True,
-        data=analysis,
-        message=sharpe_assessment,
-    )
 
 
 # =============================================================================
@@ -840,24 +851,24 @@ def run_quality_checks(as_of_date: Optional[str] = None) -> dict[str, Any]:
     Returns:
         Quality report with health score, issues found, and recommendations
     """
-    api = get_api()
     target_date = parse_date(as_of_date) or date.today()
-    result = api.run_quality_checks(as_of_date=target_date)
+    with get_api() as api:
+        result = api.run_quality_checks(as_of_date=target_date)
 
-    return format_response(
-        success=True,
-        data={
-            "report_date": str(target_date),
-            "health_score": result["health_score"],
-            "passed": result["passed"],
-            "checks_run": len(result.get("results", [])),
-            "checks_passed": sum(1 for r in result.get("results", []) if r.get("passed")),
-            "critical_issues": result["critical_issues"],
-            "warning_issues": result["warning_issues"],
-            "summary": f"Health score: {result['health_score']:.0f}/100, {result['critical_issues']} critical, {result['warning_issues']} warnings",
-        },
-        message=f"Health score: {result['health_score']:.0f}/100",
-    )
+        return format_response(
+            success=True,
+            data={
+                "report_date": str(target_date),
+                "health_score": result["health_score"],
+                "passed": result["passed"],
+                "checks_run": len(result.get("results", [])),
+                "checks_passed": sum(1 for r in result.get("results", []) if r.get("passed")),
+                "critical_issues": result["critical_issues"],
+                "warning_issues": result["warning_issues"],
+                "summary": f"Health score: {result['health_score']:.0f}/100, {result['critical_issues']} critical, {result['warning_issues']} warnings",
+            },
+            message=f"Health score: {result['health_score']:.0f}/100",
+        )
 
 
 @mcp.tool()
@@ -871,14 +882,14 @@ def get_health_status() -> dict[str, Any]:
     Returns:
         Health status for API, database, and tables
     """
-    api = get_api()
-    health = api.health_check()
+    with get_api() as api:
+        health = api.health_check()
 
-    return format_response(
-        success=True,
-        data=health,
-        message=f"API: {health['api']}, Database: {health['database']}",
-    )
+        return format_response(
+            success=True,
+            data=health,
+            message=f"API: {health['api']}, Database: {health['database']}",
+        )
 
 
 @mcp.tool()
@@ -901,7 +912,6 @@ def get_data_coverage(
     Returns:
         Coverage statistics per symbol
     """
-    api = get_api()
     start = parse_date(start_date)
     end = parse_date(end_date)
 
@@ -912,49 +922,50 @@ def get_data_coverage(
             error="Missing required date parameters",
         )
 
-    # Get trading days in range
-    trading_days = api.get_trading_days(start, end)
-    expected_days = len(trading_days)
+    with get_api() as api:
+        # Get trading days in range
+        trading_days = api.get_trading_days(start, end)
+        expected_days = len(trading_days)
 
-    # Get actual data per symbol
-    coverage = []
-    for symbol in symbols:
-        try:
-            df = api.get_prices([symbol], start, end)
-            actual_days = len(df) if not df.empty else 0
-            pct = (actual_days / expected_days * 100) if expected_days > 0 else 0
+        # Get actual data per symbol
+        coverage = []
+        for symbol in symbols:
+            try:
+                df = api.get_prices([symbol], start, end)
+                actual_days = len(df) if not df.empty else 0
+                pct = (actual_days / expected_days * 100) if expected_days > 0 else 0
 
-            coverage.append({
-                "symbol": symbol,
-                "expected_days": expected_days,
-                "actual_days": actual_days,
-                "coverage_pct": round(pct, 1),
-                "has_full_coverage": actual_days >= expected_days * 0.95,
-            })
-        except Exception as e:
-            coverage.append({
-                "symbol": symbol,
-                "expected_days": expected_days,
-                "actual_days": 0,
-                "coverage_pct": 0,
-                "has_full_coverage": False,
-                "error": str(e),
-            })
+                coverage.append({
+                    "symbol": symbol,
+                    "expected_days": expected_days,
+                    "actual_days": actual_days,
+                    "coverage_pct": round(pct, 1),
+                    "has_full_coverage": actual_days >= expected_days * 0.95,
+                })
+            except Exception as e:
+                coverage.append({
+                    "symbol": symbol,
+                    "expected_days": expected_days,
+                    "actual_days": 0,
+                    "coverage_pct": 0,
+                    "has_full_coverage": False,
+                    "error": str(e),
+                })
 
-    # Summary
-    full_coverage_count = sum(1 for c in coverage if c["has_full_coverage"])
+        # Summary
+        full_coverage_count = sum(1 for c in coverage if c["has_full_coverage"])
 
-    return format_response(
-        success=True,
-        data={
-            "date_range": {"start": str(start), "end": str(end)},
-            "expected_trading_days": expected_days,
-            "symbols_with_full_coverage": full_coverage_count,
-            "total_symbols": len(symbols),
-            "coverage_by_symbol": coverage,
-        },
-        message=f"{full_coverage_count}/{len(symbols)} symbols have full coverage",
-    )
+        return format_response(
+            success=True,
+            data={
+                "date_range": {"start": str(start), "end": str(end)},
+                "expected_trading_days": expected_days,
+                "symbols_with_full_coverage": full_coverage_count,
+                "total_symbols": len(symbols),
+                "coverage_by_symbol": coverage,
+            },
+            message=f"{full_coverage_count}/{len(symbols)} symbols have full coverage",
+        )
 
 
 # =============================================================================
@@ -982,20 +993,20 @@ def get_lineage(
     Returns:
         List of lineage events with timestamps and actors
     """
-    api = get_api()
-    events = api.get_lineage(
-        hypothesis_id=hypothesis_id,
-        experiment_id=experiment_id,
-        limit=limit,
-    )
+    with get_api() as api:
+        events = api.get_lineage(
+            hypothesis_id=hypothesis_id,
+            experiment_id=experiment_id,
+            limit=limit,
+        )
 
-    formatted = [format_lineage_event(e) for e in events]
+        formatted = [format_lineage_event(e) for e in events]
 
-    return format_response(
-        success=True,
-        data=formatted,
-        message=f"Found {len(formatted)} lineage events",
-    )
+        return format_response(
+            success=True,
+            data=formatted,
+            message=f"Found {len(formatted)} lineage events",
+        )
 
 
 @mcp.tool()
@@ -1010,16 +1021,16 @@ def get_deployed_strategies() -> dict[str, Any]:
     Returns:
         List of deployed hypothesis details
     """
-    api = get_api()
-    strategies = api.get_deployed_strategies()
+    with get_api() as api:
+        strategies = api.get_deployed_strategies()
 
-    formatted = [format_hypothesis(s) for s in strategies]
+        formatted = [format_hypothesis(s) for s in strategies]
 
-    return format_response(
-        success=True,
-        data=formatted,
-        message=f"Found {len(formatted)} deployed strategies",
-    )
+        return format_response(
+            success=True,
+            data=formatted,
+            message=f"Found {len(formatted)} deployed strategies",
+        )
 
 
 # =============================================================================

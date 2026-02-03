@@ -62,16 +62,48 @@ class PlatformAPI:
         )
     """
 
-    def __init__(self, db_path: Optional[str] = None, read_only: bool = False):
+    def __init__(self, db_path: Optional[str] = None, read_only: bool = False, use_singleton: bool = True):
         """
         Initialize the Platform API.
 
         Args:
             db_path: Optional path to database (uses default if not provided)
             read_only: If True, use read-only database connection (default: False)
+            use_singleton: If False, create a non-singleton DatabaseManager (default: True).
+                          Use False for short-lived operations where you want to release
+                          the database lock immediately after closing.
         """
-        self._db = get_db(db_path, read_only=read_only)
+        if use_singleton:
+            self._db = get_db(db_path, read_only=read_only)
+        else:
+            # Bypass singleton - create a fresh DatabaseManager instance directly
+            from hrp.data.db import DatabaseManager
+            # Create instance without going through singleton __new__
+            self._db = object.__new__(DatabaseManager)
+            self._db._initialized = False
+            self._db.__init__(db_path, read_only=read_only)
+        self._use_singleton = use_singleton
         logger.debug("PlatformAPI initialized")
+
+    def close(self) -> None:
+        """
+        Close database connections and release locks.
+
+        Call this when done with the API to release file locks immediately,
+        allowing other processes to access the database.
+        Only effective for non-singleton instances (use_singleton=False).
+        """
+        if hasattr(self, '_db') and self._db is not None:
+            self._db.close()
+            logger.debug("PlatformAPI database connections closed")
+
+    def __enter__(self) -> "PlatformAPI":
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit - closes connections."""
+        self.close()
 
     # =========================================================================
     # Validation Helpers

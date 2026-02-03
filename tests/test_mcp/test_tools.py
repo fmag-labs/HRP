@@ -17,12 +17,14 @@ def call_tool(tool, *args, **kwargs):
 
 @pytest.fixture
 def mock_api():
-    """Create a mock PlatformAPI."""
-    with patch.object(research_server, "_api_ro", None):
-        with patch.object(research_server, "get_api") as mock_get_api:
-            api = MagicMock()
-            mock_get_api.return_value = api
-            yield api
+    """Create a mock PlatformAPI that works with context managers."""
+    with patch.object(research_server, "get_api") as mock_get_api:
+        api = MagicMock()
+        # Make the mock work with context managers (with get_api() as api)
+        api.__enter__ = MagicMock(return_value=api)
+        api.__exit__ = MagicMock(return_value=False)
+        mock_get_api.return_value = api
+        yield api
 
 
 # =============================================================================
