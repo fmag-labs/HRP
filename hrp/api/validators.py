@@ -5,7 +5,12 @@ Provides reusable validation functions for symbols, dates, and parameters.
 All validators raise ValueError with descriptive messages on validation failure.
 """
 
+from __future__ import annotations
+
+import html
+import re
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -82,6 +87,84 @@ class Validator:
             ValueError: If start date is after end date
         """
         validate_date_range(start, end)
+
+    @staticmethod
+    def safe_html(value: str, field_name: str) -> str:
+        """
+        Escape HTML entities to prevent XSS attacks.
+
+        Args:
+            value: String that may contain HTML
+            field_name: Name of the field for logging
+
+        Returns:
+            HTML-escaped string safe for display
+        """
+        escaped = html.escape(value, quote=True)
+        if escaped != value:
+            logger.debug(f"Sanitized HTML in {field_name}")
+        return escaped
+
+    @staticmethod
+    def safe_path(path: str, base_dir: Path, field_name: str) -> Path:
+        """
+        Validate path is within allowed base directory.
+
+        Prevents directory traversal attacks by ensuring the resolved
+        path stays within the allowed base directory.
+
+        Args:
+            path: Path string to validate (absolute or relative)
+            base_dir: Allowed base directory
+            field_name: Name of the field for error messages
+
+        Returns:
+            Resolved Path object within base_dir
+
+        Raises:
+            ValueError: If path escapes base directory
+        """
+        # Resolve both paths to absolute form
+        base_resolved = base_dir.resolve()
+        full_path = (base_dir / path).resolve()
+
+        # Check that the resolved path starts with the base directory
+        try:
+            full_path.relative_to(base_resolved)
+        except ValueError:
+            raise ValueError(
+                f"{field_name} path is outside allowed directory: {path}"
+            )
+
+        logger.debug(f"Validated safe path: {field_name} -> {full_path}")
+        return full_path
+
+    @staticmethod
+    def safe_filename(filename: str, field_name: str) -> str:
+        """
+        Validate filename contains no path separators or dangerous characters.
+
+        Prevents path injection by ensuring the filename cannot be used
+        to escape to parent directories or reference absolute paths.
+
+        Args:
+            filename: Filename to validate
+            field_name: Name of the field for error messages
+
+        Returns:
+            Validated filename (unchanged if valid)
+
+        Raises:
+            ValueError: If filename contains invalid characters
+        """
+        # Block path separators (/ \), null bytes, and colons (Windows paths)
+        if re.search(r'[/\\:\x00]', filename):
+            raise ValueError(
+                f"{field_name} contains invalid characters: {filename!r}"
+            )
+
+        logger.debug(f"Validated safe filename: {field_name} = {filename}")
+        return filename
 
 
 def validate_symbols(

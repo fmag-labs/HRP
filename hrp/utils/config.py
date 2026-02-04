@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,14 @@ from dotenv import load_dotenv
 
 # Load .env file if it exists
 load_dotenv()
+
+
+class Environment(Enum):
+    """Environment mode for the application."""
+
+    DEVELOPMENT = "development"
+    STAGING = "staging"
+    PRODUCTION = "production"
 
 
 @dataclass
@@ -100,11 +109,29 @@ class Config:
     # General settings
     log_level: str = "INFO"
     notification_email: str | None = None
+    environment: Environment = Environment.DEVELOPMENT
+
+    @property
+    def auth_required(self) -> bool:
+        """Whether authentication is required (True for non-development environments)."""
+        return self.environment != Environment.DEVELOPMENT
+
+    @property
+    def debug_mode(self) -> bool:
+        """Whether debug mode is enabled (True only for development)."""
+        return self.environment == Environment.DEVELOPMENT
 
     @classmethod
     def from_env(cls) -> "Config":
         """Load configuration from environment variables."""
         data_dir = os.getenv("HRP_DATA_DIR")
+
+        # Parse environment with fallback to development
+        env_str = os.getenv("HRP_ENVIRONMENT", "development")
+        try:
+            environment = Environment(env_str)
+        except ValueError:
+            environment = Environment.DEVELOPMENT
 
         return cls(
             data=DataConfig(
@@ -121,6 +148,7 @@ class Config:
             ),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             notification_email=os.getenv("NOTIFICATION_EMAIL"),
+            environment=environment,
         )
 
 

@@ -485,6 +485,97 @@ class TestValidatorsIntegration:
 # =============================================================================
 
 
+class TestSecurityValidators:
+    """Tests for security-focused validation methods."""
+
+    def test_safe_html_escapes_script_tags(self):
+        """safe_html should escape script tags to prevent XSS."""
+        result = Validator.safe_html("<script>alert('xss')</script>", "input")
+        assert "<script>" not in result
+        assert "&lt;script&gt;" in result
+
+    def test_safe_html_escapes_event_handlers(self):
+        """safe_html should escape event handler attributes."""
+        result = Validator.safe_html('<img onerror="alert(1)">', "input")
+        assert "onerror" not in result or "&quot;" in result
+
+    def test_safe_html_preserves_safe_content(self):
+        """safe_html should preserve normal text content."""
+        result = Validator.safe_html("Hello world", "input")
+        assert result == "Hello world"
+
+    def test_safe_html_escapes_ampersand(self):
+        """safe_html should escape ampersands."""
+        result = Validator.safe_html("Tom & Jerry", "input")
+        assert result == "Tom &amp; Jerry"
+
+    def test_safe_html_escapes_quotes(self):
+        """safe_html should escape quotes."""
+        result = Validator.safe_html('Say "Hello"', "input")
+        assert "&quot;" in result
+
+    def test_safe_path_allows_valid_path(self, tmp_path):
+        """safe_path should allow paths within base directory."""
+        valid_path = tmp_path / "subdir" / "file.txt"
+        result = Validator.safe_path(str(valid_path), tmp_path, "path")
+        assert result == valid_path
+
+    def test_safe_path_allows_relative_path(self, tmp_path):
+        """safe_path should resolve relative paths within base directory."""
+        result = Validator.safe_path("subdir/file.txt", tmp_path, "path")
+        assert result == (tmp_path / "subdir" / "file.txt").resolve()
+
+    def test_safe_path_blocks_traversal(self, tmp_path):
+        """safe_path should block directory traversal attempts."""
+        with pytest.raises(ValueError, match="outside allowed directory"):
+            Validator.safe_path("../../../etc/passwd", tmp_path, "path")
+
+    def test_safe_path_blocks_absolute_escape(self, tmp_path):
+        """safe_path should block absolute paths outside base."""
+        with pytest.raises(ValueError, match="outside allowed directory"):
+            Validator.safe_path("/etc/passwd", tmp_path, "path")
+
+    def test_safe_path_blocks_double_dot_anywhere(self, tmp_path):
+        """safe_path should block paths with .. components anywhere."""
+        with pytest.raises(ValueError, match="outside allowed directory"):
+            Validator.safe_path("subdir/../../../etc/passwd", tmp_path, "path")
+
+    def test_safe_filename_allows_valid_names(self):
+        """safe_filename should allow valid filenames."""
+        result = Validator.safe_filename("report_2026.pdf", "filename")
+        assert result == "report_2026.pdf"
+
+    def test_safe_filename_allows_dots(self):
+        """safe_filename should allow filenames with dots."""
+        result = Validator.safe_filename("my.file.name.txt", "filename")
+        assert result == "my.file.name.txt"
+
+    def test_safe_filename_allows_hyphens_underscores(self):
+        """safe_filename should allow hyphens and underscores."""
+        result = Validator.safe_filename("my-file_name.txt", "filename")
+        assert result == "my-file_name.txt"
+
+    def test_safe_filename_blocks_path_separators(self):
+        """safe_filename should block forward slashes."""
+        with pytest.raises(ValueError, match="invalid characters"):
+            Validator.safe_filename("../secret.txt", "filename")
+
+    def test_safe_filename_blocks_backslashes(self):
+        """safe_filename should block backslashes."""
+        with pytest.raises(ValueError, match="invalid characters"):
+            Validator.safe_filename("..\\secret.txt", "filename")
+
+    def test_safe_filename_blocks_null_bytes(self):
+        """safe_filename should block null bytes."""
+        with pytest.raises(ValueError, match="invalid characters"):
+            Validator.safe_filename("file\x00.txt", "filename")
+
+    def test_safe_filename_blocks_colons(self):
+        """safe_filename should block colons (Windows path separators)."""
+        with pytest.raises(ValueError, match="invalid characters"):
+            Validator.safe_filename("C:file.txt", "filename")
+
+
 class TestValidatorClass:
     """Tests for Validator class static methods."""
 
