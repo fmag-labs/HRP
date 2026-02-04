@@ -72,3 +72,8 @@ features.db*
 .security-key
 logs/security/
 backfill_progress*.json
+
+# Generated artifacts (do not commit)
+mlflow.db
+coverage.xml
+test_results.txt
