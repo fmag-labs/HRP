@@ -12,6 +12,10 @@ import duckdb
 import pandas as pd
 import pytest
 
+# Register integration fixtures as pytest plugins
+# This makes integration_db, integration_api, etc. available in all test files
+pytest_plugins = ["tests.fixtures.integration_db"]
+
 
 @pytest.fixture
 def temp_db():

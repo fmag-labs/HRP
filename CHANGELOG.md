@@ -1,14 +1,33 @@
 ## [Unreleased]
 
 ### Added
+- **Production Tier Phase 2 - Ops Infrastructure** (PR #42):
+  - Ops Server (`hrp/ops/`): FastAPI server with `/health`, `/ready`, `/metrics` endpoints
+  - MetricsCollector (`hrp/ops/metrics.py`): System (CPU, memory, disk) and data pipeline metrics
+  - Configurable thresholds (`hrp/ops/thresholds.py`): `OpsThresholds` with YAML + env var support
+  - Ops Dashboard (`hrp/dashboard/pages/9_Ops.py`): System monitoring page
+  - Startup validation (`hrp/utils/startup.py`): `fail_fast_startup()` for production secret checks
+  - Secret filtering (`hrp/utils/log_filter.py`): Mask API keys, passwords, tokens in logs
+  - Connection pool (`hrp/data/connection_pool.py`): DuckDB pooling with retry/backoff
+  - Job locking (`hrp/utils/locks.py`): File-based locks with stale detection
+  - Unified CLI (`hrp/cli.py`): `hrp` command entrypoint
+  - Version alignment: `hrp.__version__` from pyproject.toml metadata
+  - Integration tests (`tests/integration/`): Golden path hypothesis lifecycle tests
+  - launchd plist (`launchd/com.hrp.ops-server.plist`): Run ops server as service
 - **Production Tier Phase 1 - Essential Security** (PR #40):
   - Environment system: `HRP_ENVIRONMENT` enum (development/staging/production)
   - Dashboard authentication with bcrypt password hashing and session cookies
   - Security validators: XSS prevention, path traversal detection, filename sanitization
   - Secrets validation module for environment variable checks
-  - Auth CLI: `python -m hrp.auth` with list-users, add-user, reset-password commands
+  - Auth CLI: `python -m hrp.dashboard.auth_cli` with list-users, add-user, remove-user, reset-password commands
 - **Pipeline Progress Dashboard**: New Streamlit page with Kanban view showing hypothesis pipeline stages and agent launcher (`hrp/dashboard/pages/pipeline_progress.py`, `pipeline_kanban.py`, `agent_panel.py`)
 - **Kill Gate Enforcer backtest timeframe**: Reports now include start_date and end_date when available from experiment context
+
+### Changed
+- Dashboard and monitoring queries now use `read_only=True` connections for better concurrency
+- Documented DuckDB access patterns in `hrp/data/db.py`
+- Added `psutil`, `fastapi`, `uvicorn`, `prometheus-client` to ops optional dependencies
+- Repository cleanup: Added `mlflow.db`, `coverage.xml`, `test_results.txt` to `.gitignore`
 
 ### Fixed
 - **Alpha Researcher experiment metrics**: Top Experiments table now displays actual IC and stability metrics from experiment results instead of placeholders

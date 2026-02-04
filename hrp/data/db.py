@@ -3,25 +3,56 @@ DuckDB connection management for HRP.
 
 Provides thread-safe connection pooling and query helpers.
 
-Read-Only Support:
-    The connection manager supports read-only connections via `get_db(read_only=True)`.
-    However, DuckDB does not allow mixing read-only and read-write connections
-    to the same database file within the same process. Use read-only mode:
-    - In separate processes/scripts that only need to read data
-    - To prevent accidental writes in read-only analysis scripts
-    - Note: Read-only connections still use file-level locking and won't allow
-      concurrent access from multiple processes (DuckDB limitation)
+DuckDB Access Patterns
+======================
 
-    Example:
-        # Default: read-write (for normal operations)
-        db = get_db()
-        with db.connection() as conn:
-            conn.execute("INSERT INTO prices VALUES (...)")
+DuckDB uses Write-Ahead Logging (WAL) internally for ACID compliance.
+This is automatic and not configurable via API (unlike SQLite's pragma).
 
-        # Read-only (use in separate process/script)
-        db_ro = get_db(read_only=True)
-        with db_ro.connection() as conn:
-            result = conn.execute("SELECT * FROM prices").fetchall()
+Concurrency Model:
+    - Multiple concurrent readers allowed
+    - Single writer at a time (other writers block)
+    - Readers never block writers and vice versa
+
+Read-Only Mode:
+    Use `get_db(read_only=True)` or `PlatformAPI(read_only=True)` for:
+    - Dashboard/UI queries (read-only by nature)
+    - Monitoring/metrics collection
+    - Analysis scripts that only query data
+    - MCP server read endpoints
+    - Any component that never needs to write
+
+    Benefits:
+    - Prevents accidental writes
+    - Clear intent in code
+    - Separate connection pools avoid blocking
+
+Read-Write Mode (default):
+    Use default mode for:
+    - Data ingestion jobs
+    - Creating/updating hypotheses
+    - Recording lineage events
+    - Any INSERT/UPDATE/DELETE operations
+
+Usage Patterns:
+    # Read-only: dashboard, monitoring, queries
+    api = PlatformAPI(read_only=True)
+    db = get_db(read_only=True)
+
+    # Read-write: ingestion, hypothesis CRUD, lineage
+    api = PlatformAPI()  # default is read_only=False
+    db = get_db()
+
+Example:
+    # Default: read-write (for normal operations)
+    db = get_db()
+    with db.connection() as conn:
+        conn.execute("INSERT INTO prices VALUES (...)")
+
+    # Read-only (prevents accidental writes)
+    db_ro = get_db(read_only=True)
+    with db_ro.connection() as conn:
+        result = conn.execute("SELECT * FROM prices").fetchall()
 """
 
 import os

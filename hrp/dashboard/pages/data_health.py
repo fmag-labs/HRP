@@ -13,7 +13,8 @@ import streamlit as st
 from hrp.api.platform import PlatformAPI
 
 def _get_api():
-    return PlatformAPI()
+    return PlatformAPI(read_only=True)  # Read-only for dashboard queries
+
 from hrp.data.quality.checks import CheckResult, IssueSeverity, QualityIssue
 from hrp.data.quality.report import QualityReport, QualityReportGenerator
 
@@ -109,8 +110,8 @@ def render_quality_alert_banner() -> None:
     from hrp.api.platform import PlatformAPI
 
     try:
-        # Get latest quality results
-        api = PlatformAPI()
+        # Get latest quality results (read-only for dashboard queries)
+        api = PlatformAPI(read_only=True)
         result = api.run_quality_checks(as_of_date=date.today())
 
         if result["critical_issues"] > 0:

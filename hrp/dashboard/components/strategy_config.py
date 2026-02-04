@@ -37,7 +37,7 @@ def get_available_features() -> list[str]:
     try:
         from hrp.api.platform import PlatformAPI
 
-        api = PlatformAPI()
+        api = PlatformAPI(read_only=True)  # Read-only for dashboard queries
         result = api.fetchall_readonly(
             "SELECT DISTINCT feature_name FROM features ORDER BY feature_name"
         )

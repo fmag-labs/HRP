@@ -150,6 +150,13 @@ All agents follow `agent.run()` pattern. Agent pipeline chain:
 | `hrp.data.retention` | `RetentionEngine` (tiers: HOT 90d, WARM 1y, COLD 3y, ARCHIVE 5y+) |
 | `hrp.data.lineage` | `FeatureLineage`, `DataProvenance` for audit trails |
 | `hrp.data.ingestion` | Price, feature, universe, fundamentals ingestion jobs |
+| `hrp.data.connection_pool` | `ConnectionPool` with retry/backoff for DuckDB |
+| `hrp.ops` | `create_app()`, `run_server()` for health/metrics endpoints |
+| `hrp.ops.thresholds` | `OpsThresholds`, `load_thresholds()` for configurable alerts |
+| `hrp.ops.metrics` | `MetricsCollector` for system/data metrics |
+| `hrp.utils.startup` | `validate_startup()`, `fail_fast_startup()` for production checks |
+| `hrp.utils.locks` | `JobLock`, `acquire_job_lock()` for job concurrency |
+| `hrp.utils.log_filter` | `filter_secrets()` to mask secrets in logs |
 
 ## Walk-Forward Validation
 
@@ -165,9 +172,11 @@ Supports purge/embargo periods to prevent temporal leakage:
 |---------|---------|------|
 | Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
 | MLflow UI | `mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db` | 5000 |
+| Ops Server | `python -m hrp.ops` | 8080 |
 | Single job | `python -m hrp.agents.run_job --job prices` | - |
 | Scheduler | `python -m hrp.agents.run_scheduler` | - |
 | Scheduler (full) | `python -m hrp.agents.run_scheduler --with-data-jobs --with-research-pipeline` | - |
+| HRP CLI | `hrp --help` | - |
 
 Job scheduling: Individual launchd plists in `launchd/`, managed via `scripts/manage_launchd.sh install|uninstall|status|reload`
 
@@ -182,9 +191,13 @@ Job scheduling: Individual launchd plists in `launchd/`, managed via `scripts/ma
 | `NOTIFICATION_EMAIL` | Email address for notifications | For alerts |
 | `NOTIFICATION_FROM_EMAIL` | From address (default: `onboarding@resend.dev`) | No |
 | `SIMFIN_API_KEY` | SimFin API key for fundamentals (falls back to YFinance) | For fundamentals |
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude agents | For production |
 | `HRP_AUTH_ENABLED` | Enable dashboard authentication (default: `true`) | No |
 | `HRP_AUTH_COOKIE_KEY` | Secret key for auth cookies (32+ chars) | For auth |
 | `HRP_AUTH_USERS_FILE` | Path to users YAML file (default: `~/hrp-data/auth/users.yaml`) | No |
+| `HRP_OPS_HOST` | Ops server bind host (default: `0.0.0.0`) | No |
+| `HRP_OPS_PORT` | Ops server bind port (default: `8080`) | No |
+| `HRP_THRESHOLD_*` | Override alert thresholds (e.g., `HRP_THRESHOLD_HEALTH_SCORE_WARNING=85`) | No |
 
 ## Project Structure
 
@@ -199,9 +212,10 @@ hrp/
 ├── mcp/            # Claude MCP servers
 ├── agents/         # Scheduled agents
 ├── notifications/  # Email alerts
+├── ops/            # Ops server (health, metrics, thresholds)
 ├── execution/      # Live trading, broker integration (Tier 4)
-├── monitoring/     # System health, ops alerting (Tier 3)
-└── utils/          # Shared utilities
+├── monitoring/     # System health, ops alerting
+└── utils/          # Shared utilities (startup, locks, log_filter)
 ```
 
 ## Where Does New Code Go?
@@ -240,8 +254,8 @@ pytest tests/ -v
 | Tier | Focus | Status |
 |------|-------|--------|
 | **Foundation** | Data + Research Core | 100% |
-| **Intelligence** | ML + Agents | 90% |
-| **Production** | Security + Ops | 0% |
+| **Intelligence** | ML + Agents | 100% |
+| **Production** | Security + Ops | 100% |
 | **Trading** | Live Execution | 0% |
 
 See `docs/plans/Project-Status.md` for details.
