@@ -8,12 +8,15 @@ import pandas as pd
 import pytest
 from optuna.distributions import FloatDistribution, IntDistribution, CategoricalDistribution
 
+import optuna
+
 from hrp.ml.optimization import (
     OptimizationConfig,
     OptimizationResult,
     cross_validated_optimize,
     _generate_param_combinations,
     _evaluate_params,
+    _get_sampler,
     SCORING_METRICS,
 )
 
@@ -452,3 +455,43 @@ class TestOptimizationConfigNew:
                 start_date=date(2015, 1, 1),
                 end_date=date(2023, 12, 31),
             )
+
+
+class TestGetSampler:
+    """Tests for _get_sampler function."""
+
+    def test_tpe_sampler(self):
+        """Test TPE sampler creation."""
+        param_space = {"alpha": FloatDistribution(0.1, 10.0)}
+        sampler = _get_sampler("tpe", param_space)
+        assert isinstance(sampler, optuna.samplers.TPESampler)
+
+    def test_random_sampler(self):
+        """Test random sampler creation."""
+        param_space = {"alpha": FloatDistribution(0.1, 10.0)}
+        sampler = _get_sampler("random", param_space)
+        assert isinstance(sampler, optuna.samplers.RandomSampler)
+
+    def test_grid_sampler_with_categorical(self):
+        """Test grid sampler with categorical distribution."""
+        param_space = {"solver": CategoricalDistribution(["lbfgs", "saga"])}
+        sampler = _get_sampler("grid", param_space)
+        assert isinstance(sampler, optuna.samplers.GridSampler)
+
+    def test_grid_sampler_requires_step_for_float(self):
+        """Test grid sampler requires step for float distributions."""
+        param_space = {"alpha": FloatDistribution(0.1, 10.0)}  # No step
+        with pytest.raises(ValueError, match="requires step"):
+            _get_sampler("grid", param_space)
+
+    def test_cmaes_sampler(self):
+        """Test CMA-ES sampler creation."""
+        param_space = {"alpha": FloatDistribution(0.1, 10.0)}
+        sampler = _get_sampler("cmaes", param_space)
+        assert isinstance(sampler, optuna.samplers.CmaEsSampler)
+
+    def test_invalid_sampler_raises(self):
+        """Test invalid sampler raises ValueError."""
+        param_space = {"alpha": FloatDistribution(0.1, 10.0)}
+        with pytest.raises(ValueError, match="Unknown sampler"):
+            _get_sampler("invalid", param_space)

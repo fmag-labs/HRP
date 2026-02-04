@@ -16,12 +16,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from loguru import logger
+import optuna
 from optuna.distributions import (
     BaseDistribution,
     FloatDistribution,
     IntDistribution,
     CategoricalDistribution,
 )
+from optuna.samplers import GridSampler, RandomSampler, TPESampler, CmaEsSampler
 
 from hrp.ml.models import SUPPORTED_MODELS
 from hrp.ml.validation import (
@@ -51,6 +53,79 @@ SCORING_METRICS = {
 
 # Valid Optuna samplers
 VALID_SAMPLERS = {"grid", "random", "tpe", "cmaes"}
+
+
+def _distributions_to_grid(
+    param_space: dict[str, BaseDistribution],
+) -> dict[str, list]:
+    """
+    Convert Optuna distributions to explicit grid for GridSampler.
+
+    Args:
+        param_space: Dict of param name to distribution
+
+    Returns:
+        Dict of param name to list of values
+
+    Raises:
+        ValueError: If FloatDistribution lacks step
+    """
+    grid = {}
+    for name, dist in param_space.items():
+        if isinstance(dist, CategoricalDistribution):
+            grid[name] = list(dist.choices)
+        elif isinstance(dist, IntDistribution):
+            step = dist.step if dist.step else 1
+            grid[name] = list(range(dist.low, dist.high + 1, step))
+        elif isinstance(dist, FloatDistribution):
+            if dist.step:
+                values = []
+                v = dist.low
+                while v <= dist.high:
+                    values.append(v)
+                    v += dist.step
+                grid[name] = values
+            else:
+                raise ValueError(
+                    f"Grid sampler requires step for float param '{name}'. "
+                    f"Use FloatDistribution({dist.low}, {dist.high}, step=X)"
+                )
+        else:
+            raise ValueError(f"Unsupported distribution type for '{name}': {type(dist)}")
+    return grid
+
+
+def _get_sampler(
+    sampler_name: str,
+    param_space: dict[str, BaseDistribution],
+) -> optuna.samplers.BaseSampler:
+    """
+    Create Optuna sampler from name.
+
+    Args:
+        sampler_name: One of 'grid', 'random', 'tpe', 'cmaes'
+        param_space: Parameter space (needed for GridSampler)
+
+    Returns:
+        Configured Optuna sampler
+
+    Raises:
+        ValueError: If sampler_name invalid or grid requires step for floats
+    """
+    if sampler_name == "grid":
+        search_space = _distributions_to_grid(param_space)
+        return GridSampler(search_space)
+    elif sampler_name == "random":
+        return RandomSampler(seed=42)
+    elif sampler_name == "tpe":
+        return TPESampler(seed=42)
+    elif sampler_name == "cmaes":
+        return CmaEsSampler(seed=42)
+    else:
+        raise ValueError(
+            f"Unknown sampler: '{sampler_name}'. "
+            f"Options: grid, random, tpe, cmaes"
+        )
 
 
 @dataclass
