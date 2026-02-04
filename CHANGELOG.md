@@ -1,6 +1,12 @@
 ## [Unreleased]
 
 ### Added
+- **Production Tier Phase 1 - Essential Security** (PR #40):
+  - Environment system: `HRP_ENVIRONMENT` enum (development/staging/production)
+  - Dashboard authentication with bcrypt password hashing and session cookies
+  - Security validators: XSS prevention, path traversal detection, filename sanitization
+  - Secrets validation module for environment variable checks
+  - Auth CLI: `python -m hrp.auth` with list-users, add-user, reset-password commands
 - **Pipeline Progress Dashboard**: New Streamlit page with Kanban view showing hypothesis pipeline stages and agent launcher (`hrp/dashboard/pages/pipeline_progress.py`, `pipeline_kanban.py`, `agent_panel.py`)
 - **Kill Gate Enforcer backtest timeframe**: Reports now include start_date and end_date when available from experiment context
 

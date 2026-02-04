@@ -7,7 +7,7 @@
 | **Foundation** | Data + Research Core | Complete |
 | **Intelligence** | ML + Agents | Complete |
 | **Intelligence Extensions** | NLP + Bayesian Optimization | Bayesian: Complete, NLP: Not started |
-| **Production** | Security + Ops | Not started |
+| **Production** | Security + Ops | In Progress (Phase 1 complete) |
 | **Trading** | Live Execution | Not started |
 
 ---
@@ -168,12 +168,22 @@ Text-based features from earnings calls, SEC filings, and news.
 
 ---
 
-## Tier 3: Production (Not Started)
+## Tier 3: Production (In Progress)
 
-- Dashboard authentication
-- Security hardening (XSS, path traversal, secret management)
+### Phase 1: Essential Security (Complete)
+
+- **Environment System**: `HRP_ENVIRONMENT` enum (development/staging/production) controlling security behaviors
+- **Dashboard Authentication**: bcrypt password hashing, session cookies, login/logout flow
+- **Security Validators**: XSS prevention, path traversal detection, filename sanitization (`hrp/utils/security.py`)
+- **Secrets Validation**: `validate_secrets()` in `hrp/utils/secrets.py` for environment variable checks
+- **Auth CLI**: User management via `python -m hrp.auth` (list-users, add-user, reset-password)
+- **Environment Variables**: `HRP_AUTH_ENABLED`, `HRP_AUTH_COOKIE_KEY`, `HRP_AUTH_USERS_FILE`
+
+### Phase 2: Ops (Not Started)
+
 - Health endpoints and metrics collection
 - Alert thresholds
+- Monitoring dashboards
 
 ## Tier 4: Trading (Not Started)
 
