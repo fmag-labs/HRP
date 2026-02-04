@@ -597,3 +597,74 @@ class TestEvaluateWithPruning:
         # Should have pruned after second fold
         assert mock_trial.report.call_count == 2
         assert mock_trial.should_prune.call_count == 2
+
+
+class TestCrossValidatedOptimizeNew:
+    """Tests for Optuna-based cross_validated_optimize."""
+
+    @pytest.fixture
+    def sample_config(self):
+        return OptimizationConfig(
+            model_type="ridge",
+            target="returns_20d",
+            features=["momentum_20d", "volatility_20d"],
+            param_space={"alpha": FloatDistribution(0.1, 10.0, log=True)},
+            start_date=date(2015, 1, 1),
+            end_date=date(2020, 12, 31),
+            n_folds=3,
+            sampler="tpe",
+            n_trials=5,
+            feature_selection=False,
+            enable_pruning=False,
+        )
+
+    @pytest.fixture
+    def mock_features_df(self):
+        dates = pd.date_range("2015-01-01", "2020-12-31", freq="B")
+        symbols = ["AAPL", "MSFT"]
+        index = pd.MultiIndex.from_product([dates, symbols], names=["date", "symbol"])
+        np.random.seed(42)
+        n = len(index)
+        return pd.DataFrame(
+            {
+                "momentum_20d": np.random.randn(n) * 0.1,
+                "volatility_20d": np.abs(np.random.randn(n)) * 0.2,
+                "returns_20d": 0.1 * np.random.randn(n) * 0.1 + np.random.randn(n) * 0.05,
+            },
+            index=index,
+        )
+
+    def test_returns_optimization_result(self, sample_config, mock_features_df):
+        with patch("hrp.ml.optimization._fetch_features") as mock_fetch:
+            mock_fetch.return_value = mock_features_df
+            result = cross_validated_optimize(
+                config=sample_config, symbols=["AAPL", "MSFT"], log_to_mlflow=False
+            )
+        assert isinstance(result, OptimizationResult)
+        assert "alpha" in result.best_params
+        assert result.n_trials_completed > 0
+
+    def test_respects_trial_counter(self, mock_features_df):
+        config = OptimizationConfig(
+            model_type="ridge",
+            target="returns_20d",
+            features=["momentum_20d"],
+            param_space={"alpha": FloatDistribution(0.1, 10.0)},
+            start_date=date(2015, 1, 1),
+            end_date=date(2020, 12, 31),
+            n_folds=3,
+            hypothesis_id="HYP-TEST-001",
+            n_trials=10,
+            feature_selection=False,
+            enable_pruning=False,
+        )
+        with patch("hrp.ml.optimization._fetch_features") as mock_fetch, patch(
+            "hrp.ml.optimization.HyperparameterTrialCounter"
+        ) as mock_counter:
+            mock_fetch.return_value = mock_features_df
+            mock_instance = MagicMock()
+            mock_instance.remaining_trials = 3
+            mock_instance.can_try.return_value = True
+            mock_counter.return_value = mock_instance
+            cross_validated_optimize(config=config, symbols=["AAPL"], log_to_mlflow=False)
+        mock_counter.assert_called_once_with(hypothesis_id="HYP-TEST-001", max_trials=10)
