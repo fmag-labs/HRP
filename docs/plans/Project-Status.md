@@ -7,7 +7,7 @@
 | **Foundation** | Data + Research Core | Complete |
 | **Intelligence** | ML + Agents | Complete |
 | **Intelligence Extensions** | NLP + Bayesian Optimization | Bayesian: Complete, NLP: Not started |
-| **Production** | Security + Ops | In Progress (Phase 1 complete) |
+| **Production** | Security + Ops | Complete |
 | **Trading** | Live Execution | Not started |
 
 ---
@@ -168,7 +168,7 @@ Text-based features from earnings calls, SEC filings, and news.
 
 ---
 
-## Tier 3: Production (In Progress)
+## Tier 3: Production (Complete)
 
 ### Phase 1: Essential Security (Complete)
 
@@ -179,11 +179,20 @@ Text-based features from earnings calls, SEC filings, and news.
 - **Auth CLI**: User management via `python -m hrp.dashboard.auth_cli` (list-users, add-user, remove-user, reset-password)
 - **Environment Variables**: `HRP_AUTH_ENABLED`, `HRP_AUTH_COOKIE_KEY`, `HRP_AUTH_USERS_FILE`
 
-### Phase 2: Ops (Not Started)
+### Phase 2: Ops (Complete)
 
-- Health endpoints and metrics collection
-- Alert thresholds
-- Monitoring dashboards
+- **Ops Server**: FastAPI server with `/health`, `/ready`, `/metrics` endpoints (`hrp/ops/`)
+- **Prometheus Metrics**: `MetricsCollector` for system (CPU, memory, disk) and data pipeline metrics
+- **Configurable Thresholds**: `OpsThresholds` dataclass with YAML + env var support
+- **Ops Dashboard**: Streamlit page for system monitoring (`hrp/dashboard/pages/9_Ops.py`)
+- **Startup Validation**: `fail_fast_startup()` for production secret checks (`hrp/utils/startup.py`)
+- **Secret Filtering**: `filter_secrets()` to mask API keys in logs (`hrp/utils/log_filter.py`)
+- **Connection Pooling**: `ConnectionPool` with retry/backoff for DuckDB (`hrp/data/connection_pool.py`)
+- **Job Locking**: File-based locking with stale detection (`hrp/utils/locks.py`)
+- **read_only Enforcement**: Dashboard and monitoring queries use read-only connections
+- **Integration Tests**: Golden path tests for hypothesis lifecycle (`tests/integration/`)
+- **CLI Entrypoint**: Unified `hrp` command via `hrp/cli.py`
+- **Version Alignment**: `hrp.__version__` from pyproject.toml metadata
 
 ## Tier 4: Trading (Not Started)
 

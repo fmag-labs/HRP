@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hrp.ops-server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/fer/Documents/GitHub/HRP/.venv/bin/python</string>
+        <string>-m</string>
+        <string>hrp.ops</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8080</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/fer/Documents/GitHub/HRP</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/fer/hrp-data/logs/ops-server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/fer/hrp-data/logs/ops-server.error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/Users/fer/Documents/GitHub/HRP</string>
+        <key>HRP_ENVIRONMENT</key>
+        <string>production</string>
+    </dict>
+</dict>
+</plist>
