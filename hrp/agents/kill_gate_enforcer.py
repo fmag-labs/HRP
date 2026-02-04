@@ -98,6 +98,8 @@ class BaselineResult:
     max_drawdown: float
     volatility: float
     mlflow_run_id: str
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 @dataclass
@@ -143,6 +145,8 @@ class KillGateResult:
     model_type: str = ""
     ml_ic: float | None = None  # Information Coefficient from ML Scientist
     stability_score: float | None = None  # From ML experiment
+    backtest_start: date | None = None
+    backtest_end: date | None = None
 
 
 @dataclass
@@ -367,6 +371,20 @@ class KillGateEnforcer(IngestionJob):
         elif qd_backtest.get("features"):
             features = qd_backtest["features"]
 
+        # Extract backtest dates
+        backtest_start: date | None = None
+        backtest_end: date | None = None
+        if qd_backtest.get("backtest_start"):
+            try:
+                backtest_start = date.fromisoformat(qd_backtest["backtest_start"])
+            except (ValueError, TypeError):
+                pass
+        if qd_backtest.get("backtest_end"):
+            try:
+                backtest_end = date.fromisoformat(qd_backtest["backtest_end"])
+            except (ValueError, TypeError):
+                pass
+
         return {
             "title": hypothesis.get("title", ""),
             "thesis": hypothesis.get("thesis", ""),
@@ -374,6 +392,8 @@ class KillGateEnforcer(IngestionJob):
             "model_type": ml_experiment.get("model_type", qd_backtest.get("model_type", "")),
             "ml_ic": ml_experiment.get("mean_ic"),
             "stability_score": ml_experiment.get("stability_score"),
+            "backtest_start": backtest_start,
+            "backtest_end": backtest_end,
         }
 
     def _orchestrate_hypothesis(self, hypothesis: dict[str, Any]) -> KillGateResult:
@@ -462,6 +482,20 @@ class KillGateEnforcer(IngestionJob):
         metadata = hypothesis.get("metadata", {})
         backtest_results = metadata.get("quant_developer_backtest", {})
 
+        # Extract backtest dates if available
+        start_date: date | None = None
+        end_date: date | None = None
+        if backtest_results.get("backtest_start"):
+            try:
+                start_date = date.fromisoformat(backtest_results["backtest_start"])
+            except (ValueError, TypeError):
+                pass
+        if backtest_results.get("backtest_end"):
+            try:
+                end_date = date.fromisoformat(backtest_results["backtest_end"])
+            except (ValueError, TypeError):
+                pass
+
         # QD stores base metrics at top level (sharpe, max_drawdown, etc.)
         # Use these as the baseline for kill gate evaluation
         if backtest_results and "sharpe" in backtest_results:
@@ -472,6 +506,8 @@ class KillGateEnforcer(IngestionJob):
                 max_drawdown=float(backtest_results.get("max_drawdown", 0.0)),
                 volatility=float(backtest_results.get("volatility", 0.0)),
                 mlflow_run_id=backtest_results.get("mlflow_run_id", ""),
+                start_date=start_date,
+                end_date=end_date,
             )
 
         return baselines
@@ -904,6 +940,8 @@ class KillGateEnforcer(IngestionJob):
             # Baseline metrics
             if result.baselines:
                 parts.append("#### Baseline Performance\n")
+                if result.backtest_start and result.backtest_end:
+                    parts.append(f"**Backtest Period:** {result.backtest_start} → {result.backtest_end}\n")
                 parts.append("| Metric | Sharpe | Return | Max DD | Volatility | Status |")
                 parts.append("|--------|--------|--------|--------|------------|--------|")
                 for name, baseline in result.baselines.items():

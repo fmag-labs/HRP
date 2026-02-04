@@ -908,6 +908,8 @@ class QuantDeveloper(ResearchAgent):
                 time_metrics=time_metrics,
                 regime_metrics=regime_metrics,
                 trade_stats=trade_stats,
+                start_date=start_date,
+                end_date=end_date,
             )
 
             # 12. Log lineage event
@@ -960,6 +962,8 @@ class QuantDeveloper(ResearchAgent):
         time_metrics: list[dict],
         regime_metrics: dict,
         trade_stats: dict,
+        start_date: date,
+        end_date: date,
     ) -> None:
         """
         Update hypothesis with Quant Developer backtest results.
@@ -971,6 +975,8 @@ class QuantDeveloper(ResearchAgent):
             time_metrics: Time period metrics
             regime_metrics: Regime-based metrics
             trade_stats: Trade statistics
+            start_date: Backtest start date
+            end_date: Backtest end date
         """
         try:
             # Build param_experiments dict for Validation Analyst
@@ -995,6 +1001,8 @@ class QuantDeveloper(ResearchAgent):
             metadata = {
                 "quant_developer_backtest": {
                     "date": date.today().isoformat(),
+                    "backtest_start": start_date.isoformat(),
+                    "backtest_end": end_date.isoformat(),
                     "sharpe": backtest_result.sharpe,
                     "max_drawdown": backtest_result.max_drawdown,
                     "total_return": backtest_result.total_return,
