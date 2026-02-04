@@ -22,6 +22,9 @@ from typing import Any
 import streamlit as st
 from loguru import logger
 
+from hrp.dashboard.auth import AuthConfig, get_authenticator
+from hrp.utils.config import get_config
+
 # Configure page - must be first Streamlit command
 st.set_page_config(
     page_title="HRP Dashboard",
@@ -1007,8 +1010,36 @@ def main() -> None:
     """Main application entry point."""
     logger.info("HRP Dashboard started")
 
+    # Check authentication if required
+    config = get_config()
+    if config.auth_required:
+        auth_config = AuthConfig.from_env()
+        authenticator = get_authenticator(auth_config)
+
+        if authenticator:
+            name, authentication_status, username = authenticator.login("Login", "main")
+
+            if authentication_status is False:
+                st.error("Username/password is incorrect")
+                return
+            elif authentication_status is None:
+                st.warning("Please enter your username and password")
+                return
+
+            # Store authenticated user in session
+            st.session_state.authenticated_user = username
+            logger.info(f"User authenticated: {username}")
+
     # Render sidebar and get selected page
     page = render_sidebar()
+
+    # Add logout button if authenticated
+    if config.auth_required and "authenticated_user" in st.session_state:
+        auth_config = AuthConfig.from_env()
+        authenticator = get_authenticator(auth_config)
+        if authenticator:
+            with st.sidebar:
+                authenticator.logout("Logout", "sidebar")
 
     # Check if database is locked before rendering pages
     api = get_api()
