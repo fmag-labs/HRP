@@ -15,7 +15,7 @@ import streamlit as st
 from hrp.api.platform import PlatformAPI
 
 def _get_api():
-    return PlatformAPI()
+    return PlatformAPI(read_only=True)  # Read-only for dashboard queries
 
 from hrp.dashboard.components.data_explorer.styles import (
     CHART_DEFAULTS,

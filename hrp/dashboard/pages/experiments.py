@@ -123,7 +123,7 @@ def get_run_details(run_id: str) -> dict[str, Any] | None:
 def get_available_symbols() -> list[str]:
     """Get list of available symbols from database."""
     try:
-        api = PlatformAPI()
+        api = PlatformAPI(read_only=True)  # Read-only for dashboard queries
         result = api._db.fetchall(
             "SELECT DISTINCT symbol FROM prices ORDER BY symbol"
         )
@@ -137,7 +137,7 @@ def get_available_symbols() -> list[str]:
 def get_hypotheses_for_filter() -> list[dict[str, str]]:
     """Get hypotheses for filtering dropdown."""
     try:
-        api = PlatformAPI()
+        api = PlatformAPI(read_only=True)  # Read-only for dashboard queries
         hypotheses = api.list_hypotheses(limit=50)
         return [{"id": h["hypothesis_id"], "title": h["title"]} for h in hypotheses]
     except Exception as e:
@@ -478,7 +478,7 @@ def render_compare_tab() -> None:
         return
 
     # Build comparison dataframe
-    api = PlatformAPI()
+    api = PlatformAPI(read_only=True)  # Read-only for dashboard queries
     comparison_df = api.compare_experiments(selected_run_ids, selected_metrics)
 
     if comparison_df.empty:

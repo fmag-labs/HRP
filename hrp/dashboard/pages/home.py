@@ -96,7 +96,7 @@ def _get_database_stats(api: Any) -> dict[str, Any]:
             # Get date range from prices table
             try:
                 from hrp.api.platform import PlatformAPI
-                api = PlatformAPI()
+                api = PlatformAPI(read_only=True)  # Read-only for dashboard queries
                 result = api.fetchone_readonly("SELECT MIN(date), MAX(date) FROM prices")
                 if result and result[0] is not None:
                     stats["date_range_start"] = result[0]
@@ -174,10 +174,10 @@ def render() -> None:
     st.title("HRP Dashboard")
     st.subheader("Hedgefund Research Platform")
 
-    # Initialize API
+    # Initialize API (read-only for dashboard queries)
     try:
         from hrp.api.platform import PlatformAPI
-        api = PlatformAPI()
+        api = PlatformAPI(read_only=True)
     except Exception as e:
         st.error(f"Failed to initialize Platform API: {e}")
         st.info("Make sure the database is initialized. Run: python -m hrp.data.schema --init")

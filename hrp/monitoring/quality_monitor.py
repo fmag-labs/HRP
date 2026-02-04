@@ -296,7 +296,7 @@ class DataQualityMonitor:
         try:
             from hrp.api.platform import PlatformAPI
 
-            api = PlatformAPI()
+            api = PlatformAPI(read_only=True)  # Read-only for monitoring queries
             result = api.fetchone_readonly("SELECT MAX(date) FROM prices")
             if result and result[0]:
                 last_date = result[0]
@@ -387,7 +387,7 @@ class DataQualityMonitor:
         try:
             from hrp.api.platform import PlatformAPI
 
-            api = PlatformAPI()
+            api = PlatformAPI(read_only=True)  # Read-only for monitoring queries
             result = api.fetchone_readonly("SELECT MAX(date) FROM prices")
             if result and result[0]:
                 last_date = result[0]

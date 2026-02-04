@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 from hrp.api.platform import PlatformAPI
 
 def _get_api():
-    return PlatformAPI()
+    return PlatformAPI(read_only=True)  # Read-only for dashboard queries
 
 
 @st.cache_data(ttl=60)  # Cache for 1 minute
