@@ -167,7 +167,8 @@ Supports purge/embargo periods to prevent temporal leakage:
 | Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
 | MLflow UI | `mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db` | 5000 |
 | Single job | `python -m hrp.agents.run_job --job prices` | - |
-| Scheduler (legacy) | `python -m hrp.agents.run_scheduler` | - |
+| Scheduler | `python -m hrp.agents.run_scheduler` | - |
+| Scheduler (full) | `python -m hrp.agents.run_scheduler --with-data-jobs --with-research-pipeline` | - |
 
 Job scheduling: Individual launchd plists in `launchd/`, managed via `scripts/manage_launchd.sh install|uninstall|status|reload`
 
