@@ -327,8 +327,8 @@ class TestQualityChecksIntegration:
                 (base_date,),
             )
 
-        # Run price anomaly check
-        check = PriceAnomalyCheck(pipeline_test_db, threshold=0.5)
+        # Run price anomaly check (read_only=False to match existing connection)
+        check = PriceAnomalyCheck(pipeline_test_db, threshold=0.5, read_only=False)
         result = check.run(base_date)
 
         assert not result.passed
@@ -354,7 +354,7 @@ class TestQualityChecksIntegration:
                 )
 
         # Run completeness check
-        check = CompletenessCheck(pipeline_test_db)
+        check = CompletenessCheck(pipeline_test_db, read_only=False)
         result = check.run(base_date)
 
         # Should have 2 missing symbols (GOOGL, TSLA)
@@ -403,7 +403,7 @@ class TestQualityChecksIntegration:
                 )
 
         # Run gap detection
-        check = GapDetectionCheck(pipeline_test_db, lookback_days=10)
+        check = GapDetectionCheck(pipeline_test_db, lookback_days=10, read_only=False)
         result = check.run(base_date)
 
         # Should detect gaps
@@ -436,7 +436,7 @@ class TestQualityChecksIntegration:
             )
 
         # Run stale data check
-        check = StaleDataCheck(pipeline_test_db, stale_threshold_days=3)
+        check = StaleDataCheck(pipeline_test_db, stale_threshold_days=3, read_only=False)
         result = check.run(date(2024, 1, 15))
 
         # Should detect stale data
@@ -465,7 +465,7 @@ class TestQualityChecksIntegration:
             )
 
         # Run volume anomaly check
-        check = VolumeAnomalyCheck(pipeline_test_db)
+        check = VolumeAnomalyCheck(pipeline_test_db, read_only=False)
         result = check.run(test_date)
 
         # Should detect zero volume
@@ -507,7 +507,7 @@ class TestValidationWorkflow:
             )
 
         # Step 3: Verify with quality checks
-        check = CompletenessCheck(pipeline_test_db)
+        check = CompletenessCheck(pipeline_test_db, read_only=False)
         result = check.run(test_date)
 
         # AAPL should not be in missing list

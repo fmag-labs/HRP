@@ -21,8 +21,8 @@ def test_get_all_agent_status_returns_list():
     """get_all_agent_status should return list of AgentStatus."""
     from hrp.dashboard.agents_monitor import get_all_agent_status
 
-    # Mock _get_lineage_read_only to return empty events (all agents will be idle)
-    with patch("hrp.dashboard.agents_monitor._get_lineage_read_only", return_value=[]):
+    # Mock _get_lineage_events to return empty events (all agents will be idle)
+    with patch("hrp.dashboard.agents_monitor._get_lineage_events", return_value=[]):
         result = get_all_agent_status()
         assert isinstance(result, list)
         # All agents should be present
@@ -40,8 +40,8 @@ def test_agent_status_has_valid_status_field():
     """Each AgentStatus should have valid status field."""
     from hrp.dashboard.agents_monitor import get_all_agent_status
 
-    # Mock _get_lineage_read_only to return empty events (all agents will be idle)
-    with patch("hrp.dashboard.agents_monitor._get_lineage_read_only", return_value=[]):
+    # Mock _get_lineage_events to return empty events (all agents will be idle)
+    with patch("hrp.dashboard.agents_monitor._get_lineage_events", return_value=[]):
         result = get_all_agent_status()
         valid_statuses = {"running", "completed", "failed", "idle"}
         for agent in result:
@@ -65,7 +65,7 @@ def test_get_timeline_returns_list():
         "parent_lineage_id": None,
     }
 
-    with patch("hrp.dashboard.agents_monitor._get_lineage_read_only", return_value=[test_event]):
+    with patch("hrp.dashboard.agents_monitor._get_lineage_events", return_value=[test_event]):
         result = get_timeline(limit=50)
         assert isinstance(result, list)
         # Should enrich with agent info

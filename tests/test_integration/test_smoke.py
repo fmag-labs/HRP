@@ -291,8 +291,8 @@ class TestSmoke:
             mock_instance = MagicMock()
             mock_notifier.return_value = mock_instance
 
-            # Generate quality report
-            generator = QualityReportGenerator(smoke_test_db)
+            # Generate quality report (read_only=False to match existing connection)
+            generator = QualityReportGenerator(smoke_test_db, read_only=False)
             report = generator.generate_report(date(2024, 1, 10))
 
             assert report is not None

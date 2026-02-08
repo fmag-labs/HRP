@@ -288,6 +288,8 @@ class TestFeatureComputationJob:
     @patch("hrp.agents.jobs.EmailNotifier")
     def test_run_with_met_data_requirements(self, mock_notifier, mock_compute, job_test_db):
         """run() should execute when data requirements are met."""
+        from datetime import date, timedelta
+
         mock_compute.return_value = {
             "features_computed": 100,
             "rows_inserted": 100,
@@ -301,24 +303,26 @@ class TestFeatureComputationJob:
         db = get_db(job_test_db)
         with db.connection() as conn:
             # Insert symbols first (FK constraint)
-            for i in range(100):
+            for i in range(200):
                 conn.execute(
                     f"""
                     INSERT INTO symbols (symbol, name, exchange)
                     VALUES ('SYM{i}', 'Symbol {i}', 'NYSE')
                     """
                 )
-            # Insert 1000+ rows of price data with recent dates
-            for i in range(1001):
-                day = 1 + (i % 28)
-                month = 1 + (i // 28) % 12
-                year = 2026 if month == 1 else 2025
-                conn.execute(
-                    f"""
-                    INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
-                    VALUES ('SYM{i % 100}', '{year}-{month:02d}-{day:02d}', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
-                    """
-                )
+            # Insert 1000+ rows of price data with RECENT dates (within max_price_age_days)
+            # Use 200 symbols × 6 days = 1200 unique rows
+            today = date.today()
+            for symbol_idx in range(200):
+                for day_offset in range(6):
+                    # Ensure most recent date (day_offset=0) is today
+                    price_date = today - timedelta(days=day_offset)
+                    conn.execute(
+                        f"""
+                        INSERT INTO prices (symbol, date, open, high, low, close, volume, adj_close)
+                        VALUES ('SYM{symbol_idx}', '{price_date}', 100.0, 101.0, 99.0, 100.5, 1000000, 100.5)
+                        """
+                    )
 
         job = FeatureComputationJob()
         result = job.run()

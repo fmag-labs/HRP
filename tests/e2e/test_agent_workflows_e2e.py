@@ -346,9 +346,9 @@ class TestConcurrency:
                 config=config,
             )
 
-            # Verify orchestrator was created with proper config
-            assert orchestrator is not None
-            assert orchestrator.config.max_parallel_experiments == 3
+            # Verify enforcer was created with proper config
+            assert enforcer is not None
+            assert enforcer.config.max_parallel_experiments == 3
 
     def test_resource_cleanup_on_failure(self, mock_platform_api):
         """

@@ -1224,7 +1224,10 @@ class PlatformAPI:
         """
         from hrp.data.quality.report import QualityReportGenerator
 
-        generator = QualityReportGenerator()
+        # Pass db_path and match read_only mode to ensure we use the same database as this API instance
+        db_path = str(self._db.db_path) if hasattr(self._db, 'db_path') else None
+        read_only = getattr(self._db, 'read_only', False)
+        generator = QualityReportGenerator(db_path=db_path, read_only=read_only)
         trend_data = generator.get_health_trend(days=days)
 
         if not trend_data:
