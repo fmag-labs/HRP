@@ -394,6 +394,27 @@ def run_predictions(dry_run: bool = False) -> dict:
     return job.run()
 
 
+def run_live_trader(dry_run: bool = False, trading_dry_run: bool = True) -> dict:
+    """Run live trading agent.
+
+    Args:
+        dry_run: If True, skip job entirely
+        trading_dry_run: If True, generate orders but don't submit to broker
+    """
+    from hrp.agents.live_trader import LiveTradingAgent, TradingConfig
+
+    if dry_run:
+        logger.info("[DRY RUN] Would run live trading agent")
+        return {"status": "dry_run", "job": "live-trader"}
+
+    # Override dry_run from argument
+    config = TradingConfig.from_env()
+    config.dry_run = trading_dry_run
+
+    agent = LiveTradingAgent(trading_config=config)
+    return agent.run()
+
+
 # Job registry
 JOBS: dict[str, callable] = {
     "prices": run_prices,
@@ -410,6 +431,7 @@ JOBS: dict[str, callable] = {
     "quality-sentinel": run_quality_sentinel,
     "cio-review": run_cio_review,
     "predictions": run_predictions,
+    "live-trader": run_live_trader,
 }
 
 
@@ -433,6 +455,7 @@ Available jobs:
   quality-sentinel     ML Quality Sentinel audit
   cio-review           Weekly CIO Agent review
   predictions          Daily predictions for deployed strategies
+  live-trader          Execute trades (DISABLED by default)
 """,
     )
 
@@ -466,6 +489,17 @@ Available jobs:
         default=365,
         help="Days of history for fundamentals-backfill job (default: 365)",
     )
+    parser.add_argument(
+        "--trading-dry-run",
+        action="store_true",
+        default=True,
+        help="Generate orders without submitting to broker (default: True)",
+    )
+    parser.add_argument(
+        "--execute-trades",
+        action="store_true",
+        help="Actually submit trades to broker (DANGEROUS - overrides --trading-dry-run)",
+    )
 
     args = parser.parse_args()
 
@@ -482,6 +516,9 @@ Available jobs:
             kwargs["source"] = args.fundamentals_source
         elif args.job == "fundamentals-backfill":
             kwargs["days"] = args.days
+        elif args.job == "live-trader":
+            # --execute-trades overrides --trading-dry-run
+            kwargs["trading_dry_run"] = not args.execute_trades
 
         result = JOBS[args.job](**kwargs)
         logger.info(f"Job {args.job} completed: {result}")
