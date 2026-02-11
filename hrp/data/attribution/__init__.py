@@ -7,6 +7,11 @@ Decomposes portfolio returns into explainable components:
 """
 
 from .attribution_config import AttributionConfig
+from .decision_attribution import (
+    DecisionAttributor,
+    RebalanceAnalyzer,
+    TradeDecision,
+)
 from .factor_attribution import (
     AttributionResult,
     BrinsonAttribution,
@@ -22,8 +27,11 @@ __all__ = [
     "AttributionConfig",
     "AttributionResult",
     "BrinsonAttribution",
+    "DecisionAttributor",
     "FactorAttribution",
     "FeatureImportanceTracker",
     "ImportanceResult",
+    "RebalanceAnalyzer",
     "RollingImportance",
+    "TradeDecision",
 ]
