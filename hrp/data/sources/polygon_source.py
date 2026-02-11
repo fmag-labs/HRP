@@ -135,6 +135,85 @@ class PolygonSource(DataSourceBase):
             logger.error(f"Error fetching {symbol}: {e}")
             raise
 
+    @retry_with_backoff(max_retries=3, base_delay=1.0, max_delay=30.0)
+    def get_minute_bars(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+    ) -> pd.DataFrame:
+        """
+        Fetch minute-level OHLCV data for a symbol.
+
+        Used as REST fallback during WebSocket disconnection for gap-filling.
+
+        Args:
+            symbol: Stock ticker (e.g., 'AAPL')
+            start: Start datetime (UTC)
+            end: End datetime (UTC)
+
+        Returns:
+            DataFrame with columns: symbol, timestamp, open, high, low, close, volume, vwap, trade_count, source
+        """
+        # Acquire rate limit token before making request
+        self.rate_limiter.acquire()
+
+        try:
+            # Polygon uses ISO 8601 format for datetime
+            start_str = start.strftime("%Y-%m-%dT%H:%M:%S")
+            end_str = end.strftime("%Y-%m-%dT%H:%M:%S")
+
+            logger.debug(f"Fetching minute bars for {symbol} from {start_str} to {end_str}")
+
+            # Fetch minute aggregates from Polygon
+            aggs = self.client.get_aggs(
+                ticker=symbol,
+                multiplier=1,
+                timespan="minute",
+                from_=start_str,
+                to=end_str,
+                adjusted=True,
+                limit=50000,
+            )
+
+            if not aggs:
+                logger.warning(f"No minute data returned for {symbol} from {start} to {end}")
+                return pd.DataFrame()
+
+            # Convert to DataFrame
+            rows = []
+            for agg in aggs:
+                rows.append({
+                    'timestamp': datetime.fromtimestamp(agg.timestamp / 1000),
+                    'open': agg.open,
+                    'high': agg.high,
+                    'low': agg.low,
+                    'close': agg.close,
+                    'volume': agg.volume,
+                    'vwap': agg.vwap if hasattr(agg, 'vwap') else None,
+                    'trade_count': agg.transactions if hasattr(agg, 'transactions') else None,
+                })
+
+            df = pd.DataFrame(rows)
+
+            # Add metadata
+            df['symbol'] = symbol
+            df['source'] = self.source_name
+
+            # Select and order columns
+            columns = ['symbol', 'timestamp', 'open', 'high', 'low', 'close', 'volume', 'vwap', 'trade_count', 'source']
+            df = df[columns]
+
+            logger.debug(f"Fetched {len(df)} minute bars for {symbol}")
+            return df
+
+        except BadResponse as e:
+            logger.error(f"Polygon API error for {symbol}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching minute bars for {symbol}: {e}")
+            raise
+
     def get_multiple_symbols(
         self,
         symbols: list[str],
