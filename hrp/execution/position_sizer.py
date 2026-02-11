@@ -9,12 +9,11 @@ import logging
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Optional
 
 import pandas as pd
 
 from hrp.api.platform import PlatformAPI
-from hrp.data.risk.risk_config import VaRConfig, VaRMethod, Distribution
+from hrp.data.risk.risk_config import Distribution, VaRConfig, VaRMethod
 from hrp.data.risk.var_calculator import VaRCalculator
 
 logger = logging.getLogger(__name__)
@@ -75,7 +74,7 @@ class PositionSizer:
         """
         self.config = config
         self.api = api
-        self._var_calculator: Optional[VaRCalculator] = None
+        self._var_calculator: VaRCalculator | None = None
 
         logger.info(
             f"Initialized PositionSizer: portfolio=${config.portfolio_value:,.2f}, "
@@ -150,7 +149,7 @@ class PositionSizer:
         signal_strength: float,
         current_price: Decimal,
         as_of_date: date,
-        current_portfolio_var: Optional[float] = None,
+        current_portfolio_var: float | None = None,
     ) -> int:
         """Calculate position size constrained by VaR limits.
 

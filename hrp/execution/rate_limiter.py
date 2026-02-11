@@ -4,7 +4,6 @@ import re
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ class RateLimiter:
         >>> # Make API call here
     """
 
-    def __init__(self, config: Optional[RateLimitConfig] = None) -> None:
+    def __init__(self, config: RateLimitConfig | None = None) -> None:
         """Initialize rate limiter.
 
         Args:
@@ -43,7 +42,7 @@ class RateLimiter:
         self.config = config or RateLimitConfig()
         self._tokens = float(self.config.max_requests_per_window)
         self._last_update = time.monotonic()
-        self._last_order_time: Optional[float] = None
+        self._last_order_time: float | None = None
         self._lock = Lock()
         self._retry_count = 0
 

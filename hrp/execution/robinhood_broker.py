@@ -4,9 +4,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
-from hrp.execution.orders import Order, OrderSide, OrderStatus, OrderType
+from hrp.execution.orders import Order, OrderStatus, OrderType
 from hrp.execution.rate_limiter import RateLimitConfig, RateLimiter
 from hrp.execution.robinhood_auth import RobinhoodAuthConfig, RobinhoodSession
 
@@ -25,10 +24,10 @@ class RobinhoodConfig:
 
     username: str
     password: str
-    totp_secret: Optional[str] = None
-    account_number: Optional[str] = None  # Multi-account support
+    totp_secret: str | None = None
+    account_number: str | None = None  # Multi-account support
     paper_trading: bool = True  # Safety flag (logs but blocks real orders)
-    rate_limit: Optional[RateLimitConfig] = None
+    rate_limit: RateLimitConfig | None = None
 
 
 class RobinhoodBroker:
@@ -206,7 +205,7 @@ class RobinhoodBroker:
             order.status = OrderStatus.REJECTED
             raise RuntimeError(f"Order submission failed: {e}") from e
 
-    def _submit_order_to_robinhood(self, order: Order) -> Optional[dict]:
+    def _submit_order_to_robinhood(self, order: Order) -> dict | None:
         """Submit order to Robinhood API based on order type.
 
         Args:
@@ -521,7 +520,7 @@ class RobinhoodBroker:
             logger.error("Get quotes failed: %s", e)
             return {}
 
-    def _map_robinhood_state(self, state: Optional[str]) -> OrderStatus:
+    def _map_robinhood_state(self, state: str | None) -> OrderStatus:
         """Map Robinhood order state to OrderStatus.
 
         Args:

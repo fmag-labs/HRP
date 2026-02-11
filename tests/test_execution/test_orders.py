@@ -1,8 +1,9 @@
 """Tests for order management system."""
-import pytest
-from datetime import datetime
 from decimal import Decimal
-from hrp.execution.orders import Order, OrderType, OrderSide, OrderStatus, OrderManager
+
+import pytest
+
+from hrp.execution.orders import Order, OrderManager, OrderSide, OrderStatus, OrderType
 
 
 def test_order_creation():
@@ -135,7 +136,7 @@ def test_order_manager_get_order(mock_broker):
         order_type=OrderType.MARKET,
     )
 
-    submitted = manager.submit_order(order)
+    manager.submit_order(order)
 
     retrieved = manager.get_order(order.order_id)
     assert retrieved is not None

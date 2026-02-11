@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hrp.execution.broker import IBKRBroker
@@ -49,19 +49,19 @@ class Order:
     side: OrderSide
     quantity: int
     order_type: OrderType
-    limit_price: Optional[Decimal] = None
-    stop_price: Optional[Decimal] = None  # For stop-loss and stop-limit orders
-    trail_amount: Optional[float] = None  # For trailing stop orders
+    limit_price: Decimal | None = None
+    stop_price: Decimal | None = None  # For stop-loss and stop-limit orders
+    trail_amount: float | None = None  # For trailing stop orders
     trail_type: str = "percentage"  # "percentage" or "amount"
     status: OrderStatus = OrderStatus.PENDING
     order_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    broker_order_id: Optional[int] = None
-    submitted_at: Optional[datetime] = None
-    filled_at: Optional[datetime] = None
-    filled_price: Optional[Decimal] = None
+    broker_order_id: int | None = None
+    submitted_at: datetime | None = None
+    filled_at: datetime | None = None
+    filled_price: Decimal | None = None
     filled_quantity: int = 0
-    commission: Optional[Decimal] = None
-    hypothesis_id: Optional[str] = None
+    commission: Decimal | None = None
+    hypothesis_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate order."""
@@ -123,7 +123,7 @@ class OrderManager:
         Raises:
             ValueError: If broker not connected
         """
-        from ib_insync import Stock, MarketOrder, LimitOrder
+        from ib_insync import LimitOrder, MarketOrder, Stock
 
         if not self.broker.is_connected():
             raise ValueError("Broker not connected")
@@ -164,7 +164,7 @@ class OrderManager:
 
         return order
 
-    def get_order(self, order_id: str) -> Optional[Order]:
+    def get_order(self, order_id: str) -> Order | None:
         """Get order by ID.
 
         Args:
@@ -183,7 +183,7 @@ class OrderManager:
         """
         return list(self._orders.values())
 
-    def cancel_order(self, order_id: str) -> Optional[Order]:
+    def cancel_order(self, order_id: str) -> Order | None:
         """Cancel an order.
 
         Args:

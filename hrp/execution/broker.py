@@ -8,7 +8,6 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from ib_insync import IB
     from hrp.execution.orders import Order, OrderStatus
 
 logger = logging.getLogger(__name__)

@@ -3,7 +3,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Literal
 
 import pandas as pd
 
@@ -36,7 +36,7 @@ class SignalConverter:
     def __init__(
         self,
         config: ConversionConfig,
-        position_sizer: Optional[PositionSizer] = None,
+        position_sizer: PositionSizer | None = None,
     ) -> None:
         """Initialize signal converter.
 
@@ -58,8 +58,8 @@ class SignalConverter:
         method: Literal["rank", "threshold", "zscore"] = "rank",
         current_prices: dict[str, Decimal] | None = None,
         use_var_sizing: bool = False,
-        as_of_date: Optional[date] = None,
-        current_positions: Optional[dict[str, int]] = None,
+        as_of_date: date | None = None,
+        current_positions: dict[str, int] | None = None,
     ) -> list[Order]:
         """Convert signals to trading orders.
 
@@ -190,7 +190,7 @@ class SignalConverter:
         target_signals: pd.DataFrame,
         current_prices: dict[str, Decimal],
         use_var_sizing: bool = False,
-        as_of_date: Optional[date] = None,
+        as_of_date: date | None = None,
     ) -> list[Order]:
         """Generate orders to rebalance from current to target positions.
 

@@ -2,7 +2,6 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +18,10 @@ class RobinhoodAuthConfig:
 
     username: str  # Email
     password: str  # Password (from env var)
-    totp_secret: Optional[str] = None  # Base32 TOTP secret for automated MFA
+    totp_secret: str | None = None  # Base32 TOTP secret for automated MFA
     session_expiry: int = 86400  # 24 hours default
     pickle_name: str = ""  # Session file suffix
-    device_token: Optional[str] = None  # Persistent device token
+    device_token: str | None = None  # Persistent device token
 
 
 class RobinhoodSession:
@@ -57,7 +56,7 @@ class RobinhoodSession:
 
         self.config = config
         self._authenticated = False
-        self._login_info: Optional[dict] = None
+        self._login_info: dict | None = None
 
         # Import here to avoid global dependency
         try:
