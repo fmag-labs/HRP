@@ -8,9 +8,8 @@ Tests the full integration:
 """
 
 import os
-from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
@@ -85,7 +84,7 @@ class TestLiveTradingAgentBrokerSelection:
         with patch.dict(os.environ, {"HRP_BROKER_TYPE": "fidelity"}):
             # Agent init will call _broker_config_from_env, which should raise
             with pytest.raises(ValueError, match="Unknown broker type"):
-                agent = LiveTradingAgent(trading_config=config, api=Mock())
+                _ = LiveTradingAgent(trading_config=config, api=Mock())
 
 
 class TestLiveTradingAgentVaRSizing:
@@ -256,19 +255,6 @@ class TestLiveTradingAgentStopLoss:
             portfolio_value=Decimal("100000"),
             stop_loss_pct=None,  # Disabled
         )
-        api = Mock(spec=PlatformAPI)
-        agent = LiveTradingAgent(trading_config=config, api=api)
-
-        buy_orders = [
-            Order(
-                symbol="AAPL",
-                side=OrderSide.BUY,
-                quantity=10,
-                order_type=OrderType.MARKET,
-            ),
-        ]
-
-        current_prices = {"AAPL": Decimal("150.00")}
 
         # When stop_loss_pct is None, _add_stop_loss_orders shouldn't be called
         # This is tested in the execute() flow

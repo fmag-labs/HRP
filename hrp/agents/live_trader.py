@@ -9,7 +9,7 @@ from typing import Any
 from hrp.agents.jobs import DataRequirement, IngestionJob
 from hrp.api.platform import PlatformAPI
 from hrp.execution.broker import BaseBroker, BrokerConfig, IBKRBroker
-from hrp.execution.orders import Order, OrderManager, OrderSide, OrderType
+from hrp.execution.orders import Order, OrderManager, OrderSide, OrderStatus, OrderType
 from hrp.execution.position_sizer import PositionSizer, PositionSizingConfig
 from hrp.execution.positions import PositionTracker
 from hrp.execution.robinhood_broker import RobinhoodBroker, RobinhoodConfig
