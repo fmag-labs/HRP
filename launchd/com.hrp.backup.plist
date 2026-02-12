@@ -6,14 +6,14 @@
     <string>com.hrp.backup</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/fer/Projects/HRP/.venv/bin/python</string>
+        <string>/Users/openclaw/Projects/HRP/.venv/bin/python</string>
         <string>-m</string>
         <string>hrp.agents.run_job</string>
         <string>--job</string>
         <string>backup</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/fer/Projects/HRP</string>
+    <string>/Users/openclaw/Projects/HRP</string>
     <key>StartCalendarInterval</key>
     <dict>
         <key>Weekday</key>
@@ -24,13 +24,13 @@
         <integer>0</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/fer/hrp-data/logs/backup.log</string>
+    <string>/Users/openclaw/hrp-data/logs/backup.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/fer/hrp-data/logs/backup.error.log</string>
+    <string>/Users/openclaw/hrp-data/logs/backup.error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PYTHONPATH</key>
-        <string>/Users/fer/Projects/HRP</string>
+        <string>/Users/openclaw/Projects/HRP</string>
     </dict>
 </dict>
 </plist>

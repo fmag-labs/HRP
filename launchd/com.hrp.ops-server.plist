@@ -6,7 +6,7 @@
     <string>com.hrp.ops-server</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/fer/Projects/HRP/.venv/bin/python</string>
+        <string>/Users/openclaw/Projects/HRP/.venv/bin/python</string>
         <string>-m</string>
         <string>hrp.ops</string>
         <string>--host</string>
@@ -15,19 +15,19 @@
         <string>8080</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/fer/Projects/HRP</string>
+    <string>/Users/openclaw/Projects/HRP</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Users/fer/hrp-data/logs/ops-server.log</string>
+    <string>/Users/openclaw/hrp-data/logs/ops-server.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/fer/hrp-data/logs/ops-server.error.log</string>
+    <string>/Users/openclaw/hrp-data/logs/ops-server.error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PYTHONPATH</key>
-        <string>/Users/fer/Projects/HRP</string>
+        <string>/Users/openclaw/Projects/HRP</string>
         <key>HRP_ENVIRONMENT</key>
         <string>production</string>
     </dict>

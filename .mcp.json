@@ -2,9 +2,12 @@
   "mcpServers": {
     "hrp-research": {
       "command": "python",
-      "args": ["-m", "hrp.mcp"],
+      "args": [
+        "-m",
+        "hrp.mcp"
+      ],
       "env": {
-        "PYTHONPATH": "/home/user/HRP"
+        "PYTHONPATH": "/Users/openclaw/Projects/HRP"
       }
     }
   }
