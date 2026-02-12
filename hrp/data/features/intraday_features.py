@@ -5,16 +5,22 @@ Computes features at minute granularity from intraday_bars table.
 Maintains rolling windows in memory for efficient computation.
 """
 
+from __future__ import annotations
+
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from threading import Lock
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from loguru import logger
 
 from hrp.data.db import get_db
+
+if TYPE_CHECKING:
+    from hrp.data.connection_pool import ConnectionPool
 
 
 @dataclass
@@ -75,6 +81,7 @@ class IntradayFeatureEngine:
         self._day_opens: dict[str, float] = {}  # Track day's opening price per symbol
         self._day_highs: dict[str, float] = {}  # Track day's high per symbol
         self._day_lows: dict[str, float] = {}  # Track day's low per symbol
+        self._last_bar_dates: dict[str, date] = {}  # Track last bar date per symbol
         self._lock = Lock()
 
         # Feature registry
@@ -105,7 +112,7 @@ class IntradayFeatureEngine:
             ),
             FeatureSpec(
                 name="intraday_volume_ratio",
-                description="Current bar volume vs 20-bar average",
+                description="Current bar volume vs prior 20-bar average",
                 window_size=21,
                 compute_fn=self._compute_volume_ratio,
             ),
@@ -137,6 +144,19 @@ class IntradayFeatureEngine:
                     self._day_opens[bar.symbol] = bar.open
                     self._day_highs[bar.symbol] = bar.high
                     self._day_lows[bar.symbol] = bar.low
+
+                # Auto-detect day transition
+                bar_date = bar.timestamp.date()
+                last_date = self._last_bar_dates.get(bar.symbol)
+                if last_date is not None and bar_date != last_date:
+                    self._day_opens[bar.symbol] = bar.open
+                    self._day_highs[bar.symbol] = bar.high
+                    self._day_lows[bar.symbol] = bar.low
+                    logger.debug(
+                        f"Day transition detected for {bar.symbol}: "
+                        f"{last_date} -> {bar_date}"
+                    )
+                self._last_bar_dates[bar.symbol] = bar_date
 
                 # Update day highs/lows
                 self._day_highs[bar.symbol] = max(self._day_highs[bar.symbol], bar.high)
@@ -199,12 +219,18 @@ class IntradayFeatureEngine:
 
         return pd.DataFrame(features_list)
 
-    def persist_features(self, features_df: pd.DataFrame) -> int:
+    def persist_features(
+        self,
+        features_df: pd.DataFrame,
+        conn_pool: ConnectionPool | None = None,
+    ) -> int:
         """
         Persist computed features to the database using batch upsert.
 
         Args:
             features_df: DataFrame with computed features
+            conn_pool: Optional connection pool. If provided, uses it instead
+                of get_db() for consistency with the ingestion pipeline.
 
         Returns:
             Number of feature rows written
@@ -212,10 +238,14 @@ class IntradayFeatureEngine:
         if features_df.empty:
             return 0
 
-        db = get_db(self.db_path)
+        if conn_pool is not None:
+            ctx = conn_pool.get_connection()
+        else:
+            db = get_db(self.db_path)
+            ctx = db.connection()
 
         # Use temp table upsert pattern (same as intraday_bars ingestion)
-        with db.connection() as conn:
+        with ctx as conn:
             # Create temporary table
             conn.execute("""
                 CREATE TEMPORARY TABLE temp_intraday_features (
@@ -234,10 +264,13 @@ class IntradayFeatureEngine:
 
             # Upsert into main table
             conn.execute("""
-                INSERT INTO intraday_features
-                SELECT * FROM temp_intraday_features
+                INSERT INTO intraday_features (
+                    symbol, timestamp, feature_name, value, version
+                )
+                SELECT symbol, timestamp, feature_name, value, version
+                FROM temp_intraday_features
                 ON CONFLICT (symbol, timestamp, feature_name, version)
-                DO UPDATE SET value = EXCLUDED.value, computed_at = CURRENT_TIMESTAMP
+                DO UPDATE SET value = EXCLUDED.value, computed_at = now()
             """)
 
             # Drop temp table
@@ -260,6 +293,19 @@ class IntradayFeatureEngine:
                 del self._day_highs[symbol]
             if symbol in self._day_lows:
                 del self._day_lows[symbol]
+            if symbol in self._last_bar_dates:
+                del self._last_bar_dates[symbol]
+
+    def reset_all_day_state(self) -> None:
+        """
+        Reset day state for all symbols.
+        Call this at market open or end of day.
+        """
+        with self._lock:
+            self._day_opens.clear()
+            self._day_highs.clear()
+            self._day_lows.clear()
+            self._last_bar_dates.clear()
 
     def clear_windows(self) -> None:
         """Clear all rolling windows. Useful for testing or market close."""
@@ -268,6 +314,7 @@ class IntradayFeatureEngine:
             self._day_opens.clear()
             self._day_highs.clear()
             self._day_lows.clear()
+            self._last_bar_dates.clear()
 
     # =========================================================================
     # Feature Computation Functions
@@ -378,9 +425,12 @@ class IntradayFeatureEngine:
         self, window: list[IntradayBar], current_idx: int, bar: IntradayBar
     ) -> float | None:
         """
-        Current bar volume vs 20-bar average volume.
+        Current bar volume vs prior 20-bar average volume.
 
-        VolumeRatio = Current Volume / Average(Last 20 Volumes)
+        VolumeRatio = Current Volume / Average(Prior 20 Volumes)
+
+        Note: window[-21:-1] intentionally excludes the current bar (window[-1])
+        so that the average reflects only historical volume.
         """
         if len(window) < 21:
             return None

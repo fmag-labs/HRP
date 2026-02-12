@@ -72,6 +72,8 @@ class PolygonWebSocketClient:
         self._reconnect_count: int = 0
         self._is_connected: bool = False
         self._subscriptions: dict[str, list[str]] = {}  # {channel: [symbols]}
+        self._messages_dropped: int = 0
+        self._drop_warning_threshold: int = int(config.queue_max_size * 0.9)
 
         logger.info("PolygonWebSocketClient initialized")
 
@@ -157,6 +159,7 @@ class PolygonWebSocketClient:
         return {
             "reconnect_count": self._reconnect_count,
             "queue_size": len(self._message_queue),
+            "messages_dropped": self._messages_dropped,
             "last_message_time": datetime.fromtimestamp(self._last_message_time)
             if self._last_message_time
             else None,
@@ -255,10 +258,19 @@ class PolygonWebSocketClient:
 
         self._last_message_time = time.time()
 
-        # Add to thread-safe queue
+        # Add to thread-safe queue, track dropped messages
         with self._queue_lock:
             for msg in msgs:
+                if len(self._message_queue) >= self._message_queue.maxlen:
+                    self._messages_dropped += 1
                 self._message_queue.append(msg)
+            queue_len = len(self._message_queue)
+
+        if queue_len >= self._drop_warning_threshold:
+            logger.warning(
+                f"WebSocket message queue at {queue_len}/{self.config.queue_max_size} "
+                f"({self._messages_dropped} messages dropped total)"
+            )
 
         # Dispatch to registered callbacks
         for callback in self._callbacks:
