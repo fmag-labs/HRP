@@ -403,7 +403,7 @@ phase_env_config() {
         ibkr_host=$(ask_input "IBKR_HOST" "127.0.0.1")
         ibkr_port=$(ask_input "IBKR_PORT (7497=paper, 7496=live)" "7497")
         ibkr_client_id=$(ask_input "IBKR_CLIENT_ID" "1")
-        ibkr_account=$(ask_input "IBKR_ACCOUNT (DU prefix=paper, U prefix=live)" "")
+        ibkr_account=$(ask_input "IBKR_ACCOUNT (DU prefix=paper, U prefix=live)" "DU")
         ibkr_paper=$(ask_input "IBKR_PAPER_TRADING (true/false)" "true")
     fi
 
