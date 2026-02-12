@@ -11,15 +11,17 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, time as dt_time, timezone
+from datetime import UTC, datetime
+from datetime import time as dt_time
 from decimal import Decimal
-from typing import Any
 
 import pandas as pd
 import pytz
 from loguru import logger
 
 from hrp.data.database import ConnectionPool
+from hrp.data.features.intraday_features import IntradayBar as FeatureBar
+from hrp.data.features.intraday_features import IntradayFeatureEngine
 from hrp.data.sources.polygon_websocket import PolygonWebSocketClient, WebSocketConfig
 
 
@@ -229,7 +231,7 @@ def _batch_upsert_intraday(bars: list[dict], conn_pool: ConnectionPool) -> int:
             # Try to clean up temp table if it exists
             try:
                 conn.execute("DROP TABLE IF EXISTS temp_intraday_bars")
-            except:
+            except Exception:
                 pass
             raise
 
@@ -248,6 +250,7 @@ class IntradayIngestionService:
         ws_config: WebSocketConfig | None = None,
         flush_interval: int = 10,
         max_buffer_size: int = 10000,
+        compute_features: bool = True,
     ):
         """
         Initialize ingestion service.
@@ -257,22 +260,30 @@ class IntradayIngestionService:
             ws_config: WebSocket configuration (None = use defaults)
             flush_interval: Seconds between buffer flushes
             max_buffer_size: Maximum bars to buffer
+            compute_features: Whether to compute intraday features after each flush
         """
         self.conn_pool = conn_pool
         self.ws_client = PolygonWebSocketClient(ws_config)
         self.buffer = IntradayBarBuffer(max_size=max_buffer_size)
         self.flush_interval = flush_interval
+        self.compute_features = compute_features
+
+        # Initialize feature engine if enabled
+        self.feature_engine = IntradayFeatureEngine() if compute_features else None
 
         self._flush_thread: threading.Thread | None = None
         self._stop_flush = threading.Event()
         self._session_start: datetime | None = None
         self._bars_received = 0
         self._bars_written = 0
+        self._features_written = 0
 
         # Register WebSocket callback
         self.ws_client.register_callback(self._on_message)
 
-        logger.info("IntradayIngestionService initialized")
+        logger.info(
+            f"IntradayIngestionService initialized (features: {compute_features})"
+        )
 
     def start(self, symbols: list[str], channels: list[str] | None = None) -> None:
         """
@@ -285,7 +296,7 @@ class IntradayIngestionService:
         if channels is None:
             channels = ["AM"]
 
-        self._session_start = datetime.now(timezone.utc)
+        self._session_start = datetime.now(UTC)
         self._bars_received = 0
         self._bars_written = 0
         self._stop_flush.clear()
@@ -325,7 +336,7 @@ class IntradayIngestionService:
         self.ws_client.stop()
 
         session_duration = (
-            (datetime.now(timezone.utc) - self._session_start).total_seconds()
+            (datetime.now(UTC) - self._session_start).total_seconds()
             if self._session_start
             else 0
         )
@@ -333,6 +344,7 @@ class IntradayIngestionService:
         stats = {
             "bars_received": self._bars_received,
             "bars_written": self._bars_written,
+            "features_written": self._features_written,
             "session_duration_seconds": session_duration,
             "ws_reconnects": self.ws_client.get_stats()["reconnect_count"],
             "buffer_stats": self.buffer.get_stats(),
@@ -397,7 +409,7 @@ class IntradayIngestionService:
                 if not timestamp_ms:
                     continue
 
-                timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+                timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
 
                 # Add to buffer
                 self.buffer.add_bar(
@@ -425,15 +437,49 @@ class IntradayIngestionService:
                 self._flush_buffer()
 
     def _flush_buffer(self) -> None:
-        """Flush buffer to database."""
+        """Flush buffer to database and optionally compute features."""
         try:
             bars = self.buffer.flush()
-            if bars:
-                rows_written = _batch_upsert_intraday(bars, self.conn_pool)
-                self._bars_written += rows_written
-                logger.debug(
-                    f"Flushed {len(bars)} bars, {rows_written} rows written to DB"
-                )
+            if not bars:
+                return
+
+            # Write bars to database
+            rows_written = _batch_upsert_intraday(bars, self.conn_pool)
+            self._bars_written += rows_written
+            logger.debug(
+                f"Flushed {len(bars)} bars, {rows_written} rows written to DB"
+            )
+
+            # Compute and persist features if enabled
+            if self.feature_engine:
+                try:
+                    # Convert IntradayBar dataclass to FeatureBar
+                    feature_bars = [
+                        FeatureBar(
+                            symbol=b["symbol"],
+                            timestamp=b["timestamp"],
+                            open=float(b["open"]),
+                            high=float(b["high"]),
+                            low=float(b["low"]),
+                            close=float(b["close"]),
+                            volume=b["volume"],
+                            vwap=float(b["vwap"]) if b["vwap"] is not None else None,
+                        )
+                        for b in bars
+                    ]
+
+                    # Compute features
+                    features_df = self.feature_engine.compute_features(feature_bars)
+
+                    # Persist features
+                    if not features_df.empty:
+                        feature_count = self.feature_engine.persist_features(features_df)
+                        self._features_written += feature_count
+                        logger.debug(f"Computed and persisted {feature_count} features")
+
+                except Exception as e:
+                    logger.error(f"Error computing features: {e}", exc_info=True)
+
         except Exception as e:
             logger.error(f"Error flushing buffer: {e}", exc_info=True)
 
@@ -442,6 +488,7 @@ class IntradayIngestionService:
         return {
             "bars_received": self._bars_received,
             "bars_written": self._bars_written,
+            "features_written": self._features_written,
             "buffer_stats": self.buffer.get_stats(),
             "ws_stats": self.ws_client.get_stats(),
             "is_connected": self.ws_client.is_connected(),

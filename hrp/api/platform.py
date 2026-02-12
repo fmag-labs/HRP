@@ -9,21 +9,21 @@ import json
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import pandas as pd
 from loguru import logger
 
-from hrp.data.db import get_db
-from hrp.exceptions import NotFoundError, PermissionError, PlatformAPIError
-from hrp.research.config import BacktestConfig, BacktestResult
 from hrp.api.validators import Validator
+from hrp.data.db import get_db
+from hrp.exceptions import NotFoundError, PermissionError
+from hrp.research.config import BacktestConfig
 
 # Strict allowlist pattern for SQL-safe identifiers (ticker symbols, feature names, etc.)
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
 
 
-def _sanitize_sql_list(values: List[str], label: str = "value") -> str:
+def _sanitize_sql_list(values: list[str], label: str = "value") -> str:
     """
     Build a safe SQL IN-clause string from a list of identifiers.
 
@@ -63,7 +63,7 @@ class PlatformAPI:
         )
     """
 
-    def __init__(self, db_path: Optional[str] = None, read_only: bool = False, use_singleton: bool = True):
+    def __init__(self, db_path: str | None = None, read_only: bool = False, use_singleton: bool = True):
         """
         Initialize the Platform API.
 
@@ -110,7 +110,7 @@ class PlatformAPI:
     # Validation Helpers
     # =========================================================================
 
-    def _validate_symbols_in_universe(self, symbols: List[str], as_of_date: date = None) -> None:
+    def _validate_symbols_in_universe(self, symbols: list[str], as_of_date: date = None) -> None:
         """Validate that all symbols are in the universe."""
         # Get valid symbols from universe
         if as_of_date:
@@ -142,7 +142,7 @@ class PlatformAPI:
 
     def get_prices(
         self,
-        symbols: List[str],
+        symbols: list[str],
         start: date,
         end: date,
     ) -> pd.DataFrame:
@@ -188,7 +188,7 @@ class PlatformAPI:
 
     def get_intraday_prices(
         self,
-        symbols: List[str],
+        symbols: list[str],
         start_time: datetime,
         end_time: datetime,
     ) -> pd.DataFrame:
@@ -246,10 +246,76 @@ class PlatformAPI:
 
         return df
 
+    def get_intraday_features(
+        self,
+        symbols: list[str],
+        start_time: datetime,
+        end_time: datetime,
+        feature_names: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """
+        Get intraday feature data for symbols over a datetime range.
+
+        Returns minute-level computed features from the intraday_features table.
+
+        Args:
+            symbols: List of ticker symbols
+            start_time: Start datetime (inclusive, UTC)
+            end_time: End datetime (inclusive, UTC)
+            feature_names: Optional list of specific features to retrieve.
+                          If None, returns all intraday features.
+
+        Returns:
+            DataFrame with columns: symbol, timestamp, feature_name, value, version
+        """
+        if not symbols:
+            raise ValueError("symbols list cannot be empty")
+
+        # Validate symbols exist in universe
+        self._validate_symbols_in_universe(symbols)
+
+        symbols_str = _sanitize_sql_list(symbols, "symbol")
+
+        # Build query with optional feature filter
+        if feature_names:
+            features_str = _sanitize_sql_list(feature_names, "feature_name")
+            feature_filter = f"AND feature_name IN ({features_str})"
+        else:
+            feature_filter = ""
+
+        query = f"""
+            SELECT
+                symbol,
+                timestamp,
+                feature_name,
+                value,
+                version
+            FROM intraday_features
+            WHERE symbol IN ({symbols_str})
+              AND timestamp >= ?
+              AND timestamp <= ?
+              {feature_filter}
+            ORDER BY timestamp, symbol, feature_name
+        """
+
+        df = self._db.fetchdf(query, (start_time, end_time))
+
+        if df.empty:
+            logger.warning(
+                f"No intraday feature data found for {len(symbols)} symbols "
+                f"from {start_time} to {end_time}"
+            )
+        else:
+            logger.debug(
+                f"Retrieved {len(df)} intraday feature rows for {len(symbols)} symbols"
+            )
+
+        return df
+
     def get_features(
         self,
-        symbols: List[str],
-        features: List[str],
+        symbols: list[str],
+        features: list[str],
         as_of_date: date,
         version: str = "v1",
     ) -> pd.DataFrame:
@@ -302,8 +368,8 @@ class PlatformAPI:
 
     def get_fundamentals_as_of(
         self,
-        symbols: List[str],
-        metrics: List[str],
+        symbols: list[str],
+        metrics: list[str],
         as_of_date: date,
     ) -> pd.DataFrame:
         """
@@ -381,7 +447,7 @@ class PlatformAPI:
 
         return df
 
-    def get_universe(self, as_of_date: date) -> List[str]:
+    def get_universe(self, as_of_date: date) -> list[str]:
         """
         Get the trading universe as of a specific date.
 
@@ -409,7 +475,7 @@ class PlatformAPI:
 
     def get_corporate_actions(
         self,
-        symbols: List[str],
+        symbols: list[str],
         start: date,
         end: date,
     ) -> pd.DataFrame:
@@ -505,7 +571,7 @@ class PlatformAPI:
         prediction: str,
         falsification: str,
         actor: str = "user",
-        strategy_class: Optional[str] = None,
+        strategy_class: str | None = None,
     ) -> str:
         """
         Create a new research hypothesis.
@@ -575,10 +641,10 @@ class PlatformAPI:
     def update_hypothesis(
         self,
         hypothesis_id: str,
-        status: Optional[str] = None,
-        outcome: Optional[str] = None,
+        status: str | None = None,
+        outcome: str | None = None,
         actor: str = "user",
-        metadata: Optional[Dict] = None,
+        metadata: dict | None = None,
     ) -> None:
         """
         Update a hypothesis status, outcome, and/or metadata.
@@ -661,7 +727,7 @@ class PlatformAPI:
 
         logger.info(f"Updated hypothesis {hypothesis_id}: status={effective_status}")
 
-    def list_hypotheses(self, status: Optional[str] = None, limit: int = 100) -> List[Dict]:
+    def list_hypotheses(self, status: str | None = None, limit: int = 100) -> list[dict]:
         """
         List hypotheses, optionally filtered by status.
 
@@ -680,7 +746,7 @@ class PlatformAPI:
                    updated_at, outcome, confidence_score
             FROM hypotheses
         """
-        params: List[Any] = []
+        params: list[Any] = []
 
         if status:
             query += " WHERE status = ?"
@@ -708,7 +774,7 @@ class PlatformAPI:
             for row in result
         ]
 
-    def get_hypothesis(self, hypothesis_id: str) -> Optional[Dict]:
+    def get_hypothesis(self, hypothesis_id: str) -> dict | None:
         """
         Get a single hypothesis by ID.
 
@@ -762,8 +828,8 @@ class PlatformAPI:
     def run_backtest(
         self,
         config: BacktestConfig,
-        signals: Optional[pd.DataFrame] = None,
-        hypothesis_id: Optional[str] = None,
+        signals: pd.DataFrame | None = None,
+        hypothesis_id: str | None = None,
         actor: str = "user",
         experiment_name: str = "backtests",
     ) -> str:
@@ -831,7 +897,7 @@ class PlatformAPI:
         logger.info(f"Backtest complete: {experiment_id} | Sharpe: {result.sharpe:.2f}")
         return experiment_id
 
-    def get_experiment(self, experiment_id: str) -> Optional[Dict]:
+    def get_experiment(self, experiment_id: str) -> dict | None:
         """
         Get experiment details from MLflow.
 
@@ -866,8 +932,8 @@ class PlatformAPI:
 
     def compare_experiments(
         self,
-        experiment_ids: List[str],
-        metrics: Optional[List[str]] = None,
+        experiment_ids: list[str],
+        metrics: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Compare multiple experiments side by side.
@@ -963,7 +1029,7 @@ class PlatformAPI:
         logger.info(f"Deployment approved for hypothesis {hypothesis_id} by {actor}")
         return True
 
-    def get_deployed_strategies(self) -> List[Dict]:
+    def get_deployed_strategies(self) -> list[dict]:
         """
         Get all currently deployed strategies.
 
@@ -978,10 +1044,10 @@ class PlatformAPI:
 
     def get_lineage(
         self,
-        hypothesis_id: Optional[str] = None,
-        experiment_id: Optional[str] = None,
+        hypothesis_id: str | None = None,
+        experiment_id: str | None = None,
         limit: int = 100,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get lineage/audit trail events.
 
@@ -999,7 +1065,7 @@ class PlatformAPI:
             FROM lineage
             WHERE 1=1
         """
-        params: List[Any] = []
+        params: list[Any] = []
 
         if hypothesis_id:
             query += " AND hypothesis_id = ?"
@@ -1042,10 +1108,10 @@ class PlatformAPI:
         self,
         event_type: str,
         actor: str,
-        details: Optional[Dict] = None,
-        hypothesis_id: Optional[str] = None,
-        experiment_id: Optional[str] = None,
-        parent_lineage_id: Optional[int] = None,
+        details: dict | None = None,
+        hypothesis_id: str | None = None,
+        experiment_id: str | None = None,
+        parent_lineage_id: int | None = None,
     ) -> int:
         """
         Log an event to the lineage table.
@@ -1128,7 +1194,7 @@ class PlatformAPI:
         self._db.execute(query, (hypothesis_id, experiment_id, relationship))
         logger.debug(f"Linked experiment {experiment_id} to hypothesis {hypothesis_id}")
 
-    def get_experiments_for_hypothesis(self, hypothesis_id: str) -> List[str]:
+    def get_experiments_for_hypothesis(self, hypothesis_id: str) -> list[str]:
         """
         Get all experiment IDs linked to a hypothesis.
 
@@ -1217,9 +1283,9 @@ class PlatformAPI:
         """
         from hrp.data.quality.checks import (
             DEFAULT_CHECKS,
-            PriceAnomalyCheck,
             CompletenessCheck,
             GapDetectionCheck,
+            PriceAnomalyCheck,
             StaleDataCheck,
             VolumeAnomalyCheck,
         )
@@ -1740,7 +1806,7 @@ class PlatformAPI:
     # Ingestion Log Operations
     # =========================================================================
 
-    def log_job_start(self, job_id: str) -> Optional[int]:
+    def log_job_start(self, job_id: str) -> int | None:
         """Log ingestion job start. Returns log_id."""
         with self._db.connection() as conn:
             result = conn.execute(
@@ -1777,9 +1843,9 @@ class PlatformAPI:
     def log_job_failure(
         self,
         error_msg: str,
-        job_id: Optional[str] = None,
-        log_id: Optional[int] = None,
-    ) -> Optional[int]:
+        job_id: str | None = None,
+        log_id: int | None = None,
+    ) -> int | None:
         """Log job failure. Creates new entry if no log_id, updates existing if log_id provided.
 
         Returns log_id of the created/updated entry.
@@ -1815,9 +1881,9 @@ class PlatformAPI:
 
     def purge_ingestion_logs(
         self,
-        job_id: Optional[str] = None,
-        before: Optional[str] = None,
-        status: Optional[str] = None,
+        job_id: str | None = None,
+        before: str | None = None,
+        status: str | None = None,
     ) -> int:
         """Delete ingestion log entries matching filters. Returns count deleted."""
         conditions: list[str] = []
@@ -1870,7 +1936,7 @@ class PlatformAPI:
     # Hypothesis Operations (extended)
     # =========================================================================
 
-    def get_hypothesis_with_metadata(self, hypothesis_id: str) -> Optional[Dict]:
+    def get_hypothesis_with_metadata(self, hypothesis_id: str) -> dict | None:
         """
         Get a hypothesis including its metadata field.
 
@@ -1919,11 +1985,11 @@ class PlatformAPI:
 
     def list_hypotheses_with_metadata(
         self,
-        status: Optional[str] = None,
-        metadata_filter: Optional[str] = None,
-        metadata_exclude: Optional[str] = None,
+        status: str | None = None,
+        metadata_filter: str | None = None,
+        metadata_exclude: str | None = None,
         limit: int = 100,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         List hypotheses with metadata, optionally filtering by metadata content.
 
@@ -2333,11 +2399,11 @@ class PlatformAPI:
 
     def get_features_range(
         self,
-        symbols: List[str],
-        features: List[str],
+        symbols: list[str],
+        features: list[str],
         start_date: date,
         end_date: date,
-        target: Optional[str] = None,
+        target: str | None = None,
         version: str = "v1",
     ) -> pd.DataFrame:
         """
@@ -2403,7 +2469,7 @@ class PlatformAPI:
         )
         return result
 
-    def get_symbol_sectors(self, symbols: List[str]) -> pd.Series:
+    def get_symbol_sectors(self, symbols: list[str]) -> pd.Series:
         """
         Get sector mapping for symbols.
 
@@ -2424,7 +2490,7 @@ class PlatformAPI:
         except Exception:
             return pd.Series({s: "Unknown" for s in symbols})
 
-    def get_available_symbols(self) -> List[str]:
+    def get_available_symbols(self) -> list[str]:
         """
         Get all distinct symbols that have price data.
 
@@ -2438,9 +2504,9 @@ class PlatformAPI:
 
     def get_ingestion_logs(
         self,
-        job_id: Optional[str] = None,
+        job_id: str | None = None,
         limit: int = 10,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get ingestion log entries.
 
@@ -2456,7 +2522,7 @@ class PlatformAPI:
                    records_fetched, records_inserted, error_message
             FROM ingestion_log
         """
-        params: List[Any] = []
+        params: list[Any] = []
 
         if job_id:
             query += " WHERE source_id = ?"
@@ -2503,8 +2569,8 @@ class PlatformAPI:
     def resume_agent_checkpoint(
         self,
         agent_type: str,
-        run_id: Optional[str] = None,
-    ) -> Optional[Dict]:
+        run_id: str | None = None,
+    ) -> dict | None:
         """
         Get the latest incomplete checkpoint for an agent.
 
