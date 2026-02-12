@@ -103,12 +103,38 @@ class DefaultBacktestConfig:
 
 
 @dataclass
+class RealtimeConfig:
+    """Real-time data ingestion configuration."""
+
+    # Feature toggle
+    enabled: bool = False
+
+    # Symbols to stream (None = top 50 by volume from universe)
+    symbols: list[str] | None = None
+
+    # WebSocket channels to subscribe to (default: minute aggregates)
+    channels: list[str] = field(default_factory=lambda: ["AM"])
+
+    # Buffering and flush settings
+    buffer_flush_interval_seconds: int = 10
+    max_buffer_size: int = 10000
+
+    # Reconnection settings
+    reconnect_max_delay_seconds: int = 60
+    heartbeat_timeout_seconds: int = 30
+
+    # Watchlist for raw trade feed (≤20 symbols recommended)
+    watchlist_symbols: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     """Main configuration class."""
 
     data: DataConfig = field(default_factory=DataConfig)
     api: APIConfig = field(default_factory=APIConfig)
     backtest: DefaultBacktestConfig = field(default_factory=DefaultBacktestConfig)
+    realtime: RealtimeConfig = field(default_factory=RealtimeConfig)
 
     # General settings
     log_level: str = "INFO"
@@ -137,6 +163,12 @@ class Config:
         except ValueError:
             environment = Environment.DEVELOPMENT
 
+        # Parse realtime config
+        realtime_enabled = os.getenv("HRP_REALTIME_ENABLED", "false").lower() == "true"
+        realtime_symbols = None
+        if os.getenv("HRP_REALTIME_SYMBOLS"):
+            realtime_symbols = os.getenv("HRP_REALTIME_SYMBOLS").split(",")
+
         return cls(
             data=DataConfig(
                 data_dir=Path(data_dir).expanduser() if data_dir else Path.home() / "hrp-data",
@@ -149,6 +181,17 @@ class Config:
                 anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
                 resend_api_key=os.getenv("RESEND_API_KEY"),
                 simfin_api_key=os.getenv("SIMFIN_API_KEY"),
+            ),
+            realtime=RealtimeConfig(
+                enabled=realtime_enabled,
+                symbols=realtime_symbols,
+                buffer_flush_interval_seconds=int(
+                    os.getenv("HRP_REALTIME_FLUSH_INTERVAL", "10")
+                ),
+                max_buffer_size=int(os.getenv("HRP_REALTIME_MAX_BUFFER_SIZE", "10000")),
+                reconnect_max_delay_seconds=int(
+                    os.getenv("HRP_REALTIME_RECONNECT_MAX_DELAY", "60")
+                ),
             ),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             notification_email=os.getenv("NOTIFICATION_EMAIL"),

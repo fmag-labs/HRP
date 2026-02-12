@@ -5,14 +5,13 @@ Run with: python -m hrp.data.schema --init
 """
 
 import argparse
-from typing import Dict, Union
 
 from loguru import logger
 
 from hrp.data.db import get_db
 
 
-def migrate_agent_token_usage_identity(db_path: Union[str, None] = None) -> None:
+def migrate_agent_token_usage_identity(db_path: str | None = None) -> None:
     """Recreate agent_token_usage with sequence-based auto-increment on id column.
 
     The old schema used `INTEGER PRIMARY KEY` which doesn't auto-increment in DuckDB.
@@ -58,7 +57,7 @@ def migrate_agent_token_usage_identity(db_path: Union[str, None] = None) -> None
     logger.info("agent_token_usage table recreated with sequence-based id")
 
 
-def migrate_remove_cio_foreign_keys(db_path: Union[str, None] = None) -> None:
+def migrate_remove_cio_foreign_keys(db_path: str | None = None) -> None:
     """Remove FK constraints from CIO tables that reference hypotheses.
 
     DuckDB FK constraints prevent UPDATE on parent rows. The codebase already
@@ -202,7 +201,7 @@ def migrate_remove_cio_foreign_keys(db_path: Union[str, None] = None) -> None:
     logger.info("CIO tables FK migration complete")
 
 
-def migrate_add_pipeline_stage_column(db_path: Union[str, None] = None) -> None:
+def migrate_add_pipeline_stage_column(db_path: str | None = None) -> None:
     """Add pipeline_stage column to hypotheses table.
 
     This migration adds:
@@ -241,7 +240,7 @@ def migrate_add_pipeline_stage_column(db_path: Union[str, None] = None) -> None:
         logger.debug("pipeline_stage column already exists in hypotheses table")
 
 
-def migrate_add_sector_columns(db_path: Union[str, None] = None) -> None:
+def migrate_add_sector_columns(db_path: str | None = None) -> None:
     """Add sector and industry columns to symbols table.
 
     This migration adds:
@@ -625,6 +624,38 @@ TABLES = {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """,
+    # === Real-time / Intraday Data tables ===
+    "intraday_bars": """
+        CREATE TABLE IF NOT EXISTS intraday_bars (
+            symbol VARCHAR NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
+            open DECIMAL(12,4),
+            high DECIMAL(12,4),
+            low DECIMAL(12,4),
+            close DECIMAL(12,4) NOT NULL,
+            volume BIGINT,
+            vwap DECIMAL(12,4),
+            trade_count INTEGER,
+            source VARCHAR DEFAULT 'polygon_ws',
+            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (symbol, timestamp),
+            CHECK (close > 0),
+            CHECK (volume IS NULL OR volume >= 0),
+            FOREIGN KEY (symbol) REFERENCES symbols(symbol)
+        )
+    """,
+    "intraday_features": """
+        CREATE TABLE IF NOT EXISTS intraday_features (
+            symbol VARCHAR NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
+            feature_name VARCHAR NOT NULL,
+            value DECIMAL(24,6),
+            version VARCHAR DEFAULT 'v1',
+            computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (symbol, timestamp, feature_name, version),
+            FOREIGN KEY (symbol) REFERENCES symbols(symbol)
+        )
+    """,
 }
 
 # Indexes for performance
@@ -649,10 +680,15 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_executed_trades_filled_at ON executed_trades(filled_at)",
     "CREATE INDEX IF NOT EXISTS idx_live_positions_hypothesis ON live_positions(hypothesis_id)",
     "CREATE INDEX IF NOT EXISTS idx_live_positions_date ON live_positions(as_of_date)",
+    # Intraday data indexes
+    "CREATE INDEX IF NOT EXISTS idx_intraday_bars_symbol_ts ON intraday_bars(symbol, timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_intraday_bars_ts ON intraday_bars(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_intraday_features_symbol_ts ON intraday_features(symbol, timestamp, feature_name)",
+    "CREATE INDEX IF NOT EXISTS idx_intraday_features_ts ON intraday_features(timestamp)",
 ]
 
 
-def create_tables(db_path: Union[str, None] = None) -> None:
+def create_tables(db_path: str | None = None) -> None:
     """Create all tables in the database."""
     db = get_db(db_path)
 
@@ -674,7 +710,7 @@ def create_tables(db_path: Union[str, None] = None) -> None:
     migrate_remove_cio_foreign_keys(db_path)
 
 
-def drop_all_tables(db_path: Union[str, None] = None) -> None:
+def drop_all_tables(db_path: str | None = None) -> None:
     """Drop all tables (use with caution!).
 
     Tables are dropped in reverse order to respect FK dependencies.
@@ -691,7 +727,7 @@ def drop_all_tables(db_path: Union[str, None] = None) -> None:
     logger.warning("All tables dropped")
 
 
-def get_table_counts(db_path: Union[str, None] = None) -> Dict[str, int]:
+def get_table_counts(db_path: str | None = None) -> dict[str, int]:
     """Get row counts for all tables."""
     db = get_db(db_path)
     counts = {}
@@ -707,7 +743,7 @@ def get_table_counts(db_path: Union[str, None] = None) -> Dict[str, int]:
     return counts
 
 
-def verify_schema(db_path: Union[str, None] = None) -> bool:
+def verify_schema(db_path: str | None = None) -> bool:
     """Verify that all tables exist."""
     db = get_db(db_path)
 
