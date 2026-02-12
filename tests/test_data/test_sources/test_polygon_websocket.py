@@ -287,3 +287,41 @@ def test_callback_exception_does_not_crash(ws_config):
 
     # Message should still be in queue
     assert len(client._message_queue) == 1
+
+
+def test_message_queue_overflow_tracking(ws_config):
+    """Test that queue overflow is tracked when messages exceed capacity."""
+    config = WebSocketConfig(
+        api_key="test_key",
+        queue_max_size=5,
+    )
+    client = PolygonWebSocketClient(config)
+
+    # Fill queue beyond capacity
+    for i in range(10):
+        client._handle_message([{"ev": "AM", "sym": f"SYM{i}"}])
+
+    # Queue should be at max size
+    assert len(client._message_queue) == 5
+
+    # Should have tracked dropped messages
+    assert client._messages_dropped == 5
+
+    # Stats should reflect dropped count
+    stats = client.get_stats()
+    assert stats["messages_dropped"] == 5
+
+
+def test_message_queue_no_drops_when_under_capacity(ws_config):
+    """Test that no drops are counted when queue has room."""
+    config = WebSocketConfig(
+        api_key="test_key",
+        queue_max_size=100,
+    )
+    client = PolygonWebSocketClient(config)
+
+    for i in range(10):
+        client._handle_message([{"ev": "AM", "sym": f"SYM{i}"}])
+
+    assert client._messages_dropped == 0
+    assert len(client._message_queue) == 10

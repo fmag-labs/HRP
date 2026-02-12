@@ -497,6 +497,152 @@ class TestMultiSymbol:
         assert feature_engine._day_opens["GOOGL"] == 200.0
 
 
+class TestDayStateAutoReset:
+    """Test automatic day state reset on day transitions."""
+
+    def test_day_transition_resets_open(self, feature_engine):
+        """Test that day open resets when a new day's bar arrives."""
+        # Day 1 bars
+        day1_bars = [
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 15, 9, 30 + i, tzinfo=UTC),
+                open=100.0 if i == 0 else 100.0 + i,
+                high=101.0 + i,
+                low=99.0,
+                close=100.0 + i,
+                volume=1000,
+            )
+            for i in range(5)
+        ]
+        feature_engine.add_bars(day1_bars)
+        assert feature_engine._day_opens["AAPL"] == 100.0
+
+        # Day 2 bars - different date
+        day2_bars = [
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 16, 9, 30 + i, tzinfo=UTC),
+                open=110.0 if i == 0 else 110.0 + i,
+                high=111.0 + i,
+                low=109.0,
+                close=110.0 + i,
+                volume=1000,
+            )
+            for i in range(5)
+        ]
+        feature_engine.add_bars(day2_bars)
+        # Day open should be reset to day 2's first bar
+        assert feature_engine._day_opens["AAPL"] == 110.0
+        assert feature_engine._day_lows["AAPL"] == 109.0
+
+    def test_day_transition_resets_highs_lows(self, feature_engine):
+        """Test that day highs/lows reset on new day."""
+        # Day 1: high reaches 200
+        day1_bars = [
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+                open=100.0,
+                high=200.0,
+                low=50.0,
+                close=150.0,
+                volume=1000,
+            )
+        ]
+        feature_engine.add_bars(day1_bars)
+        assert feature_engine._day_highs["AAPL"] == 200.0
+        assert feature_engine._day_lows["AAPL"] == 50.0
+
+        # Day 2: much smaller range
+        day2_bars = [
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 16, 10, 0, tzinfo=UTC),
+                open=105.0,
+                high=106.0,
+                low=104.0,
+                close=105.5,
+                volume=1000,
+            )
+        ]
+        feature_engine.add_bars(day2_bars)
+        # Should NOT carry over day 1's extreme values
+        assert feature_engine._day_highs["AAPL"] == 106.0
+        assert feature_engine._day_lows["AAPL"] == 104.0
+
+    def test_same_day_does_not_reset(self, feature_engine):
+        """Test that bars on the same day don't trigger a reset."""
+        bars = [
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 15, 9, 30, tzinfo=UTC),
+                open=100.0,
+                high=101.0,
+                low=99.0,
+                close=100.5,
+                volume=1000,
+            ),
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 15, 9, 31, tzinfo=UTC),
+                open=100.5,
+                high=105.0,
+                low=98.0,
+                close=103.0,
+                volume=1000,
+            ),
+        ]
+        feature_engine.add_bars(bars)
+        # Open should still be from first bar
+        assert feature_engine._day_opens["AAPL"] == 100.0
+        # Highs/lows should accumulate
+        assert feature_engine._day_highs["AAPL"] == 105.0
+        assert feature_engine._day_lows["AAPL"] == 98.0
+
+    def test_reset_all_day_state(self, feature_engine, sample_bars):
+        """Test reset_all_day_state clears everything."""
+        feature_engine.add_bars(sample_bars)
+        assert len(feature_engine._day_opens) > 0
+
+        feature_engine.reset_all_day_state()
+        assert feature_engine._day_opens == {}
+        assert feature_engine._day_highs == {}
+        assert feature_engine._day_lows == {}
+        assert feature_engine._last_bar_dates == {}
+
+    def test_multi_symbol_day_transition(self, feature_engine):
+        """Test day transitions work independently per symbol."""
+        # AAPL day 1 + MSFT day 1
+        bars = [
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+                open=100.0, high=101.0, low=99.0, close=100.0, volume=1000,
+            ),
+            IntradayBar(
+                symbol="MSFT",
+                timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+                open=200.0, high=201.0, low=199.0, close=200.0, volume=1000,
+            ),
+        ]
+        feature_engine.add_bars(bars)
+
+        # Only AAPL transitions to day 2
+        day2_bars = [
+            IntradayBar(
+                symbol="AAPL",
+                timestamp=datetime(2024, 1, 16, 10, 0, tzinfo=UTC),
+                open=110.0, high=111.0, low=109.0, close=110.0, volume=1000,
+            ),
+        ]
+        feature_engine.add_bars(day2_bars)
+
+        # AAPL should have reset, MSFT should not
+        assert feature_engine._day_opens["AAPL"] == 110.0
+        assert feature_engine._day_opens["MSFT"] == 200.0
+
+
 class TestFeatureRegistration:
     """Test feature registration in database."""
 

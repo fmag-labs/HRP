@@ -167,7 +167,7 @@ def _batch_upsert_intraday(bars: list[dict], conn_pool: ConnectionPool) -> int:
     Uses temp table pattern for efficient upsert:
     1. Create temp table
     2. Insert new data to temp
-    3. INSERT OR REPLACE from temp to main table
+    3. ON CONFLICT upsert from temp to main table
     4. Drop temp table
 
     Args:
@@ -210,11 +210,25 @@ def _batch_upsert_intraday(bars: list[dict], conn_pool: ConnectionPool) -> int:
             # Insert data to temp table
             conn.execute("INSERT INTO temp_intraday_bars SELECT * FROM df")
 
-            # Upsert: INSERT OR REPLACE handles duplicates
+            # Upsert: ON CONFLICT updates existing rows, preserves ingested_at
             result = conn.execute(
                 """
-                INSERT OR REPLACE INTO intraday_bars
-                SELECT * FROM temp_intraday_bars
+                INSERT INTO intraday_bars (
+                    symbol, timestamp, open, high, low, close,
+                    volume, vwap, trade_count, source
+                )
+                SELECT symbol, timestamp, open, high, low, close,
+                       volume, vwap, trade_count, source
+                FROM temp_intraday_bars
+                ON CONFLICT (symbol, timestamp) DO UPDATE SET
+                    open = EXCLUDED.open,
+                    high = EXCLUDED.high,
+                    low = EXCLUDED.low,
+                    close = EXCLUDED.close,
+                    volume = EXCLUDED.volume,
+                    vwap = EXCLUDED.vwap,
+                    trade_count = EXCLUDED.trade_count,
+                    source = EXCLUDED.source
                 """
             )
 
@@ -473,7 +487,9 @@ class IntradayIngestionService:
 
                     # Persist features
                     if not features_df.empty:
-                        feature_count = self.feature_engine.persist_features(features_df)
+                        feature_count = self.feature_engine.persist_features(
+                            features_df, conn_pool=self.conn_pool
+                        )
                         self._features_written += feature_count
                         logger.debug(f"Computed and persisted {feature_count} features")
 
