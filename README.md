@@ -42,7 +42,7 @@ The setup script walks you through 11 phases:
 | Database | Initializes DuckDB schema |
 | Fix Configs | Updates `.mcp.json` and launchd plist paths |
 | Auth | Creates dashboard login user |
-| Data Bootstrap | Optional: loads universe, prices, features |
+| Data Bootstrap | Loads universe + 2 years of prices/features for top 20 stocks |
 | Launchd | Optional: installs scheduled jobs |
 | Verification | Runs all checks, prints PASS/FAIL summary |
 
@@ -65,6 +65,22 @@ pytest tests/ -v
 ```
 
 </details>
+
+### Bootstrap Data
+
+The setup script bootstraps 2 years of daily price data and 45 computed features for the **top 20 most traded S&P 500 stocks** (~2-5 minutes, no API key required — uses Yahoo Finance):
+
+```
+AAPL  MSFT  NVDA  AMZN  META  TSLA  GOOGL  GOOG  AMD  AVGO
+NFLX  COST  ADBE  CRM   PEP   CSCO  INTC   QCOM  TMUS INTU
+```
+
+To load the full S&P 500 universe (~400 stocks) after setup:
+
+```bash
+python -m hrp.agents.run_job --job prices     # ~20-30 min
+python -m hrp.agents.run_job --job features
+```
 
 ### Running Services
 

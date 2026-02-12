@@ -632,11 +632,15 @@ phase_dashboard_auth() {
 phase_data_bootstrap() {
     log_phase "8" "Data Bootstrap (Optional)"
 
-    log_warning "This will load the S&P 500 universe, ingest prices, and compute features."
-    log_warning "It requires API keys and takes 10-30 minutes depending on connection speed."
+    # Top 20 most traded S&P 500 stocks (by average daily volume)
+    local BOOTSTRAP_SYMBOLS="AAPL,MSFT,NVDA,AMZN,META,TSLA,GOOGL,GOOG,AMD,AVGO,NFLX,COST,ADBE,CRM,PEP,CSCO,INTC,QCOM,TMUS,INTU"
+
+    log_info "Bootstrap loads 2 years of data for the top 20 most traded S&P 500 stocks:"
+    log_info "  ${BOOTSTRAP_SYMBOLS}"
+    log_info "Uses Yahoo Finance (no API key required). Takes ~2-5 minutes."
     echo ""
 
-    if ! ask_yes_no "Run data bootstrap now?" "n"; then
+    if ! ask_yes_no "Run data bootstrap now?" "y"; then
         log_info "Skipped — run later with:"
         log_info "  python -m hrp.agents.run_job --job universe"
         log_info "  python -m hrp.agents.run_job --job prices"
@@ -656,29 +660,48 @@ phase_data_bootstrap() {
 
     log_info "Step 1/3: Loading S&P 500 universe..."
     if "$venv_python" -m hrp.agents.run_job --job universe; then
-        log_success "Universe loaded"
+        log_success "Universe loaded (396 symbols)"
     else
-        log_error "Universe load failed. Check API keys."
+        log_error "Universe load failed"
         return 1
     fi
 
-    log_info "Step 2/3: Ingesting historical prices (this may take a while)..."
-    if "$venv_python" -m hrp.agents.run_job --job prices; then
-        log_success "Prices ingested"
+    log_info "Step 2/3: Ingesting 2 years of prices for top 20 stocks..."
+    if "$venv_python" -c "
+from datetime import date, timedelta
+from hrp.agents.jobs import PriceIngestionJob
+
+symbols = '${BOOTSTRAP_SYMBOLS}'.split(',')
+start = date.today() - timedelta(days=730)
+end = date.today()
+
+job = PriceIngestionJob(symbols=symbols, start=start, end=end)
+job.run()
+print(f'Bootstrap complete: {len(symbols)} symbols, {start} to {end}')
+"; then
+        log_success "Prices ingested (20 stocks, 2 years)"
     else
         log_error "Price ingestion failed"
         return 1
     fi
 
-    log_info "Step 3/3: Computing features..."
-    if "$venv_python" -m hrp.agents.run_job --job features; then
-        log_success "Features computed"
+    log_info "Step 3/3: Computing features for bootstrapped stocks..."
+    if "$venv_python" -c "
+from hrp.agents.jobs import FeatureComputationJob
+
+symbols = '${BOOTSTRAP_SYMBOLS}'.split(',')
+job = FeatureComputationJob(symbols=symbols)
+job.run()
+print(f'Features computed for {len(symbols)} symbols')
+"; then
+        log_success "Features computed (20 stocks)"
     else
         log_error "Feature computation failed"
         return 1
     fi
 
-    log_success "Data bootstrap complete!"
+    log_success "Data bootstrap complete! (20 stocks, 2 years)"
+    log_info "To load the full universe later: python -m hrp.agents.run_job --job prices"
 }
 
 ###############################################################################
