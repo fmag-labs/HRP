@@ -8,7 +8,7 @@ from hrp.dashboard.pages import (
     hypotheses,
     ingestion_status,
     job_health,
-    trading,
+    today,
 )
 
 __all__ = [
@@ -19,5 +19,5 @@ __all__ = [
     "hypotheses",
     "ingestion_status",
     "job_health",
-    "trading",
+    "today",
 ]

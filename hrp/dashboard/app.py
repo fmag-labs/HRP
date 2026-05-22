@@ -5,6 +5,7 @@ Multipage Streamlit dashboard for the Hedgefund Research Platform.
 Provides access to system status, data health, hypotheses, and experiments.
 """
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -900,6 +901,20 @@ def render_job_health() -> None:
     job_health.render()
 
 
+def render_today() -> None:
+    """Render the consumer-mode Today page."""
+    from hrp.dashboard.pages import today
+
+    today.render(api=get_api())
+
+
+def render_recommendations() -> None:
+    """Render the Recommendations page."""
+    recommendations = importlib.import_module("hrp.dashboard.pages.13_Recommendations")
+
+    recommendations.render()
+
+
 # =============================================================================
 # Sidebar and Navigation
 # =============================================================================
@@ -935,7 +950,21 @@ def render_sidebar() -> str:
 
         page = st.selectbox(
             "Select Page",
-            options=["Home", "Data Health", "Ingestion Status", "Hypotheses", "Experiments", "Backtest Performance", "Risk Limits", "Optimization", "Pipeline Progress", "Agents Monitor", "Job Health"],
+            options=[
+                "Today",
+                "Recommendations",
+                "Home",
+                "Data Health",
+                "Ingestion Status",
+                "Hypotheses",
+                "Experiments",
+                "Backtest Performance",
+                "Risk Limits",
+                "Optimization",
+                "Pipeline Progress",
+                "Agents Monitor",
+                "Job Health",
+            ],
             label_visibility="collapsed",
         )
 
@@ -951,8 +980,8 @@ def render_sidebar() -> str:
         # MLflow UI button with custom styling
         st.markdown(
             """
-            <a href="http://127.0.0.1:5000" target="_blank" rel="noopener noreferrer"
-               onclick="window.open('http://127.0.0.1:5000', '_blank'); return false;"
+            <a href="http://127.0.0.1:5010" target="_blank" rel="noopener noreferrer"
+               onclick="window.open('http://127.0.0.1:5010', '_blank'); return false;"
                style="
                    display: flex;
                    align-items: center;
@@ -1070,7 +1099,11 @@ def main() -> None:
         return
 
     # Route to the selected page
-    if page == "Home":
+    if page == "Today":
+        render_today()
+    elif page == "Recommendations":
+        render_recommendations()
+    elif page == "Home":
         render_home()
     elif page == "Data Health":
         render_data_health()
