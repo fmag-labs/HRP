@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hrp.data.db import ConnectionPool
+from hrp.data.connection_pool import ConnectionPool
 from hrp.data.ingestion.intraday import IntradayIngestionService
 from hrp.data.sources.polygon_websocket import WebSocketConfig
 
@@ -27,7 +27,7 @@ def conn_pool(tmp_path):
     with pool.connection() as conn:
         # Create required tables
         for table_name, create_sql in TABLES.items():
-            if table_name in ["symbols", "intraday_bars", "intraday_features"]:
+            if table_name in ["symbols", "universe", "intraday_bars", "intraday_features"]:
                 conn.execute(create_sql)
 
         # Create indexes
@@ -41,6 +41,15 @@ def conn_pool(tmp_path):
             INSERT INTO symbols (symbol, name, sector, industry)
             VALUES ('AAPL', 'Apple Inc.', 'Technology', 'Consumer Electronics'),
                    ('MSFT', 'Microsoft Corp.', 'Technology', 'Software')
+            """
+        )
+
+        # Add them to the universe so PlatformAPI symbol validation passes
+        conn.execute(
+            """
+            INSERT INTO universe (symbol, date, in_universe)
+            VALUES ('AAPL', '2024-01-01', TRUE),
+                   ('MSFT', '2024-01-01', TRUE)
             """
         )
 
@@ -267,7 +276,7 @@ def test_gap_fill_integration(conn_pool):
     import pandas as pd
     mock_df = pd.DataFrame(mock_gap_bars)
 
-    with patch("hrp.data.ingestion.intraday.PolygonSource") as mock_polygon:
+    with patch("hrp.data.sources.polygon_source.PolygonSource") as mock_polygon:
         mock_instance = MagicMock()
         mock_instance.get_minute_bars.return_value = mock_df
         mock_polygon.return_value = mock_instance

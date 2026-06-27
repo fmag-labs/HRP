@@ -18,6 +18,16 @@ from hrp.ml.deployment import DeploymentPipeline
 from hrp.monitoring.drift_monitor import DriftMonitor
 
 
+@pytest.fixture(autouse=True)
+def _isolated_db(test_db):
+    """Back every test with a schema-initialized temp database.
+
+    These tests construct PlatformAPI()/get_db() directly; without this they
+    would hit the (schema-less) default database and fail on missing tables.
+    """
+    yield test_db
+
+
 @pytest.fixture(scope="function")
 def trained_model():
     """

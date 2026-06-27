@@ -454,6 +454,11 @@ class IntradayIngestionService:
                 if isinstance(last_timestamp, str):
                     last_timestamp = datetime.fromisoformat(last_timestamp)
 
+                # Normalize to tz-aware UTC so it can be compared with `now`
+                # (timestamps read back from DuckDB are tz-naive).
+                if last_timestamp.tzinfo is None:
+                    last_timestamp = last_timestamp.replace(tzinfo=UTC)
+
                 # Check if gap exists (more than 2 minutes since last bar during market hours)
                 now = datetime.now(UTC)
                 gap_minutes = (now - last_timestamp).total_seconds() / 60

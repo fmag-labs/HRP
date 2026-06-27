@@ -39,6 +39,17 @@ from hrp.research.lineage import EventType, LineageEvent
 # Fixtures
 # =============================================================================
 
+@pytest.fixture(autouse=True)
+def _isolated_db(test_db):
+    """Back every test with a schema-initialized temp database.
+
+    Agents construct their own PlatformAPI()/log lineage directly, so even with
+    a mocked PlatformAPI any real DB access (e.g. KillGateEnforcer.run()) must
+    hit a schema-initialized database rather than the default one.
+    """
+    yield test_db
+
+
 @pytest.fixture
 def mock_platform_api():
     """Mock PlatformAPI for isolated E2E testing."""
