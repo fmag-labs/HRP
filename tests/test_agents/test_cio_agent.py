@@ -197,6 +197,9 @@ class TestCIOSkillGate:
                 actor="agent:cio-test",
                 api=mock_api,
             )
+        # Lineage logging writes directly to the DB (not through the mocked api);
+        # stub it so execute() is hermetic.
+        agent._log_agent_event = Mock(return_value=1)
         return agent, mock_api
 
     def test_skill_probability_threshold_defined(self):

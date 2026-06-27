@@ -94,14 +94,18 @@ class TestVaRFeatureComputation:
         assert len(cvar_values) > 0
         assert (cvar_values > 0).all()
 
-        # CVaR should be greater than VaR
+        # CVaR should be >= VaR. Align the two series explicitly via concat:
+        # a direct Series comparison on the non-lexsorted MultiIndex can
+        # misalign rows even when the indexes are equal.
         var_result = compute_var_95_1d(sample_prices)
-        var_values = var_result["var_95_1d"]
-        cvar_values_aligned = result["cvar_95_1d"]
+        aligned = pd.concat(
+            [result["cvar_95_1d"], var_result["var_95_1d"]], axis=1
+        ).dropna()
+        aligned.columns = ["cvar", "var"]
 
         # At least 80% of CVaR values should be >= corresponding VaR
-        comparison = cvar_values_aligned >= var_values
-        assert comparison.dropna().mean() >= 0.8
+        comparison = aligned["cvar"] >= aligned["var"]
+        assert comparison.mean() >= 0.8
 
     def test_compute_var_99_1d(self, sample_prices):
         """Test 1-day VaR at 99% confidence."""
