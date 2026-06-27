@@ -8,8 +8,9 @@ from hrp.data.sources.factory import DataSourceFactory
 class TestDataSourceFactory:
     """Tests for DataSourceFactory class."""
 
-    def test_create_polygon_source_with_fallback(self):
+    def test_create_polygon_source_with_fallback(self, monkeypatch):
         """Test creating Polygon source with YFinance fallback."""
+        monkeypatch.setenv("POLYGON_API_KEY", "test_key")
         primary, fallback = DataSourceFactory.create("polygon", with_fallback=True)
 
         assert primary is not None
@@ -25,8 +26,9 @@ class TestDataSourceFactory:
         assert primary.source_name == "yfinance"
         assert fallback is None
 
-    def test_create_polygon_without_fallback(self):
+    def test_create_polygon_without_fallback(self, monkeypatch):
         """Test creating Polygon source without explicit fallback."""
+        monkeypatch.setenv("POLYGON_API_KEY", "test_key")
         primary, fallback = DataSourceFactory.create("polygon", with_fallback=False)
 
         assert primary is not None

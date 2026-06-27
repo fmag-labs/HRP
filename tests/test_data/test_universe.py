@@ -315,7 +315,12 @@ class TestFetchConstituents:
             "Founded": ["1976", "1975", "2000"],
         })
 
-        with patch("pandas.read_html", return_value=[mock_df]):
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"<html></html>"
+        mock_response.__enter__.return_value = mock_response
+        with patch("urllib.request.urlopen", return_value=mock_response), patch(
+            "pandas.read_html", return_value=[mock_df]
+        ):
             constituents = manager.fetch_sp500_constituents()
 
         assert len(constituents) == 3
@@ -338,7 +343,12 @@ class TestFetchConstituents:
             "Founded": ["1839", "1870"],
         })
 
-        with patch("pandas.read_html", return_value=[mock_df]):
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"<html></html>"
+        mock_response.__enter__.return_value = mock_response
+        with patch("urllib.request.urlopen", return_value=mock_response), patch(
+            "pandas.read_html", return_value=[mock_df]
+        ):
             constituents = manager.fetch_sp500_constituents()
 
         symbols = [c.symbol for c in constituents]

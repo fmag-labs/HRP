@@ -154,8 +154,11 @@ class TestFundamentalFeatureRegistration:
         assert FEATURE_FUNCTIONS["shares_outstanding"] == compute_shares_outstanding
 
     def test_total_features_count(self):
-        """Should have 62 total features (39 technical + 12 Phase 1 + 6 fundamental + 5 Phase 2)."""
-        assert len(FEATURE_FUNCTIONS) == 62
+        """Regression guard on the total number of registered compute features.
+
+        Update intentionally when feature families are added or removed.
+        """
+        assert len(FEATURE_FUNCTIONS) == 63
 
 
 # =============================================================================

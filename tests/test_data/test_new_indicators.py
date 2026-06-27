@@ -134,8 +134,13 @@ class TestFeatureRegistration:
         assert FEATURE_FUNCTIONS["vwap_20d"] == compute_vwap_20d
 
     def test_total_features_count(self):
-        """Should have 45 total features registered (39 technical + 6 fundamental)."""
-        assert len(FEATURE_FUNCTIONS) == 45
+        """Regression guard on the total number of registered compute features.
+
+        The registry has grown over time (technical, fundamental, sentiment,
+        attribution and intraday families). Update intentionally when features
+        are added or removed.
+        """
+        assert len(FEATURE_FUNCTIONS) == 63
 
 
 # =============================================================================

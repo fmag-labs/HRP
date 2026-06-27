@@ -162,7 +162,9 @@ class TestRateLimiter:
 
     def test_handle_throttle_respects_max_backoff(self):
         """Test max backoff limit."""
-        config = RateLimitConfig(backoff_base=2.0, max_backoff=5.0)
+        # max_retries must be high enough that the backoff cap (not the retry
+        # limit) is what's exercised here.
+        config = RateLimitConfig(backoff_base=2.0, max_backoff=5.0, max_retries=20)
         limiter = RateLimiter(config)
 
         # Trigger many retries

@@ -35,8 +35,9 @@ class TestFetchSectorFromPolygon:
     """Tests for Polygon sector fetching."""
 
     @patch("hrp.data.ingestion.sectors.requests.get")
-    def test_successful_fetch(self, mock_get):
+    def test_successful_fetch(self, mock_get, monkeypatch):
         """Successful Polygon API call returns sector data."""
+        monkeypatch.setenv("POLYGON_API_KEY", "test_key")
         mock_get.return_value = Mock(
             status_code=200,
             json=lambda: {

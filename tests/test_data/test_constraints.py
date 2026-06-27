@@ -380,7 +380,13 @@ class TestCheckConstraints:
             """
             )
 
-        result = db.fetchall("SELECT status FROM data_sources ORDER BY source_id")
+        # Restrict to the rows inserted by this test; create_tables seeds
+        # additional data_sources rows that are unrelated to this enum check.
+        result = db.fetchall(
+            "SELECT status FROM data_sources "
+            "WHERE source_id IN ('active_source', 'deprecated_source', 'inactive_source') "
+            "ORDER BY source_id"
+        )
         assert len(result) == 3
         assert result[0][0] == "active"
         assert result[1][0] == "deprecated"
