@@ -132,6 +132,13 @@ hrp stop             # Stop all services
 hrp doctor           # Run setup verification checks (PASS/FAIL)
 ```
 
+Consumer HTTP/JSON API (advisory front-end backend):
+
+```bash
+python -m hrp.api.http --port 8090     # http://localhost:8090/api/health
+# Set HRP_API_TOKEN to require `Authorization: Bearer <token>` on /api routes.
+```
+
 The underlying scripts remain available:
 
 ```bash
