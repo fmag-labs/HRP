@@ -428,6 +428,29 @@ def run_live_trader(dry_run: bool = False, trading_dry_run: bool = True) -> dict
     return agent.run()
 
 
+def run_recommendations(dry_run: bool = False) -> dict:
+    """Run the weekly advisory recommendation agent.
+
+    Runs the full advisory pipeline: circuit-breaker / pre-trade checks,
+    closes stale recommendations, generates new weekly recommendations,
+    updates the track record and sends the email digest.
+    """
+    from hrp.agents.recommendation_agent import RecommendationAgent
+
+    if dry_run:
+        logger.info("[DRY RUN] Would run recommendation agent")
+        return {"status": "dry_run", "job": "recommendation"}
+
+    agent = RecommendationAgent()
+    result = agent.run()
+    logger.info(
+        f"Recommendation agent complete: "
+        f"{result.get('recommendations_generated', 0)} generated, "
+        f"{result.get('recommendations_closed', 0)} closed"
+    )
+    return result
+
+
 def run_drift_monitor(dry_run: bool = False, auto_rollback: bool = False) -> dict:
     """Run drift monitoring job.
 
@@ -465,6 +488,7 @@ JOBS: dict[str, callable] = {
     "predictions": run_predictions,
     "live-trader": run_live_trader,
     "drift-monitor": run_drift_monitor,
+    "recommendation": run_recommendations,
 }
 
 
@@ -491,6 +515,7 @@ Available jobs:
   predictions          Daily predictions for deployed strategies
   live-trader          Execute trades (DISABLED by default)
   drift-monitor        Monitor deployed models for drift
+  recommendation       Weekly advisory recommendations + digest
 """,
     )
 

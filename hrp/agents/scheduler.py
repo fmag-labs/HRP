@@ -993,6 +993,51 @@ class IngestionScheduler:
         )
         logger.info(f"Scheduled weekly CIO review on {day_of_week.capitalize()} at {review_time} ET")
 
+    def setup_weekly_recommendations(
+        self,
+        run_time: str = "18:00",
+        day_of_week: str = "sun",
+    ) -> None:
+        """
+        Schedule the weekly advisory recommendation agent.
+
+        Runs the full advisory pipeline (circuit-breaker / pre-trade checks,
+        stale-recommendation review, new recommendation generation, track-record
+        update and email digest) on Sunday evening to prepare Monday's picks.
+
+        Args:
+            run_time: Time to run the agent (HH:MM format, default 18:00)
+            day_of_week: Day to run (default: sun)
+        """
+        from hrp.agents.recommendation_agent import RecommendationAgent
+
+        hour, minute = _parse_time(run_time, "run_time")
+
+        def run_recommendations():
+            agent = RecommendationAgent()
+            result = agent.run()
+            logger.info(
+                f"Recommendation agent complete: "
+                f"{result.get('recommendations_generated', 0)} generated, "
+                f"{result.get('recommendations_closed', 0)} closed"
+            )
+            return result
+
+        self.add_job(
+            func=run_recommendations,
+            job_id="weekly_recommendations",
+            trigger=CronTrigger(
+                day_of_week=day_of_week,
+                hour=hour,
+                minute=minute,
+                timezone=ET_TIMEZONE,
+            ),
+            name="Weekly Advisory Recommendations",
+        )
+        logger.info(
+            f"Scheduled weekly recommendations on {day_of_week.capitalize()} at {run_time} ET"
+        )
+
     def setup_weekly_cleanup(
         self,
         cleanup_time: str = "02:00",

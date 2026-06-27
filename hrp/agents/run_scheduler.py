@@ -166,6 +166,7 @@ def main():
         scheduler.setup_weekly_cio_review()
         scheduler.setup_weekly_alpha_researcher()
         scheduler.setup_daily_kill_gate_enforcer()
+        scheduler.setup_weekly_recommendations()
         scheduler.setup_research_agent_triggers()
 
     # Start scheduler

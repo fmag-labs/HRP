@@ -184,7 +184,7 @@ All agents follow `agent.run()` pattern. Agent pipeline chain:
 | `hrp.advisory.approval_workflow` | `ApprovalWorkflow` for recommendation approve/reject lifecycle |
 | `hrp.advisory.kill_gate_calibrator` | `KillGateCalibrator` for false positive/negative analysis, threshold tuning |
 | `hrp.data.ingestion.historical_universe` | `HistoricalUniverseIngestion` for survivorship-bias-free backtesting |
-| `hrp.agents.recommendation_agent` | **[PLANNED]** Weekly recommendation generation agent |
+| `hrp.agents.recommendation_agent` | `RecommendationAgent` — weekly recommendation generation (scheduled Sun 18:00 ET) |
 
 ## Walk-Forward Validation
 
