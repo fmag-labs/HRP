@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run tests with coverage gate
+        run: >-
+          uv run pytest tests/
+          -m "not e2e"
+          -o addopts=""
+          -q
+          --cov=hrp
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=55
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore

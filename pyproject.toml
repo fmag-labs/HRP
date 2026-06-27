@@ -126,3 +126,15 @@ markers = [
     "e2e: marks tests as end-to-end tests (slow, require full stack)",
     "benchmark: marks tests as performance benchmarks",
 ]
+
+[tool.coverage.run]
+source = ["hrp"]
+omit = [
+    "*/tests/*",
+    "*/__main__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+# Note: the CI coverage gate (--cov-fail-under) lives in
+# .github/workflows/tests.yml so local single-test runs are not gated.
