@@ -32,6 +32,22 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
+# Load local configuration and Python environment when available. This makes the
+# script work from Finder-launched .command files as well as an activated shell.
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
+if [[ -f "$PROJECT_ROOT/.venv/bin/activate" ]]; then
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/.venv/bin/activate"
+else
+    echo "[WARN] .venv is missing. Run ./scripts/consumer_install.sh first."
+fi
+
 # PID directory
 readonly PID_DIR="$PROJECT_ROOT/.hrp_pids"
 readonly LOG_DIR="$HOME/hrp-data/logs"
@@ -154,6 +170,7 @@ start_dashboard() {
         --browser.gatherUsageStats=false \
         --server.port="$DASHBOARD_PORT" \
         --server.headless=true \
+        < /dev/null \
         > "$LOG_DIR/dashboard.out.log" \
         2> "$LOG_DIR/dashboard.error.log" &
     local pid=$!
@@ -223,6 +240,7 @@ start_mlflow() {
         --backend-store-uri "$MLFLOW_BACKEND" \
         --port "$MLFLOW_PORT" \
         --host 0.0.0.0 \
+        < /dev/null \
         > "$LOG_DIR/mlflow.out.log" \
         2> "$LOG_DIR/mlflow.error.log" &
     local pid=$!
@@ -309,6 +327,7 @@ start_scheduler() {
     fi
 
     nohup python -m hrp.agents.run_scheduler "${scheduler_args[@]}" \
+        < /dev/null \
         > "$LOG_DIR/scheduler.out.log" \
         2> "$LOG_DIR/scheduler.error.log" &
     local pid=$!

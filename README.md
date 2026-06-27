@@ -17,6 +17,16 @@ Personal, professional-grade quantitative research platform for systematic tradi
 
 ## Quick Start
 
+### Consumer Mode
+
+For a local daily-use experience on macOS, double-click:
+
+- `Install HRP.command` — first-time install
+- `Open HRP.command` — start the dashboard on the Today page
+- `Enable Daily HRP.command` — run the local daily refresh automatically
+
+See [Consumer Mode](docs/operations/consumer-mode.md) for the daily schedule and safety defaults.
+
 ### Prerequisites
 
 - Python 3.11+
