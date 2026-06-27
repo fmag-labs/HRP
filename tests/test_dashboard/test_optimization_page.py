@@ -6,6 +6,7 @@ and integration with OptimizationAPI.
 """
 
 import pytest
+import pandas as pd
 from datetime import date
 from unittest.mock import Mock, MagicMock, patch
 
@@ -16,7 +17,6 @@ from hrp.ml.optimization import OptimizationResult, OptimizationConfig
 class TestOptimizationPageComponents:
     """Test optimization page component structure and validation."""
 
-    @pytest.mark.skip(reason="Stale: optimization page is a numbered Streamlit file; render_optimization_page lives in components.optimization_controls")
     def test_optimization_page_imports(self):
         """Test that optimization page can be imported."""
         from hrp.dashboard.pages import optimization
@@ -84,35 +84,34 @@ class TestOptimizationPreview:
 class TestOptimizationResults:
     """Test optimization results rendering."""
 
-    @pytest.mark.skip(reason="Stale vs refactored OptimizationResult API (best_trial/parameter_importance removed)")
     def test_render_results_tab_with_full_results(self):
-        """Test results tab with complete optimization result."""
+        """Test results object with a complete optimization result."""
         from hrp.dashboard.components.optimization_controls import render_results_tab
 
         result = OptimizationResult(
             best_params={"alpha": 1.0, "l1_ratio": 0.5},
             best_score=0.0234,
-            best_trial=42,
-            trial_history=[
-                {"trial": 0, "score": 0.01},
-                {"trial": 1, "score": 0.02},
-                {"trial": 2, "score": 0.0234},
-            ],
-            parameter_importance={"alpha": 0.8, "l1_ratio": 0.2},
+            cv_results=pd.DataFrame(
+                {"trial": [0, 1, 2], "score": [0.01, 0.02, 0.0234]}
+            ),
             fold_results=[
                 {"train_score": 0.03, "test_score": 0.025},
                 {"train_score": 0.028, "test_score": 0.022},
             ],
-            study_name="test_study",
-            optimization_time=123.45,
+            all_trials=[
+                {"trial": 0, "score": 0.01},
+                {"trial": 1, "score": 0.02},
+                {"trial": 2, "score": 0.0234},
+            ],
+            hypothesis_id="HYP-2026-001",
+            n_trials_completed=3,
         )
 
         assert result.best_score == 0.0234
-        assert result.best_trial == 42
-        assert len(result.trial_history) == 3
-        assert len(result.parameter_importance) == 2
+        assert result.best_params["alpha"] == 1.0
+        assert len(result.all_trials) == 3
+        assert result.n_trials_completed == 3
 
-    @pytest.mark.skip(reason="Stale vs refactored OptimizationResult API (best_trial/parameter_importance removed)")
     def test_render_fold_analysis_with_stability(self):
         """Test fold analysis tab with stability metrics."""
         from hrp.dashboard.components.optimization_controls import render_fold_analysis_tab
@@ -120,16 +119,14 @@ class TestOptimizationResults:
         result = OptimizationResult(
             best_params={"alpha": 1.0},
             best_score=0.025,
-            best_trial=10,
-            trial_history=[],
-            parameter_importance={},
+            cv_results=pd.DataFrame(),
             fold_results=[
                 {"train_score": 0.03, "test_score": 0.025},
                 {"train_score": 0.029, "test_score": 0.024},
                 {"train_score": 0.031, "test_score": 0.026},
             ],
-            study_name="test_study",
-            optimization_time=60.0,
+            all_trials=[],
+            hypothesis_id="HYP-2026-001",
         )
 
         assert len(result.fold_results) == 3
@@ -157,7 +154,6 @@ class TestOptimizationConfiguration:
         # Empty features should be caught by UI validation
         assert len(features) == 0
 
-    @pytest.mark.skip(reason="Stale vs refactored OptimizationConfig API (strategy_name removed)")
     def test_configuration_validation_valid(self):
         """Test valid configuration."""
         from hrp.ml.optimization import OptimizationConfig
@@ -165,18 +161,17 @@ class TestOptimizationConfiguration:
 
         config = OptimizationConfig(
             hypothesis_id="test_hypo",
-            strategy_name="multifactor_ml",
             model_type="ridge",
+            target="returns_5d",
             param_space={"alpha": FloatDistribution(0.01, 100.0, log=True)},
             sampler="tpe",
             n_trials=50,
             n_folds=5,
-            scoring="ic",
+            scoring_metric="ic",
             features=["momentum_20d", "volatility_60d"],
             start_date=date(2020, 1, 1),
             end_date=date(2023, 12, 31),
-            pruning_enabled=True,
-            study_name=None,
+            enable_pruning=True,
         )
 
         assert config.n_trials == 50
@@ -225,7 +220,6 @@ class TestStudyHistory:
 class TestOptimizationAPIIntegration:
     """Test integration with OptimizationAPI."""
 
-    @pytest.mark.skip(reason="Stale vs refactored OptimizationResult API (best_trial/parameter_importance removed)")
     @patch('hrp.api.optimization_api.cross_validated_optimize')
     def test_optimization_execution_flow(self, mock_optimize):
         """Test end-to-end optimization execution."""
@@ -238,12 +232,10 @@ class TestOptimizationAPIIntegration:
         mock_result = OptimizationResult(
             best_params={"alpha": 1.0},
             best_score=0.0234,
-            best_trial=25,
-            trial_history=[],
-            parameter_importance={},
+            cv_results=pd.DataFrame(),
             fold_results=[],
-            study_name="test_study",
-            optimization_time=120.0,
+            all_trials=[],
+            hypothesis_id="test_hypo",
         )
         mock_optimize.return_value = mock_result
 
@@ -253,18 +245,17 @@ class TestOptimizationAPIIntegration:
 
         config = OptimizationConfig(
             hypothesis_id="test_hypo",
-            strategy_name="multifactor_ml",
             model_type="ridge",
+            target="returns_5d",
             param_space={"alpha": FloatDistribution(0.01, 100.0, log=True)},
             sampler="tpe",
             n_trials=10,
             n_folds=3,
-            scoring="ic",
+            scoring_metric="ic",
             features=["momentum_20d"],
             start_date=date(2020, 1, 1),
             end_date=date(2023, 12, 31),
-            pruning_enabled=True,
-            study_name="test_study",
+            enable_pruning=True,
         )
 
         symbols = ["AAPL", "MSFT", "GOOGL"]
@@ -272,7 +263,7 @@ class TestOptimizationAPIIntegration:
         result = opt_api.run_optimization(config, symbols)
 
         assert result.best_score == 0.0234
-        assert result.study_name == "test_study"
+        assert result.hypothesis_id == "test_hypo"
         mock_optimize.assert_called_once()
 
 

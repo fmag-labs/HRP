@@ -44,18 +44,6 @@ def _make_st():
     return m
 
 
-# NOTE: The Performance Attribution dashboard page (12_Performance_Attribution.py)
-# is stale relative to the current attribution APIs: render() calls its helpers with
-# old (start_date, end_date) signatures while the helpers were refactored to take an
-# AttributionConfig, and the current AttributionConfig no longer accepts the kwargs
-# these tests use. Reconciling the page + tests + config is a UI refactor (tracked as
-# a follow-up); the underlying attribution logic is covered by tests/test_attribution.
-pytestmark = pytest.mark.skip(
-    reason="Dashboard page stale vs refactored AttributionConfig API; needs a page "
-    "refactor. Attribution logic is covered by tests/test_attribution."
-)
-
-
 class TestPerformanceAttributionPageStructure:
     """Test that the dashboard page has the expected structure."""
 
@@ -361,10 +349,13 @@ class TestDecisionAttributionTimeline:
                 asset="AAPL",
                 entry_date=date.today() - timedelta(days=10),
                 exit_date=date.today() - timedelta(days=5),
+                entry_price=100.0,
+                exit_price=110.0,
+                quantity=100.0,
                 pnl=1000.0,
                 timing_contribution=400.0,
                 sizing_contribution=300.0,
-                residual_contribution=300.0,
+                residual=300.0,
             ),
         ]
 
@@ -587,7 +578,7 @@ class TestHelperFunctions:
             total_contrib = (
                 decision.timing_contribution
                 + decision.sizing_contribution
-                + decision.residual_contribution
+                + decision.residual
             )
             assert np.isclose(total_contrib, decision.pnl, atol=0.01)
 

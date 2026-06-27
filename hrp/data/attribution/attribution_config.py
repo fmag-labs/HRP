@@ -1,6 +1,7 @@
 """Attribution configuration."""
 
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from typing import Literal
 
@@ -28,6 +29,14 @@ class AttributionConfig:
 
     # Factor attribution method
     method: Literal["brinson", "regression"] = "brinson"
+
+    # Analysis period (used by the dashboard; the attribution classes themselves
+    # operate on returns/weights passed directly).
+    start_date: date | None = None
+    end_date: date | None = None
+
+    # Feature importance method
+    importance_method: ImportanceMethod = ImportanceMethod.PERMUTATION
 
     # Benchmark for active return calculation
     benchmark: str = "SPY"  # Default to S&P 500

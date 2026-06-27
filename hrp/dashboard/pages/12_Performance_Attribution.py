@@ -24,7 +24,11 @@ import streamlit as st
 from loguru import logger
 
 from hrp.api.platform import PlatformAPI
-from hrp.data.attribution.attribution_config import AttributionConfig, AttributionMethod
+from hrp.data.attribution.attribution_config import (
+    AttributionConfig,
+    AttributionMethod,
+    ImportanceMethod,
+)
 from hrp.data.attribution.decision_attribution import (
     TradeDecision,
 )
@@ -43,32 +47,32 @@ def render() -> None:
     api = PlatformAPI()
 
     # Configuration section
-    start_date, end_date, config = _render_config_section()
+    config = _render_config_section()
 
     st.divider()
 
     # Summary Bar
-    _render_summary_bar(api, start_date, end_date)
+    _render_summary_bar(api, config)
 
     st.divider()
 
     # Waterfall Chart - THE KEY VISUALIZATION
-    _render_waterfall_chart(api, start_date, end_date, config)
+    _render_waterfall_chart(api, config)
 
     st.divider()
 
     # Factor Contribution Table
-    _render_factor_contribution_table(api, start_date, end_date, config)
+    _render_factor_contribution_table(api, config)
 
     st.divider()
 
     # Feature Importance Heatmap
-    _render_feature_importance_heatmap(api, start_date, end_date, config)
+    _render_feature_importance_heatmap(api, config)
 
     st.divider()
 
     # Decision Attribution Timeline
-    _render_decision_attribution_timeline(api, start_date, end_date)
+    _render_decision_attribution_timeline(api, config)
 
     st.divider()
 
@@ -76,8 +80,8 @@ def render() -> None:
     _render_period_comparison(api, config)
 
 
-def _render_config_section() -> tuple[date, date, AttributionConfig]:
-    """Render attribution configuration controls and return dates + config."""
+def _render_config_section() -> AttributionConfig:
+    """Render attribution configuration controls and return an AttributionConfig."""
     st.subheader("Attribution Configuration")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -105,30 +109,33 @@ def _render_config_section() -> tuple[date, date, AttributionConfig]:
         )
 
     with col4:
-        shap_enabled = st.checkbox(
-            "Enable SHAP",
-            value=False,
-            help="Use SHAP for feature importance (requires shap package)",
+        importance_method = st.selectbox(
+            "Importance Method",
+            options=["permutation", "shap"],
+            index=0,
+            format_func=lambda x: x.title(),
         )
 
-    # Create config with selected parameters
-    config = AttributionConfig(
+    # Create config with selected parameters. importance_method is kept as the raw
+    # selectbox value (str-enum compatible) to stay robust when st is mocked.
+    return AttributionConfig(
         method=method,  # type: ignore
-        shap_enabled=shap_enabled,
-        lookback_days=(end_date - start_date).days,
+        importance_method=importance_method,  # type: ignore
+        start_date=start_date,
+        end_date=end_date,
+        shap_enabled=(importance_method == "shap"),
+        lookback_days=(end_date - start_date).days if isinstance(start_date, date) else 0,
     )
 
-    return start_date, end_date, config
 
-
-def _render_summary_bar(api: PlatformAPI, start_date: date, end_date: date) -> None:
+def _render_summary_bar(api: PlatformAPI, config: AttributionConfig) -> None:
     """Render summary metrics bar."""
     st.subheader("Performance Summary")
 
     try:
         # Get portfolio and benchmark returns
-        portfolio_returns = _get_portfolio_returns(api, start_date, end_date)
-        benchmark_returns = _get_benchmark_returns(api, start_date, end_date)
+        portfolio_returns = _get_portfolio_returns(api, config)
+        benchmark_returns = _get_benchmark_returns(api, config)
 
         if portfolio_returns is None or benchmark_returns is None:
             st.warning("Insufficient data for attribution period")
@@ -164,7 +171,7 @@ def _render_summary_bar(api: PlatformAPI, start_date: date, end_date: date) -> N
             )
 
         with col4:
-            days = (end_date - start_date).days
+            days = (config.end_date - config.start_date).days
             st.metric(
                 "Period",
                 f"{days} days",
@@ -356,7 +363,7 @@ def _render_decision_attribution_timeline(api: PlatformAPI, config: AttributionC
             dates.append(decision.exit_date)
             timing_pnl.append(decision.timing_contribution)
             sizing_pnl.append(decision.sizing_contribution)
-            residual_pnl.append(decision.residual_contribution)
+            residual_pnl.append(decision.residual)
 
         # Create stacked bar chart
         fig = go.Figure()
@@ -561,41 +568,31 @@ def _calculate_attribution(api: PlatformAPI, config: AttributionConfig) -> list[
             return []
 
         if config.method == AttributionMethod.BRINSON:
-            # Use Brinson-Fachler attribution
-            # For demo purposes, create synthetic sector weights
+            # Brinson-Fachler attribution across synthetic sectors (demo data).
             sectors = ["Technology", "Healthcare", "Finance", "Consumer", "Energy"]
-            portfolio_weights = np.random.dirichlet(np.ones(len(sectors)))
-            benchmark_weights = np.random.dirichlet(np.ones(len(sectors)))
+            portfolio_weights = pd.Series(
+                np.random.dirichlet(np.ones(len(sectors))), index=sectors
+            )
+            benchmark_weights = pd.Series(
+                np.random.dirichlet(np.ones(len(sectors))), index=sectors
+            )
+            portfolio_sector_returns = pd.Series(
+                np.random.normal(0.001, 0.015, len(sectors)), index=sectors
+            )
+            benchmark_sector_returns = pd.Series(
+                np.random.normal(0.0008, 0.012, len(sectors)), index=sectors
+            )
 
-            # Synthetic sector returns
-            sector_returns_p = {
-                sector: np.random.normal(0.001, 0.015, len(portfolio_returns))
-                for sector in sectors
-            }
-            sector_returns_b = {
-                sector: np.random.normal(0.0008, 0.012, len(benchmark_returns))
-                for sector in sectors
-            }
-
-            # Calculate Brinson attribution
             attributor = BrinsonAttribution()
-            results = []
-
-            for i, sector in enumerate(sectors):
-                sector_result = attributor.calculate_sector_attribution(
-                    portfolio_weight=portfolio_weights[i],
-                    benchmark_weight=benchmark_weights[i],
-                    portfolio_sector_return=sector_returns_p[sector].mean(),
-                    benchmark_sector_return=sector_returns_b[sector].mean(),
-                    benchmark_total_return=benchmark_returns.mean(),
-                )
-                results.extend(sector_result)
-
-            return results
+            return attributor.attribute(
+                portfolio_weights=portfolio_weights,
+                portfolio_returns=portfolio_sector_returns,
+                benchmark_weights=benchmark_weights,
+                benchmark_returns=benchmark_sector_returns,
+            )
 
         elif config.method == AttributionMethod.REGRESSION:
-            # Use regression-based factor attribution
-            # Create synthetic factor exposures for demo
+            # Regression-based factor attribution with synthetic factor returns (demo).
             factors = pd.DataFrame({
                 "Market": np.random.normal(0.0005, 0.01, len(portfolio_returns)),
                 "Value": np.random.normal(0.0002, 0.005, len(portfolio_returns)),
@@ -604,12 +601,10 @@ def _calculate_attribution(api: PlatformAPI, config: AttributionConfig) -> list[
             }, index=portfolio_returns.index)
 
             attributor = FactorAttribution()
-            results = attributor.calculate(
+            return attributor.attribute(
                 portfolio_returns=portfolio_returns,
                 factor_returns=factors,
             )
-
-            return results
 
         else:
             logger.warning(f"Unknown attribution method: {config.method}")
@@ -681,15 +676,19 @@ def _calculate_decision_attribution(api: PlatformAPI, config: AttributionConfig)
             sizing_pct = np.random.uniform(0.2, 0.4)  # 20-40% from sizing
             residual_pct = 1 - timing_pct - sizing_pct
 
+            entry_price = float(np.random.uniform(50, 200))
             decision = TradeDecision(
                 trade_id=f"TRADE-{len(decisions)+1}",
                 asset=f"ASSET-{np.random.randint(1, 10)}",
                 entry_date=entry_date,
                 exit_date=exit_date,
+                entry_price=entry_price,
+                exit_price=entry_price * float(np.random.uniform(0.9, 1.1)),
+                quantity=float(np.random.randint(10, 100)),
                 pnl=total_pnl,
                 timing_contribution=total_pnl * timing_pct,
                 sizing_contribution=total_pnl * sizing_pct,
-                residual_contribution=total_pnl * residual_pct,
+                residual=total_pnl * residual_pct,
             )
 
             decisions.append(decision)
