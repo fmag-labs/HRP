@@ -7,15 +7,15 @@ from hrp.agents.scheduler import IngestionScheduler
 
 
 def test_recommendation_job_registered():
-    """The 'recommendation' job must be discoverable via the run_job registry."""
-    assert "recommendation" in JOBS
-    assert JOBS["recommendation"] is run_recommendations
+    """The 'recommendations' job must be discoverable via the run_job registry."""
+    assert "recommendations" in JOBS
+    assert JOBS["recommendations"] is run_recommendations
 
 
 def test_run_recommendations_dry_run():
     """Dry-run must not instantiate the agent and returns a dry_run marker."""
     result = run_recommendations(dry_run=True)
-    assert result == {"status": "dry_run", "job": "recommendation"}
+    assert result == {"status": "dry_run", "job": "recommendations"}
 
 
 def test_run_recommendations_invokes_agent():

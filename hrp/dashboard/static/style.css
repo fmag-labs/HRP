@@ -138,12 +138,18 @@ h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-mono);
     font-size: 1.75rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    color: #111827;
+}
+
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] p {
+    color: #374151;
 }
 
 [data-testid="stMetricDelta"] {
     font-family: var(--font-mono);
     font-size: 0.875rem;
+    color: #374151;
 }
 
 /* ===== BUTTONS ===== */

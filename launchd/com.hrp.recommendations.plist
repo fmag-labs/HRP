@@ -3,30 +3,28 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.hrp.recommendation</string>
+    <string>com.hrp.recommendations</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Users/openclaw/Projects/HRP/.venv/bin/python</string>
         <string>-m</string>
         <string>hrp.agents.run_job</string>
         <string>--job</string>
-        <string>recommendation</string>
+        <string>recommendations</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/openclaw/Projects/HRP</string>
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Weekday</key>
-        <integer>0</integer>
         <key>Hour</key>
         <integer>18</integer>
         <key>Minute</key>
-        <integer>0</integer>
+        <integer>45</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/openclaw/hrp-data/logs/recommendation.log</string>
+    <string>/Users/openclaw/hrp-data/logs/recommendations.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/openclaw/hrp-data/logs/recommendation.error.log</string>
+    <string>/Users/openclaw/hrp-data/logs/recommendations.error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PYTHONPATH</key>
