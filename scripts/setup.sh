@@ -689,11 +689,12 @@ with open('$mcp_file', 'w') as f:
             [[ -f "$plist" ]] || continue
             ((plist_count++)) || true
 
-            if grep -q '/Users/fer/' "$plist" 2>/dev/null; then
-                # Replace all /Users/fer/ references with current user's paths
-                sed -i '' "s|/Users/fer/Projects/HRP/.venv|${PROJECT_ROOT}/.venv|g" "$plist"
-                sed -i '' "s|/Users/fer/Projects/HRP|${PROJECT_ROOT}|g" "$plist"
-                sed -i '' "s|/Users/fer/hrp-data|${current_home}/hrp-data|g" "$plist"
+            # Rewrite any committed user path (e.g. /Users/fer, /Users/openclaw)
+            # to this machine's paths. User-agnostic so it works for any clone.
+            if grep -qE '/Users/[^/]+/(Projects/HRP|hrp-data)' "$plist" 2>/dev/null; then
+                sed -i '' -E "s|/Users/[^/]+/Projects/HRP/.venv|${PROJECT_ROOT}/.venv|g" "$plist"
+                sed -i '' -E "s|/Users/[^/]+/Projects/HRP|${PROJECT_ROOT}|g" "$plist"
+                sed -i '' -E "s|/Users/[^/]+/hrp-data|${current_home}/hrp-data|g" "$plist"
                 ((fixed_count++)) || true
             fi
         done
