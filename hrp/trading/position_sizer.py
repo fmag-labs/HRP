@@ -182,8 +182,12 @@ class VaRPositionSizer:
         # Calculate VaR for proposed position
         try:
             var_result = self._var_calculator.calculate(returns)
-            var_at_size = var_result.var
-            cvar_at_size = var_result.cvar if self.config.use_cvar else None
+            # The VaR calculator returns floats; convert to Decimal so all
+            # downstream arithmetic with Decimal budgets/prices is type-consistent.
+            var_at_size = Decimal(str(var_result.var))
+            cvar_at_size = (
+                Decimal(str(var_result.cvar)) if self.config.use_cvar else None
+            )
 
             # Use CVaR if enabled (more conservative)
             var_to_check = cvar_at_size if self.config.use_cvar else var_at_size
@@ -366,8 +370,10 @@ class VaRPositionSizer:
             # Filter NaN and convert to numpy array
             clean_returns = np.array([r for r in returns if not math.isnan(r)])
             var_result = self._var_calculator.calculate(clean_returns)
-            var_per_share = var_result.var
-            cvar_per_share = var_result.cvar
+            # Convert to Decimal for type-consistent arithmetic with Decimal
+            # budgets/prices downstream.
+            var_per_share = Decimal(str(var_result.var))
+            cvar_per_share = Decimal(str(var_result.cvar))
 
             # Use CVaR if enabled
             var_to_use = cvar_per_share if self.config.use_cvar else var_per_share
