@@ -18,3 +18,7 @@ pre-commit>=3.6.0
 # Type stubs
 pandas-stubs
 types-requests
+
+# Optional broker SDKs (needed to run execution/broker tests)
+robin-stocks>=3.0.0
+pyotp>=2.9.0

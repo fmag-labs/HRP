@@ -1493,6 +1493,10 @@ dev = [
 polygon = [
     { name = "polygon-api-client" },
 ]
+robinhood = [
+    { name = "pyotp" },
+    { name = "robin-stocks" },
+]
 trading = [
     { name = "ib-insync" },
 ]
@@ -1529,10 +1533,12 @@ requires-dist = [
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pyarrow", specifier = ">=14.0.0" },
     { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "pyotp", marker = "extra == 'robinhood'", specifier = ">=2.9.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "resend", specifier = ">=0.7.0" },
+    { name = "robin-stocks", marker = "extra == 'robinhood'", specifier = ">=3.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "scikit-learn", specifier = ">=1.3.0" },
     { name = "streamlit", specifier = ">=1.30.0" },
@@ -1542,7 +1548,7 @@ requires-dist = [
     { name = "xgboost", specifier = ">=2.0.0" },
     { name = "yfinance", specifier = ">=0.2.30" },
 ]
-provides-extras = ["dev", "polygon", "alpaca", "trading"]
+provides-extras = ["dev", "polygon", "alpaca", "trading", "robinhood"]
 
 [[package]]
 name = "httpcore"
@@ -3662,6 +3668,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyotp"
+version = "2.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/c6/c5d96a86fd0bf6fa1bbb5c5c341ff3208638b692727a683c8289068d9a11/pyotp-2.10.0.tar.gz", hash = "sha256:d01e9703443616b03c57c700b5cbffd56a1f929c1b0f8f03131bc78c1fca9d3f", size = 18625, upload-time = "2026-06-14T03:48:49.221Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/33/7b83bde70eddaaaaef487751a9c3a5cc0c0be54620ded0e120ebdc401ff9/pyotp-2.10.0-py3-none-any.whl", hash = "sha256:1df2f6a1bcc3bb0716172a5215ddc2f8c7c7fd26a13df9927d52e1746934836c", size = 13768, upload-time = "2026-06-14T03:48:47.831Z" },
+]
+
+[[package]]
 name = "pyparsing"
 version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4056,6 +4071,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bc/6d/a506aaa4a9eaa945ed8ab2b7347859f53593864289853c5d6d62b77246e0/rich_rst-1.3.2.tar.gz", hash = "sha256:a1196fdddf1e364b02ec68a05e8ff8f6914fee10fbca2e6b6735f166bb0da8d4", size = 14936, upload-time = "2025-10-14T16:49:45.332Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/13/2f/b4530fbf948867702d0a3f27de4a6aab1d156f406d72852ab902c4d04de9/rich_rst-1.3.2-py3-none-any.whl", hash = "sha256:a99b4907cbe118cf9d18b0b44de272efa61f15117c61e39ebdc431baf5df722a", size = 12567, upload-time = "2025-10-14T16:49:42.953Z" },
+]
+
+[[package]]
+name = "robin-stocks"
+version = "3.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "pyotp" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e5/fc/0ffa7e1a455b3ba43db946da561f22f7742a8569775c74391cdbd36afc5b/robin_stocks-3.4.0.tar.gz", hash = "sha256:70dbbe393239ec85bf02d49077997b87e6e4b4e427e9a9f5babf90c350d6c991", size = 67959, upload-time = "2025-05-18T06:20:35.155Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/2b/aae889dd876edab0872d89c296ebc4cee4d958f399c8719c1a483c79ed62/robin_stocks-3.4.0-py3-none-any.whl", hash = "sha256:3b473658d290cc673881c9122aa89e9b897d5a847e136e4061e38e147bb41eed", size = 134132, upload-time = "2025-05-18T06:20:33.504Z" },
 ]
 
 [[package]]

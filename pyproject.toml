@@ -89,6 +89,11 @@ trading = [
     "ib-insync>=0.9.86",
 ]
 
+robinhood = [
+    "robin-stocks>=3.0.0",
+    "pyotp>=2.9.0",
+]
+
 [project.scripts]
 hrp = "hrp.cli:main"
 
