@@ -8,9 +8,9 @@ class TestCIOSchema:
     """Test CIO tables are created correctly."""
 
     @pytest.fixture
-    def db(self):
-        """Get database connection."""
-        return DatabaseManager()
+    def db(self, test_db):
+        """Get a database connection backed by a freshly initialized schema."""
+        return DatabaseManager(test_db)
 
     def test_paper_portfolio_table_exists(self, db):
         """Test paper_portfolio table exists."""

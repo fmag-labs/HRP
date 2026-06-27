@@ -5,10 +5,32 @@ Run with: python -m hrp.data.schema --init
 """
 
 import argparse
+from pathlib import Path
 
 from loguru import logger
 
 from hrp.data.db import get_db
+
+
+def migrate_add_cio_tables(db_path: str | None = None) -> None:
+    """Create the CIO agent tables from the bundled SQL migration.
+
+    Creates paper_portfolio, paper_portfolio_history, paper_portfolio_trades,
+    cio_decisions, model_cemetery and cio_threshold_history. The migration SQL
+    uses ``CREATE TABLE IF NOT EXISTS`` throughout, so this is idempotent and
+    safe to run on every schema initialization.
+    """
+    sql_path = Path(__file__).parent / "migrations" / "add_cio_tables.sql"
+    if not sql_path.exists():
+        logger.warning(f"CIO migration not found: {sql_path}")
+        return
+
+    statements = [s.strip() for s in sql_path.read_text().split(";") if s.strip()]
+    db = get_db(db_path)
+    with db.connection() as conn:
+        for statement in statements:
+            conn.execute(statement)
+    logger.info("CIO agent tables ensured (paper_portfolio, cio_decisions, ...)")
 
 
 def migrate_agent_token_usage_identity(db_path: str | None = None) -> None:
@@ -872,6 +894,7 @@ def create_tables(db_path: str | None = None) -> None:
     migrate_agent_token_usage_identity(db_path)
     migrate_add_sector_columns(db_path)
     migrate_add_pipeline_stage_column(db_path)
+    migrate_add_cio_tables(db_path)
     migrate_remove_cio_foreign_keys(db_path)
 
 
