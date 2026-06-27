@@ -9,8 +9,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# Add project root to Python path so Streamlit can find the hrp module
-project_root = Path(__file__).parent.parent.parent
+# Add project root to Python path so Streamlit can find the hrp module.
+# Four parents: pages -> dashboard -> hrp -> repo root (inserting hrp/ itself
+# would shadow top-level packages like `mcp` with hrp submodules).
+project_root = Path(__file__).parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
