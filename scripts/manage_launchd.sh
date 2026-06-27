@@ -34,7 +34,9 @@ install() {
     # Remove old daemon plist symlink/file
     rm -f "${LAUNCH_AGENTS_DIR}/${OLD_DAEMON_LABEL}.plist"
 
-    # Install each plist
+    # Install each plist. We COPY (not symlink) into LaunchAgents and rewrite any
+    # committed author path (e.g. /Users/openclaw/...) to this machine's paths, so
+    # the jobs work on any clone without leaving the repo's tracked plists dirty.
     local count=0
     for plist in "${PLIST_DIR}"/com.hrp.*.plist; do
         [ -f "$plist" ] || continue
@@ -45,8 +47,12 @@ install() {
         # Remove existing symlink/file
         rm -f "${target}"
 
-        # Create symlink
-        ln -s "$plist" "${target}"
+        # Copy with paths rewritten to this machine (user-agnostic).
+        sed -E \
+            -e "s|/Users/[^/]+/Projects/HRP/.venv|${REPO_DIR}/.venv|g" \
+            -e "s|/Users/[^/]+/Projects/HRP|${REPO_DIR}|g" \
+            -e "s|/Users/[^/]+/hrp-data|${HOME}/hrp-data|g" \
+            "$plist" > "${target}"
 
         # Load the job
         launchctl bootstrap "gui/$(id -u)" "${target}" 2>/dev/null || \
