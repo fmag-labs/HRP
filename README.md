@@ -122,6 +122,18 @@ Without `ANTHROPIC_API_KEY`, Claude-powered agents (Alpha Researcher, CIO, Repor
 
 ### Running Services
 
+The `hrp` CLI is the unified front door for service management (wraps `scripts/startup.sh`):
+
+```bash
+hrp start            # Start dashboard, MLflow, scheduler
+hrp start --full     # ...with all research agents
+hrp status           # Show running services
+hrp stop             # Stop all services
+hrp doctor           # Run setup verification checks (PASS/FAIL)
+```
+
+The underlying scripts remain available:
+
 ```bash
 # Start all services (dashboard, MLflow, scheduler)
 ./scripts/startup.sh start

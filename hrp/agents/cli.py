@@ -5,11 +5,26 @@ Allows manual triggering of scheduled jobs for testing and debugging.
 """
 
 import argparse
+import subprocess
 import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
+
+# Repository root (hrp/agents/cli.py -> repo root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _run_project_script(rel_path: str, script_args: list[str] | None = None) -> int:
+    """Run a project shell script, streaming its output. Returns the exit code."""
+    script = PROJECT_ROOT / rel_path
+    if not script.exists():
+        logger.error(f"Script not found: {script}")
+        return 1
+    cmd = ["bash", str(script), *(script_args or [])]
+    return subprocess.run(cmd, cwd=str(PROJECT_ROOT)).returncode
 
 from hrp.agents.jobs import FeatureComputationJob, PriceIngestionJob, UniverseUpdateJob
 from hrp.agents.scheduler import IngestionScheduler
@@ -288,6 +303,48 @@ Examples:
         help="Confirm deletion without prompting",
     )
 
+    # --- Service management (wraps scripts/startup.sh and scripts/setup.sh) ---
+
+    # start command
+    start_parser = subparsers.add_parser(
+        "start",
+        help="Start HRP services (dashboard, MLflow, scheduler)",
+    )
+    start_scope = start_parser.add_mutually_exclusive_group()
+    start_scope.add_argument(
+        "--full",
+        action="store_true",
+        help="Start with all research agents enabled",
+    )
+    start_scope.add_argument(
+        "--dashboard-only",
+        action="store_true",
+        help="Start only the dashboard",
+    )
+    start_scope.add_argument(
+        "--mlflow-only",
+        action="store_true",
+        help="Start only the MLflow UI",
+    )
+
+    # stop command
+    subparsers.add_parser("stop", help="Stop all HRP services")
+
+    # restart command
+    subparsers.add_parser("restart", help="Restart all HRP services")
+
+    # status command (service status; see job-status for ingestion history)
+    subparsers.add_parser(
+        "status",
+        help="Show running HRP services (use job-status for ingestion history)",
+    )
+
+    # doctor command
+    subparsers.add_parser(
+        "doctor",
+        help="Run setup verification checks (PASS/FAIL summary)",
+    )
+
     args = parser.parse_args()
 
     # Handle commands
@@ -365,6 +422,28 @@ Examples:
 
         count = clear_job_history(args.job_id, before_dt, args.status)
         print(f"Deleted {count} records")
+
+    elif args.command == "start":
+        scope_args = []
+        if args.full:
+            scope_args.append("--full")
+        elif args.dashboard_only:
+            scope_args.append("--dashboard-only")
+        elif args.mlflow_only:
+            scope_args.append("--mlflow-only")
+        sys.exit(_run_project_script("scripts/startup.sh", ["start", *scope_args]))
+
+    elif args.command == "stop":
+        sys.exit(_run_project_script("scripts/startup.sh", ["stop"]))
+
+    elif args.command == "restart":
+        sys.exit(_run_project_script("scripts/startup.sh", ["restart"]))
+
+    elif args.command == "status":
+        sys.exit(_run_project_script("scripts/startup.sh", ["status"]))
+
+    elif args.command == "doctor":
+        sys.exit(_run_project_script("scripts/setup.sh", ["--check"]))
 
     else:
         parser.print_help()
