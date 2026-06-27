@@ -65,11 +65,9 @@ class TestRobinhoodSession:
         with pytest.raises(ValueError, match="username and password are required"):
             RobinhoodSession(RobinhoodAuthConfig(username="test", password=""))
 
-    @patch("hrp.execution.robinhood_auth.rh")
-    def test_initialization_without_robin_stocks(self, mock_rh):
+    @patch("hrp.execution.robinhood_auth.rh", None)
+    def test_initialization_without_robin_stocks(self):
         """Test initialization fails without robin_stocks."""
-        mock_rh.side_effect = ImportError("robin_stocks not found")
-
         config = RobinhoodAuthConfig(
             username="test@example.com", password="test_password"
         )
@@ -90,7 +88,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config
@@ -126,7 +124,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config
@@ -152,7 +150,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config
@@ -177,7 +175,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config
@@ -201,7 +199,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config
@@ -223,7 +221,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config
@@ -245,7 +243,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config
@@ -270,7 +268,7 @@ class TestRobinhoodSession:
         )
 
         with patch.object(
-            RobinhoodSession, "_RobinhoodSession__init__", return_value=None
+            RobinhoodSession, "__init__", return_value=None
         ):
             session = RobinhoodSession.__new__(RobinhoodSession)
             session.config = config

@@ -5,6 +5,19 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+# Optional dependencies — imported at module level so they can be patched in
+# tests and so the rest of the module imports cleanly even when absent.
+# RobinhoodSession.__init__ raises a clear error if they are required but missing.
+try:
+    import robin_stocks.robinhood as rh
+except ImportError:  # pragma: no cover - exercised via tests with rh patched to None
+    rh = None
+
+try:
+    import pyotp
+except ImportError:  # pragma: no cover
+    pyotp = None
+
 
 @dataclass
 class RobinhoodAuthConfig:
@@ -58,26 +71,20 @@ class RobinhoodSession:
         self._authenticated = False
         self._login_info: dict | None = None
 
-        # Import here to avoid global dependency
-        try:
-            import robin_stocks.robinhood as rh
-
-            self._rh = rh
-        except ImportError:
+        # robin_stocks is an optional dependency (see module-level import).
+        if rh is None:
             raise ImportError(
                 "robin_stocks not installed. Install with: pip install robin-stocks"
             )
+        self._rh = rh
 
         if config.totp_secret:
-            try:
-                import pyotp
-
-                self._pyotp = pyotp
-            except ImportError:
+            if pyotp is None:
                 raise ImportError(
                     "pyotp not installed but totp_secret provided. "
                     "Install with: pip install pyotp"
                 )
+            self._pyotp = pyotp
         else:
             self._pyotp = None
 

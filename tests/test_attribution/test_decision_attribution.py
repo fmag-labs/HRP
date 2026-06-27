@@ -113,8 +113,16 @@ class TestDecisionAttributor:
         exit_timing = (155.0 - 154.0) * 100.0  # +100 (good exit)
         assert abs(attributed.timing_contribution - (entry_timing + exit_timing)) < 1e-6  # type: ignore
 
-        # Check residual (should be close to 0 with no sizing attribution)
-        assert abs(attributed.residual) < 1e-6  # type: ignore
+        # Residual is the unexplained P&L: pnl - timing - sizing.
+        # Here the underlying move (500) is only partly explained by timing (200)
+        # with no sizing component, so the residual is 300.
+        expected_residual = 500.0 - (entry_timing + exit_timing) - 0.0
+        assert abs(attributed.residual - expected_residual) < 1e-6  # type: ignore
+        # Accounting identity must always hold.
+        assert abs(
+            attributed.pnl
+            - (attributed.timing_contribution + attributed.sizing_contribution + attributed.residual)
+        ) < 1e-6  # type: ignore
 
     def test_attribute_trade_with_sizing(self):
         """Test trade attribution with position sizing component."""
