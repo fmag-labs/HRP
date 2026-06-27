@@ -5,32 +5,10 @@ Run with: python -m hrp.data.schema --init
 """
 
 import argparse
-from pathlib import Path
 
 from loguru import logger
 
 from hrp.data.db import get_db
-
-
-def migrate_add_cio_tables(db_path: str | None = None) -> None:
-    """Create the CIO agent tables from the bundled SQL migration.
-
-    Creates paper_portfolio, paper_portfolio_history, paper_portfolio_trades,
-    cio_decisions, model_cemetery and cio_threshold_history. The migration SQL
-    uses ``CREATE TABLE IF NOT EXISTS`` throughout, so this is idempotent and
-    safe to run on every schema initialization.
-    """
-    sql_path = Path(__file__).parent / "migrations" / "add_cio_tables.sql"
-    if not sql_path.exists():
-        logger.warning(f"CIO migration not found: {sql_path}")
-        return
-
-    statements = [s.strip() for s in sql_path.read_text().split(";") if s.strip()]
-    db = get_db(db_path)
-    with db.connection() as conn:
-        for statement in statements:
-            conn.execute(statement)
-    logger.info("CIO agent tables ensured (paper_portfolio, cio_decisions, ...)")
 
 
 def migrate_agent_token_usage_identity(db_path: str | None = None) -> None:
@@ -794,6 +772,94 @@ TABLES = {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """,
+    # === CIO Agent: paper portfolio and decision tracking ===
+    # No FK constraints on hypothesis_id: DuckDB FKs block UPDATEs on parents
+    # (see migrate_remove_cio_foreign_keys). Sequences drive the id columns so
+    # API inserts that omit id work.
+    "paper_portfolio": """
+        CREATE SEQUENCE IF NOT EXISTS seq_paper_portfolio_id START 1;
+        CREATE TABLE IF NOT EXISTS paper_portfolio (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_paper_portfolio_id'),
+            hypothesis_id VARCHAR NOT NULL UNIQUE,
+            weight DECIMAL(5, 4),
+            entry_price DECIMAL(10, 4),
+            entry_date DATE,
+            current_price DECIMAL(10, 4),
+            unrealized_pnl DECIMAL(10, 2),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+    "paper_portfolio_history": """
+        CREATE SEQUENCE IF NOT EXISTS seq_paper_portfolio_history_id START 1;
+        CREATE TABLE IF NOT EXISTS paper_portfolio_history (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_paper_portfolio_history_id'),
+            as_of_date DATE UNIQUE,
+            nav DECIMAL(12, 2),
+            cash DECIMAL(12, 2),
+            total_positions INTEGER,
+            sharpe_ratio DECIMAL(5, 2),
+            max_drawdown DECIMAL(5, 3),
+            returns_daily DECIMAL(8, 5),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+    "paper_portfolio_trades": """
+        CREATE SEQUENCE IF NOT EXISTS seq_paper_trades_id START 1;
+        CREATE TABLE IF NOT EXISTS paper_portfolio_trades (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_paper_trades_id'),
+            hypothesis_id VARCHAR,
+            action VARCHAR,
+            weight_before DECIMAL(5, 4),
+            weight_after DECIMAL(5, 4),
+            price DECIMAL(10, 4),
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+    "cio_decisions": """
+        CREATE SEQUENCE IF NOT EXISTS seq_cio_decisions_id START 1;
+        CREATE TABLE IF NOT EXISTS cio_decisions (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_cio_decisions_id'),
+            decision_id VARCHAR UNIQUE,
+            report_date DATE,
+            hypothesis_id VARCHAR,
+            decision VARCHAR,
+            score_total DECIMAL(4, 2),
+            score_statistical DECIMAL(4, 2),
+            score_risk DECIMAL(4, 2),
+            score_economic DECIMAL(4, 2),
+            score_cost DECIMAL(4, 2),
+            rationale TEXT,
+            approved BOOLEAN DEFAULT FALSE,
+            approved_by VARCHAR,
+            approved_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+    "model_cemetery": """
+        CREATE SEQUENCE IF NOT EXISTS seq_model_cemetery_id START 1;
+        CREATE TABLE IF NOT EXISTS model_cemetery (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_model_cemetery_id'),
+            hypothesis_id VARCHAR UNIQUE,
+            killed_date DATE,
+            reason TEXT,
+            final_score DECIMAL(4, 2),
+            experiment_count INTEGER,
+            archived_by VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+    "cio_threshold_history": """
+        CREATE SEQUENCE IF NOT EXISTS seq_cio_threshold_history_id START 1;
+        CREATE TABLE IF NOT EXISTS cio_threshold_history (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_cio_threshold_history_id'),
+            threshold_name VARCHAR,
+            old_value DECIMAL(10, 4),
+            new_value DECIMAL(10, 4),
+            reason TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
 }
 
 # Indexes for performance
@@ -894,7 +960,6 @@ def create_tables(db_path: str | None = None) -> None:
     migrate_agent_token_usage_identity(db_path)
     migrate_add_sector_columns(db_path)
     migrate_add_pipeline_stage_column(db_path)
-    migrate_add_cio_tables(db_path)
     migrate_remove_cio_foreign_keys(db_path)
 
 
