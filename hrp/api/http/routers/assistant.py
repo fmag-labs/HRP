@@ -11,6 +11,7 @@ import os
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from loguru import logger
 
 from hrp.api.http.deps import get_api
 from hrp.api.http.schemas import AssistantAnswer, AssistantQuery
@@ -85,8 +86,12 @@ def query(body: AssistantQuery, api=Depends(get_api)) -> AssistantAnswer:
         raise HTTPException(status_code=429, detail="Daily assistant limit reached")
     try:
         text, sources = answer(api, body.question)
-    except Exception as exc:  # surface upstream/model errors clearly
-        raise HTTPException(status_code=502, detail=f"Assistant error: {exc}")
+    except Exception as exc:  # log full detail server-side; return a clean message
+        logger.error(f"Assistant query failed: {exc!r}")
+        raise HTTPException(
+            status_code=502,
+            detail="The assistant is temporarily unavailable. Please try again later.",
+        )
     return AssistantAnswer(
         answer=text,
         remaining_today=int(RATE_LIMITER.available_tokens),

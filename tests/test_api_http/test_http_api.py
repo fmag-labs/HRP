@@ -330,6 +330,24 @@ class TestAssistant:
         assert first.status_code == 200
         assert second.status_code == 429
 
+    def test_upstream_error_is_sanitized(self, client, monkeypatch):
+        from hrp.api.http.routers import assistant as assistant_mod
+        from hrp.utils.rate_limiter import RateLimiter
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.setattr(assistant_mod, "RATE_LIMITER", RateLimiter(5, 3600.0))
+
+        def boom(api, q):
+            raise RuntimeError("credit balance too low; request_id=req_secret123")
+
+        monkeypatch.setattr(assistant_mod, "answer", boom)
+        r = client.post("/api/assistant/query", json={"question": "hi"})
+        assert r.status_code == 502
+        # raw upstream text must NOT leak to the consumer
+        assert "request_id" not in r.text
+        assert "credit balance" not in r.text
+        assert "temporarily unavailable" in r.json()["detail"]
+
 
 class TestCors:
     def test_cors_header_for_configured_origin(self, client):
