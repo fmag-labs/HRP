@@ -5,7 +5,13 @@ from __future__ import annotations
 from fastapi import Depends, FastAPI
 
 from hrp.api.http.auth import require_token
-from hrp.api.http.routers import portfolio, recommendations, track_record
+from hrp.api.http.routers import (
+    assistant,
+    portfolio,
+    recommendations,
+    settings,
+    track_record,
+)
 
 API_PREFIX = "/api"
 
@@ -23,7 +29,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     protected = [Depends(require_token)]
-    for module in (recommendations, portfolio, track_record):
+    for module in (recommendations, portfolio, track_record, settings, assistant):
         app.include_router(module.router, prefix=API_PREFIX, dependencies=protected)
 
     return app

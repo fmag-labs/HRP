@@ -87,10 +87,11 @@ class Position(BaseModel):
 
     symbol: str | None = None
     quantity: float | None = None
-    avg_cost: float | None = None
+    avg_cost: float | None = None  # mapped from live_positions.entry_price
     current_price: float | None = None
     market_value: float | None = None
     unrealized_pnl: float | None = None
+    unrealized_pnl_pct: float | None = None
 
 
 class Portfolio(BaseModel):
@@ -100,15 +101,58 @@ class Portfolio(BaseModel):
 
 
 class TrackRecordPeriod(BaseModel):
+    """Mirrors the persisted ``track_record`` table; win_rate/closed are derived."""
+
     model_config = ConfigDict(extra="ignore")
 
     period_start: str | None = None
     period_end: str | None = None
     total_recommendations: int | None = None
-    closed_recommendations: int | None = None
-    win_rate: float | None = None
+    profitable: int | None = None
+    unprofitable: int | None = None
+    closed_recommendations: int | None = None  # derived: profitable + unprofitable
+    win_rate: float | None = None  # derived: profitable / closed
     avg_return: float | None = None
-    total_return: float | None = None
+    avg_win: float | None = None
+    avg_loss: float | None = None
+    best_pick: str | None = None
+    worst_pick: str | None = None
     benchmark_return: float | None = None
     excess_return: float | None = None
-    sharpe_ratio: float | None = None
+
+
+class Settings(BaseModel):
+    """Consumer settings, backed by the active ``user_profiles`` row."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    profile_id: str | None = None
+    name: str = "Default"
+    risk_tolerance: int = 3  # 1 (conservative) .. 5 (aggressive)
+    portfolio_value: float = 100000.0
+    max_positions: int = 20
+    max_position_pct: float = 0.10
+    excluded_symbols: list[str] = Field(default_factory=list)
+    excluded_sectors: list[str] = Field(default_factory=list)
+    preferred_horizon: str = "medium"  # short | medium | long
+
+
+class SettingsUpdate(BaseModel):
+    name: str | None = None
+    risk_tolerance: int | None = None
+    portfolio_value: float | None = None
+    max_positions: int | None = None
+    max_position_pct: float | None = None
+    excluded_symbols: list[str] | None = None
+    excluded_sectors: list[str] | None = None
+    preferred_horizon: str | None = None
+
+
+class AssistantQuery(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class AssistantAnswer(BaseModel):
+    answer: str
+    remaining_today: int
+    grounded_on: list[str] = Field(default_factory=list)

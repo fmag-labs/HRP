@@ -21,4 +21,31 @@ def get_track_record(
     end = end or date.today()
     start = start or (end - timedelta(days=365))
     df = api.get_track_record(start, end)
-    return [TrackRecordPeriod(**r) for r in df_to_records(df)]
+    return [_period_from_row(r) for r in df_to_records(df)]
+
+
+def _period_from_row(row: dict) -> TrackRecordPeriod:
+    """Map a track_record row, deriving closed count and win rate."""
+    profitable = row.get("profitable")
+    unprofitable = row.get("unprofitable")
+    closed = None
+    win_rate = None
+    if profitable is not None and unprofitable is not None:
+        closed = int(profitable) + int(unprofitable)
+        win_rate = (profitable / closed) if closed else None
+    return TrackRecordPeriod(
+        period_start=row.get("period_start"),
+        period_end=row.get("period_end"),
+        total_recommendations=row.get("total_recommendations"),
+        profitable=profitable,
+        unprofitable=unprofitable,
+        closed_recommendations=closed,
+        win_rate=win_rate,
+        avg_return=row.get("avg_return"),
+        avg_win=row.get("avg_win"),
+        avg_loss=row.get("avg_loss"),
+        best_pick=row.get("best_pick"),
+        worst_pick=row.get("worst_pick"),
+        benchmark_return=row.get("benchmark_return"),
+        excess_return=row.get("excess_return"),
+    )

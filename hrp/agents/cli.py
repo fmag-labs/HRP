@@ -26,10 +26,10 @@ def _run_project_script(rel_path: str, script_args: list[str] | None = None) -> 
     cmd = ["bash", str(script), *(script_args or [])]
     return subprocess.run(cmd, cwd=str(PROJECT_ROOT)).returncode
 
-from hrp.agents.jobs import FeatureComputationJob, PriceIngestionJob, UniverseUpdateJob
-from hrp.agents.scheduler import IngestionScheduler
-from hrp.api.platform import PlatformAPI
-from hrp.data.ingestion.prices import TEST_SYMBOLS
+
+# NOTE: heavy modules (jobs, scheduler, PlatformAPI, ingestion) are imported
+# lazily inside the handlers that need them, so lightweight service commands
+# (start/stop/status/doctor) and --help stay fast and quiet.
 
 
 def run_job_now(job_name: str, symbols: list[str] | None = None) -> dict[str, Any]:
@@ -43,6 +43,13 @@ def run_job_now(job_name: str, symbols: list[str] | None = None) -> dict[str, An
     Returns:
         Dictionary with job execution results
     """
+    from hrp.agents.jobs import (
+        FeatureComputationJob,
+        PriceIngestionJob,
+        UniverseUpdateJob,
+    )
+    from hrp.data.ingestion.prices import TEST_SYMBOLS
+
     logger.info(f"Manually triggering job: {job_name}")
 
     if job_name == "prices":
@@ -78,9 +85,7 @@ def run_job_now(job_name: str, symbols: list[str] | None = None) -> dict[str, An
         return result
 
     else:
-        raise ValueError(
-            f"Unknown job: {job_name}. Must be 'prices', 'features', or 'universe'"
-        )
+        raise ValueError(f"Unknown job: {job_name}. Must be 'prices', 'features', or 'universe'")
 
 
 def list_scheduled_jobs() -> list[dict[str, Any]]:
@@ -90,6 +95,8 @@ def list_scheduled_jobs() -> list[dict[str, Any]]:
     Returns:
         List of job information dictionaries
     """
+    from hrp.agents.scheduler import IngestionScheduler
+
     scheduler = IngestionScheduler()
 
     # Setup jobs to query them (without starting scheduler)
@@ -123,6 +130,7 @@ def get_job_status(job_id: str | None = None, limit: int = 10) -> list[dict[str,
         List of job execution records
     """
     from hrp.api.platform import PlatformAPI
+
     api = PlatformAPI()
     logs = api.get_ingestion_logs(job_id=job_id, limit=limit)
 
@@ -189,6 +197,8 @@ def clear_job_history(
     Returns:
         Number of records deleted
     """
+    from hrp.api.platform import PlatformAPI
+
     api = PlatformAPI()
     rows_deleted = api.purge_ingestion_logs(
         job_id=job_id,
@@ -388,7 +398,7 @@ Examples:
                     f"{record['records_fetched'] or 0:<10} "
                     f"{record['records_inserted'] or 0:<10}"
                 )
-                if record['error_message']:
+                if record["error_message"]:
                     print(f"  Error: {record['error_message']}")
             print()
         else:
