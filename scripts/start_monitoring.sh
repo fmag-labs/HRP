@@ -62,8 +62,8 @@ echo "     --health-threshold=90.0 \\"
 echo "     --with-daily-report \\"
 echo "     --daily-report-time=07:00"
 echo
-echo "5. Access the dashboard:"
-echo "   streamlit run hrp/dashboard/app.py"
-echo "   Then navigate to: http://localhost:8501/Data_Health"
+echo "5. Open the app (web + API):"
+echo "   ./scripts/open_hrp.sh"
+echo "   Data health is available via the API: http://localhost:8090/api/health"
 echo
 echo "Setup complete! See docs/setup/Automated-Monitoring-Setup.md for details."

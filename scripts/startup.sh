@@ -3,7 +3,7 @@
 # HRP System Startup Script
 #
 # Starts/stops all HRP services:
-# - Dashboard (Streamlit) on port 8501
+# - API server on port 8090
 # - MLflow UI on port 5010
 # - Scheduler (with optional research agents)
 #
@@ -13,7 +13,7 @@
 # Examples:
 #   ./scripts/startup.sh start                    # Start all core services
 #   ./scripts/startup.sh start --full             # Start with all research agents
-#   ./scripts/startup.sh start --dashboard-only   # Start dashboard only
+#   ./scripts/startup.sh start --api-only         # Start API server only
 #   ./scripts/startup.sh stop                     # Stop all services
 #   ./scripts/startup.sh status                   # Show service status
 ###############################################################################
@@ -53,12 +53,12 @@ readonly PID_DIR="$PROJECT_ROOT/.hrp_pids"
 readonly LOG_DIR="$HOME/hrp-data/logs"
 
 # Service PIDs
-PID_DASHBOARD="$PID_DIR/dashboard.pid"
+PID_API="$PID_DIR/api.pid"
 PID_MLFLOW="$PID_DIR/mlflow.pid"
 PID_SCHEDULER="$PID_DIR/scheduler.pid"
 
 # Service ports
-DASHBOARD_PORT="${HRP_DASHBOARD_PORT:-8501}"
+API_PORT="${HRP_API_PORT:-8090}"
 MLFLOW_PORT="${HRP_MLFLOW_PORT:-5010}"
 
 # MLflow backend
@@ -151,60 +151,57 @@ get_port_user() {
 # Service Management Functions
 ###############################################################################
 
-start_dashboard() {
-    if is_running "$PID_DASHBOARD"; then
-        log_warning "Dashboard is already running (PID: $(cat $PID_DASHBOARD))"
+start_api() {
+    if is_running "$PID_API"; then
+        log_warning "API server is already running (PID: $(cat $PID_API))"
         return 0
     fi
 
     # Check if port is available
-    if ! is_port_available "$DASHBOARD_PORT"; then
-        local port_user=$(get_port_user "$DASHBOARD_PORT")
-        log_error "Port $DASHBOARD_PORT is already in use (PID: $port_user)"
-        log_info "Try: HRP_DASHBOARD_PORT=8502 ./scripts/startup.sh start --dashboard-only"
+    if ! is_port_available "$API_PORT"; then
+        local port_user=$(get_port_user "$API_PORT")
+        log_error "Port $API_PORT is already in use (PID: $port_user)"
+        log_info "Try: HRP_API_PORT=8091 ./scripts/startup.sh start --api-only"
         return 1
     fi
 
-    log_info "Starting HRP Dashboard on port $DASHBOARD_PORT..."
-    nohup streamlit run hrp/dashboard/app.py \
-        --browser.gatherUsageStats=false \
-        --server.port="$DASHBOARD_PORT" \
-        --server.headless=true \
+    log_info "Starting HRP API server on port $API_PORT..."
+    nohup python -m hrp.api.http --port "$API_PORT" \
         < /dev/null \
-        > "$LOG_DIR/dashboard.out.log" \
-        2> "$LOG_DIR/dashboard.error.log" &
+        > "$LOG_DIR/api.out.log" \
+        2> "$LOG_DIR/api.error.log" &
     local pid=$!
-    echo $pid > "$PID_DASHBOARD"
+    echo $pid > "$PID_API"
 
-    if wait_for_service "Dashboard" "$DASHBOARD_PORT"; then
-        log_success "Dashboard started with PID: $pid"
-        log_info "URL: http://localhost:$DASHBOARD_PORT"
+    if wait_for_service "API server" "$API_PORT"; then
+        log_success "API server started with PID: $pid"
+        log_info "URL: http://localhost:$API_PORT/api/health"
         return 0
     else
-        log_error "Dashboard failed to start. Check $LOG_DIR/dashboard.error.log"
-        rm -f "$PID_DASHBOARD"
+        log_error "API server failed to start. Check $LOG_DIR/api.error.log"
+        rm -f "$PID_API"
         return 1
     fi
 }
 
-stop_dashboard() {
+stop_api() {
     local stopped=false
 
     # Stop tracked process
-    if is_running "$PID_DASHBOARD"; then
-        local pid=$(cat "$PID_DASHBOARD")
-        log_info "Stopping Dashboard (PID: $pid)..."
+    if is_running "$PID_API"; then
+        local pid=$(cat "$PID_API")
+        log_info "Stopping API server (PID: $pid)..."
         kill "$pid" 2>/dev/null || true
-        rm -f "$PID_DASHBOARD"
-        log_success "Dashboard stopped"
+        rm -f "$PID_API"
+        log_success "API server stopped"
         stopped=true
     fi
 
-    # Also kill any process using the dashboard port
-    local port_user=$(get_port_user "$DASHBOARD_PORT")
+    # Also kill any process using the API port
+    local port_user=$(get_port_user "$API_PORT")
     if [[ -n "$port_user" ]]; then
         if [[ "$stopped" == false ]]; then
-            log_info "Stopping Dashboard (PID: $port_user using port $DASHBOARD_PORT)..."
+            log_info "Stopping API server (PID: $port_user using port $API_PORT)..."
         fi
         kill "$port_user" 2>/dev/null || true
         # Force kill if still running after 1 second
@@ -212,12 +209,12 @@ stop_dashboard() {
         if ps -p "$port_user" > /dev/null 2>&1; then
             kill -9 "$port_user" 2>/dev/null || true
         fi
-        rm -f "$PID_DASHBOARD"
-        log_success "Dashboard stopped"
+        rm -f "$PID_API"
+        log_success "API server stopped"
     fi
 
     if [[ "$stopped" == false ]] && [[ -z "$port_user" ]]; then
-        log_warning "Dashboard is not running"
+        log_warning "API server is not running"
     fi
 }
 
@@ -383,14 +380,14 @@ show_status() {
     local running=0
     local stopped=0
 
-    # Dashboard
-    if is_running "$PID_DASHBOARD"; then
-        local dash_pid
-        dash_pid=$(cat "$PID_DASHBOARD" 2>/dev/null || echo "unknown")
-        echo -e "  Dashboard:      ${GREEN}RUNNING${NC} (PID: $dash_pid, Port: $DASHBOARD_PORT)"
+    # API server
+    if is_running "$PID_API"; then
+        local api_pid
+        api_pid=$(cat "$PID_API" 2>/dev/null || echo "unknown")
+        echo -e "  API server:     ${GREEN}RUNNING${NC} (PID: $api_pid, Port: $API_PORT)"
         running=$((running + 1))
     else
-        echo -e "  Dashboard:      ${RED}STOPPED${NC}"
+        echo -e "  API server:     ${RED}STOPPED${NC}"
         stopped=$((stopped + 1))
     fi
 
@@ -435,7 +432,7 @@ start_all() {
 
     local failures=0
 
-    start_dashboard || ((failures++))
+    start_api || ((failures++))
     start_mlflow || ((failures++))
     start_scheduler || ((failures++))
 
@@ -443,7 +440,7 @@ start_all() {
     if [[ $failures -eq 0 ]]; then
         log_success "All services started successfully!"
         echo ""
-        echo -e "  ${GREEN}Dashboard:${NC}   http://localhost:$DASHBOARD_PORT"
+        echo -e "  ${GREEN}API server:${NC}  http://localhost:$API_PORT/api/health"
         echo -e "  ${GREEN}MLflow UI:${NC}   http://localhost:$MLFLOW_PORT"
         echo ""
         echo "Use './scripts/startup.sh status' to check status"
@@ -460,7 +457,7 @@ stop_all() {
 
     stop_scheduler
     stop_mlflow
-    stop_dashboard
+    stop_api
 
     log_success "All services stopped"
 }
@@ -471,7 +468,7 @@ restart_all() {
     # Additional wait for ports to be fully released
     local count=0
     while [[ $count -lt 5 ]]; do
-        if is_port_available "$DASHBOARD_PORT" && is_port_available "$MLFLOW_PORT"; then
+        if is_port_available "$API_PORT" && is_port_available "$MLFLOW_PORT"; then
             break
         fi
         sleep 1
@@ -489,7 +486,7 @@ print_usage() {
 Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
-  start               Start all services (dashboard, MLflow, scheduler)
+  start               Start all services (API, MLflow, scheduler)
   stop                Stop all services
   restart             Restart all services
   status              Show service status
@@ -497,12 +494,12 @@ Commands:
 Start Options:
   --full              Start with all research agents enabled
   --minimal           Start with minimal configuration (ingestion only)
-  --dashboard-only    Start only the dashboard
+  --api-only          Start only the API server
   --mlflow-only       Start only MLflow UI
   --scheduler-only    Start only the scheduler
 
 Environment Variables:
-  HRP_DASHBOARD_PORT  Dashboard port (default: 8501)
+  HRP_API_PORT        API server port (default: 8090)
   HRP_MLFLOW_PORT     MLflow UI port (default: 5010)
   HRP_PRICE_TIME      Price ingestion time (default: 18:00)
   HRP_UNIVERSE_TIME   Universe update time (default: 18:05)
@@ -514,10 +511,10 @@ Examples:
   $0 start                           # Start all core services
   $0 start --full                    # Start with research agents
   $0 start --minimal                 # Minimal ingestion mode
-  $0 start --dashboard-only          # Dashboard only
+  $0 start --api-only                # API server only
   $0 stop                            # Stop all services
   $0 status                          # Show service status
-  HRP_DASHBOARD_PORT=8080 $0 start   # Custom dashboard port
+  HRP_API_PORT=8091 $0 start         # Custom API port
 
 EOF
 }
@@ -532,7 +529,7 @@ shift || true
 # Parse options
 FULL_MODE="false"
 MINIMAL_MODE="false"
-DASHBOARD_ONLY="false"
+API_ONLY="false"
 MLFLOW_ONLY="false"
 SCHEDULER_ONLY="false"
 
@@ -546,8 +543,8 @@ while [[ $# -gt 0 ]]; do
             MINIMAL_MODE="true"
             shift
             ;;
-        --dashboard-only)
-            DASHBOARD_ONLY="true"
+        --api-only)
+            API_ONLY="true"
             shift
             ;;
         --mlflow-only)
@@ -578,9 +575,9 @@ case "$MAIN_COMMAND" in
         exit 0
         ;;
     start)
-        if [[ "$DASHBOARD_ONLY" == "true" ]]; then
+        if [[ "$API_ONLY" == "true" ]]; then
             print_header
-            start_dashboard
+            start_api
         elif [[ "$MLFLOW_ONLY" == "true" ]]; then
             print_header
             start_mlflow

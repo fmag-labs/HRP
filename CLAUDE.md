@@ -16,7 +16,7 @@ Long-only US equities, daily timeframe, institutional rigor.
 Three-layer architecture:
 1. **Data Layer** - DuckDB storage, ingestion pipelines, feature store
 2. **Research Layer** - VectorBT backtesting, MLflow experiments, hypothesis registry
-3. **Control Layer** - Streamlit dashboard, MCP servers, scheduled agents
+3. **Control Layer** - Next.js web app + HTTP API, MCP servers, scheduled agents
 
 **The Rule:** External access goes through `hrp/api/platform.py`. Data layer modules (`hrp/data/`) may access `hrp/data/db.py` directly. Everything else uses the API.
 
@@ -200,9 +200,10 @@ Supports purge/embargo periods to prevent temporal leakage:
 |---------|---------|------|
 | **Setup** | `./scripts/setup.sh` | - |
 | **Setup (check only)** | `./scripts/setup.sh --check` | - |
-| Dashboard | `streamlit run hrp/dashboard/app.py` | 8501 |
 | MLflow UI | `mlflow ui --backend-store-uri sqlite:///~/hrp-data/mlflow/mlflow.db` | 5000 |
 | Ops Server | `python -m hrp.ops` | 8080 |
+| Consumer API | `python -m hrp.api.http` | 8090 |
+| Web app | `./scripts/open_hrp.sh` (or `cd web && npm run dev`) | 3000 |
 | Single job | `python -m hrp.agents.run_job --job prices` | - |
 | Scheduler | `python -m hrp.agents.run_scheduler` | - |
 | Scheduler (full) | `python -m hrp.agents.run_scheduler --with-data-jobs --with-research-pipeline` | - |
@@ -221,7 +222,7 @@ Job scheduling: Individual launchd plists in `launchd/`, managed via `scripts/ma
 | **Data Sources** | `POLYGON_API_KEY`, `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `TIINGO_API_KEY`, `SIMFIN_API_KEY` | No |
 | **Claude API** | `ANTHROPIC_API_KEY` | For production |
 | **Notifications** | `RESEND_API_KEY`, `NOTIFICATION_EMAIL`, `NOTIFICATION_FROM_EMAIL` | For alerts |
-| **Auth** | `HRP_AUTH_ENABLED`, `HRP_AUTH_COOKIE_KEY`, `HRP_AUTH_USERS_FILE`, `HRP_AUTH_COOKIE_NAME`, `HRP_AUTH_COOKIE_EXPIRY_DAYS` | For auth |
+| **Auth** | `HRP_API_TOKEN` (bearer token for `/api` routes; dashboard cookie auth was removed) | For auth |
 | **Ops Server** | `HRP_OPS_HOST`, `HRP_OPS_PORT` | No |
 | **IBKR** | `IBKR_HOST`, `IBKR_PORT`, `IBKR_CLIENT_ID`, `IBKR_ACCOUNT`, `IBKR_PAPER_TRADING` | For IBKR trading |
 | **Broker** | `HRP_BROKER_TYPE` (`ibkr`, `robinhood`, `paper`) | For trading |
@@ -240,7 +241,7 @@ hrp/
 ├── research/       # Research engine (backtest, hypothesis, lineage, strategies)
 ├── ml/             # ML framework (training, validation, signals)
 ├── risk/           # Risk management (limits, validation)
-├── dashboard/      # Streamlit dashboard
+├── api/http/       # HTTP/JSON API (consumer app backend, port 8090)
 ├── mcp/            # Claude MCP servers
 ├── agents/         # Scheduled agents
 ├── notifications/  # Email alerts
@@ -250,6 +251,8 @@ hrp/
 ├── monitoring/     # System health, ops alerting
 └── utils/          # Shared utilities (startup, locks, log_filter)
 ```
+
+The Next.js consumer web app lives in `web/` (top-level, outside `hrp/`).
 
 ## Where Does New Code Go?
 
@@ -261,7 +264,8 @@ hrp/
 | New strategy/signal type | `hrp/research/strategies/` |
 | New ML model type | `hrp/ml/` |
 | New risk check | `hrp/risk/` |
-| New dashboard page | `hrp/dashboard/pages/` |
+| New consumer view | `web/app/` |
+| New API endpoint | `hrp/api/http/routers/` |
 | New scheduled job | `hrp/agents/jobs.py` |
 | New recommendation logic | `hrp/advisory/` |
 | New portfolio optimization | `hrp/advisory/portfolio_constructor.py` |
@@ -272,7 +276,7 @@ hrp/
 | Document | Purpose |
 |----------|---------|
 | `scripts/setup.sh` | Interactive onboarding: venv, deps, .env, DB, config fixes, auth, data bootstrap |
-| `scripts/startup.sh` | Service management: start/stop/restart dashboard, MLflow, scheduler |
+| `scripts/startup.sh` | Service management: start/stop/restart API, MLflow, scheduler |
 | `scripts/manage_launchd.sh` | launchd job management: install/uninstall/status/reload |
 | `docs/architecture/data-pipeline-diagram.md` | Data pipeline: sources → jobs → DuckDB → agents → outputs |
 | `docs/agents/decision-pipeline.md` | Agent decision workflow: 10 stages, kill gates, scoring, human approval |

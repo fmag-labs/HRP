@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/*
+  HRP — private members research terminal.
+  Dark, editorial, gold-on-black.
+*/
+
+:root {
+  --background: #0a0a0a;
+  --surface: #111111;
+  --surface-2: #161616;
+  --border: #262626;
+  --border-strong: #3a3a3a;
+  --foreground: #ededed;
+  --muted: #8a8a8a;
+  --gold: #c9a24b;
+  --gold-dim: #8c6f33;
+  --pos: #4ade80;
+  --neg: #f87171;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border-base: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-gold: var(--gold);
+  --color-gold-dim: var(--gold-dim);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+  --font-sans: var(--font-sans);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Small uppercase letter-spaced labels */
+.label {
+  font-family: var(--font-mono), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.serif {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
+.mono {
+  font-family: var(--font-mono), monospace;
+}
+
+/* Thin scrollbar in keeping with the terminal feel */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gold-dim);
+}
+
+::selection {
+  background: var(--gold);
+  color: #0a0a0a;
+}

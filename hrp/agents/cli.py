@@ -5,16 +5,31 @@ Allows manual triggering of scheduled jobs for testing and debugging.
 """
 
 import argparse
+import subprocess
 import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
-from hrp.agents.jobs import FeatureComputationJob, PriceIngestionJob, UniverseUpdateJob
-from hrp.agents.scheduler import IngestionScheduler
-from hrp.api.platform import PlatformAPI
-from hrp.data.ingestion.prices import TEST_SYMBOLS
+# Repository root (hrp/agents/cli.py -> repo root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _run_project_script(rel_path: str, script_args: list[str] | None = None) -> int:
+    """Run a project shell script, streaming its output. Returns the exit code."""
+    script = PROJECT_ROOT / rel_path
+    if not script.exists():
+        logger.error(f"Script not found: {script}")
+        return 1
+    cmd = ["bash", str(script), *(script_args or [])]
+    return subprocess.run(cmd, cwd=str(PROJECT_ROOT)).returncode
+
+
+# NOTE: heavy modules (jobs, scheduler, PlatformAPI, ingestion) are imported
+# lazily inside the handlers that need them, so lightweight service commands
+# (start/stop/status/doctor) and --help stay fast and quiet.
 
 
 def run_job_now(job_name: str, symbols: list[str] | None = None) -> dict[str, Any]:
@@ -28,6 +43,13 @@ def run_job_now(job_name: str, symbols: list[str] | None = None) -> dict[str, An
     Returns:
         Dictionary with job execution results
     """
+    from hrp.agents.jobs import (
+        FeatureComputationJob,
+        PriceIngestionJob,
+        UniverseUpdateJob,
+    )
+    from hrp.data.ingestion.prices import TEST_SYMBOLS
+
     logger.info(f"Manually triggering job: {job_name}")
 
     if job_name == "prices":
@@ -63,9 +85,7 @@ def run_job_now(job_name: str, symbols: list[str] | None = None) -> dict[str, An
         return result
 
     else:
-        raise ValueError(
-            f"Unknown job: {job_name}. Must be 'prices', 'features', or 'universe'"
-        )
+        raise ValueError(f"Unknown job: {job_name}. Must be 'prices', 'features', or 'universe'")
 
 
 def list_scheduled_jobs() -> list[dict[str, Any]]:
@@ -75,6 +95,8 @@ def list_scheduled_jobs() -> list[dict[str, Any]]:
     Returns:
         List of job information dictionaries
     """
+    from hrp.agents.scheduler import IngestionScheduler
+
     scheduler = IngestionScheduler()
 
     # Setup jobs to query them (without starting scheduler)
@@ -108,6 +130,7 @@ def get_job_status(job_id: str | None = None, limit: int = 10) -> list[dict[str,
         List of job execution records
     """
     from hrp.api.platform import PlatformAPI
+
     api = PlatformAPI()
     logs = api.get_ingestion_logs(job_id=job_id, limit=limit)
 
@@ -174,6 +197,8 @@ def clear_job_history(
     Returns:
         Number of records deleted
     """
+    from hrp.api.platform import PlatformAPI
+
     api = PlatformAPI()
     rows_deleted = api.purge_ingestion_logs(
         job_id=job_id,
@@ -288,6 +313,48 @@ Examples:
         help="Confirm deletion without prompting",
     )
 
+    # --- Service management (wraps scripts/startup.sh and scripts/setup.sh) ---
+
+    # start command
+    start_parser = subparsers.add_parser(
+        "start",
+        help="Start HRP services (API, MLflow, scheduler)",
+    )
+    start_scope = start_parser.add_mutually_exclusive_group()
+    start_scope.add_argument(
+        "--full",
+        action="store_true",
+        help="Start with all research agents enabled",
+    )
+    start_scope.add_argument(
+        "--api-only",
+        action="store_true",
+        help="Start only the API server",
+    )
+    start_scope.add_argument(
+        "--mlflow-only",
+        action="store_true",
+        help="Start only the MLflow UI",
+    )
+
+    # stop command
+    subparsers.add_parser("stop", help="Stop all HRP services")
+
+    # restart command
+    subparsers.add_parser("restart", help="Restart all HRP services")
+
+    # status command (service status; see job-status for ingestion history)
+    subparsers.add_parser(
+        "status",
+        help="Show running HRP services (use job-status for ingestion history)",
+    )
+
+    # doctor command
+    subparsers.add_parser(
+        "doctor",
+        help="Run setup verification checks (PASS/FAIL summary)",
+    )
+
     args = parser.parse_args()
 
     # Handle commands
@@ -331,7 +398,7 @@ Examples:
                     f"{record['records_fetched'] or 0:<10} "
                     f"{record['records_inserted'] or 0:<10}"
                 )
-                if record['error_message']:
+                if record["error_message"]:
                     print(f"  Error: {record['error_message']}")
             print()
         else:
@@ -365,6 +432,28 @@ Examples:
 
         count = clear_job_history(args.job_id, before_dt, args.status)
         print(f"Deleted {count} records")
+
+    elif args.command == "start":
+        scope_args = []
+        if args.full:
+            scope_args.append("--full")
+        elif args.api_only:
+            scope_args.append("--api-only")
+        elif args.mlflow_only:
+            scope_args.append("--mlflow-only")
+        sys.exit(_run_project_script("scripts/startup.sh", ["start", *scope_args]))
+
+    elif args.command == "stop":
+        sys.exit(_run_project_script("scripts/startup.sh", ["stop"]))
+
+    elif args.command == "restart":
+        sys.exit(_run_project_script("scripts/startup.sh", ["restart"]))
+
+    elif args.command == "status":
+        sys.exit(_run_project_script("scripts/startup.sh", ["status"]))
+
+    elif args.command == "doctor":
+        sys.exit(_run_project_script("scripts/setup.sh", ["--check"]))
 
     else:
         parser.print_help()

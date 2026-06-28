@@ -78,7 +78,7 @@ def cli_test_db():
 class TestRunJobNow:
     """Tests for run_job_now CLI function."""
 
-    @patch("hrp.agents.cli.PriceIngestionJob")
+    @patch("hrp.agents.jobs.PriceIngestionJob")
     def test_run_prices_job(self, mock_job_class, cli_test_db):
         """run_job_now('prices') should create and run PriceIngestionJob."""
         mock_job = MagicMock()
@@ -96,7 +96,7 @@ class TestRunJobNow:
         mock_job.run.assert_called_once()
         assert result["records_inserted"] == 95
 
-    @patch("hrp.agents.cli.PriceIngestionJob")
+    @patch("hrp.agents.jobs.PriceIngestionJob")
     def test_run_prices_with_symbols(self, mock_job_class, cli_test_db):
         """run_job_now('prices', symbols) should pass symbols to job."""
         mock_job = MagicMock()
@@ -109,7 +109,7 @@ class TestRunJobNow:
         call_kwargs = mock_job_class.call_args[1]
         assert call_kwargs["symbols"] == symbols
 
-    @patch("hrp.agents.cli.FeatureComputationJob")
+    @patch("hrp.agents.jobs.FeatureComputationJob")
     def test_run_features_job(self, mock_job_class, cli_test_db):
         """run_job_now('features') should create and run FeatureComputationJob."""
         mock_job = MagicMock()
@@ -127,7 +127,7 @@ class TestRunJobNow:
         mock_job.run.assert_called_once()
         assert result["records_inserted"] == 500
 
-    @patch("hrp.agents.cli.FeatureComputationJob")
+    @patch("hrp.agents.jobs.FeatureComputationJob")
     def test_run_features_with_symbols(self, mock_job_class, cli_test_db):
         """run_job_now('features', symbols) should pass symbols to job."""
         mock_job = MagicMock()
@@ -145,7 +145,7 @@ class TestRunJobNow:
         with pytest.raises(ValueError, match="Unknown job"):
             run_job_now("invalid_job_name")
 
-    @patch("hrp.agents.cli.PriceIngestionJob")
+    @patch("hrp.agents.jobs.PriceIngestionJob")
     def test_run_job_returns_failure(self, mock_job_class, cli_test_db):
         """run_job_now should return failure result from job."""
         mock_job = MagicMock()
@@ -161,7 +161,7 @@ class TestRunJobNow:
 class TestListScheduledJobs:
     """Tests for list_scheduled_jobs CLI function."""
 
-    @patch("hrp.agents.cli.IngestionScheduler")
+    @patch("hrp.agents.scheduler.IngestionScheduler")
     def test_list_jobs_creates_scheduler(self, mock_scheduler_class):
         """list_scheduled_jobs should create scheduler and setup jobs."""
         mock_scheduler = MagicMock()
@@ -177,7 +177,7 @@ class TestListScheduledJobs:
         mock_scheduler.list_jobs.assert_called_once()
         assert len(result) == 2
 
-    @patch("hrp.agents.cli.IngestionScheduler")
+    @patch("hrp.agents.scheduler.IngestionScheduler")
     def test_list_jobs_returns_info(self, mock_scheduler_class):
         """list_scheduled_jobs should return job info list."""
         mock_scheduler = MagicMock()
@@ -197,7 +197,7 @@ class TestListScheduledJobs:
         assert result[0]["id"] == "price_ingestion"
         assert "next_run" in result[0]
 
-    @patch("hrp.agents.cli.IngestionScheduler")
+    @patch("hrp.agents.scheduler.IngestionScheduler")
     def test_list_jobs_empty(self, mock_scheduler_class):
         """list_scheduled_jobs should return empty list when no jobs."""
         mock_scheduler = MagicMock()
@@ -208,7 +208,7 @@ class TestListScheduledJobs:
 
         assert result == []
 
-    @patch("hrp.agents.cli.IngestionScheduler")
+    @patch("hrp.agents.scheduler.IngestionScheduler")
     def test_list_jobs_handles_setup_error(self, mock_scheduler_class):
         """list_scheduled_jobs should handle setup errors gracefully."""
         mock_scheduler = MagicMock()
@@ -436,7 +436,7 @@ class TestClearJobHistory:
 class TestRunJobNowUniverse:
     """Additional tests for run_job_now with universe job."""
 
-    @patch("hrp.agents.cli.UniverseUpdateJob")
+    @patch("hrp.agents.jobs.UniverseUpdateJob")
     def test_run_universe_job(self, mock_job_class, cli_test_db):
         """run_job_now('universe') should create and run UniverseUpdateJob."""
         mock_job = MagicMock()

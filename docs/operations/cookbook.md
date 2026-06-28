@@ -13,7 +13,7 @@ This cookbook provides hands-on recipes for using the Hedgefund Research Platfor
 5. [ML & Walk-Forward Validation](#5-ml--walk-forward-validation)
 6. [Data Quality Monitoring](#6-data-quality-monitoring)
 7. [Scheduled Jobs & Automation](#7-scheduled-jobs--automation)
-8. [Using the Dashboard](#8-using-the-dashboard)
+8. [Using the Web App & API](#8-using-the-web-app--api)
 9. [Common Workflows](#9-common-workflows)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Claude Integration (MCP Server)](#11-claude-integration-mcp-server)
@@ -79,7 +79,7 @@ The `.env.example` file contains all ~50 configurable variables with defaults an
 # Core: HRP_ENVIRONMENT, HRP_DATA_DIR, HRP_DB_PATH
 # Data Sources: POLYGON_API_KEY, ALPACA_API_KEY, SIMFIN_API_KEY, ...
 # Notifications: RESEND_API_KEY, NOTIFICATION_EMAIL
-# Auth: HRP_AUTH_ENABLED, HRP_AUTH_COOKIE_KEY
+# Auth: HRP_API_TOKEN (bearer token for the API)
 # Trading: HRP_BROKER_TYPE, IBKR_*, ROBINHOOD_*
 # Portfolio: HRP_PORTFOLIO_VALUE, HRP_MAX_POSITIONS, HRP_TRADING_DRY_RUN
 # Risk: HRP_USE_VAR_SIZING, HRP_MAX_PORTFOLIO_VAR_PCT
@@ -92,7 +92,7 @@ The `.env.example` file contains all ~50 configurable variables with defaults an
 Once your environment is configured, you can start all HRP services:
 
 ```bash
-# Start all core services (dashboard, MLflow UI, scheduler)
+# Start all core services (API, MLflow UI, scheduler)
 ./scripts/startup.sh start
 
 # Check service status
@@ -103,7 +103,8 @@ Once your environment is configured, you can start all HRP services:
 ```
 
 **Access Points:**
-- Dashboard: http://localhost:8501
+- Consumer API: http://localhost:8090/api
+- Web app: http://localhost:3000 (run `./scripts/open_hrp.sh`)
 - MLflow UI: http://localhost:5010
 
 **Note:** The startup script does **not** initialize the database. The database is created automatically on first access. For fresh installations, ensure you've completed section 1.1 (Initial Setup) before starting services.
@@ -1759,14 +1760,17 @@ python -m hrp.agents.cli run-now --job report_generator --report-type weekly
 The `startup.sh` script provides a convenient way to manage all HRP services from a single interface.
 
 **Available Services:**
-- **Dashboard** (Streamlit) - http://localhost:8501
+- **Consumer API** (`python -m hrp.api.http`) - http://localhost:8090/api
 - **MLflow UI** - http://localhost:5010
 - **Scheduler** - Background data ingestion and research agents
+
+The Next.js web app (http://localhost:3000) is launched separately via
+`./scripts/open_hrp.sh` (or `cd web && npm run dev`).
 
 **Start All Services:**
 
 ```bash
-# Start all core services (dashboard, MLflow, scheduler)
+# Start all core services (API, MLflow, scheduler)
 ./scripts/startup.sh start
 
 # Start with all research agents enabled
@@ -1779,9 +1783,6 @@ The `startup.sh` script provides a convenient way to manage all HRP services fro
 **Start Individual Services:**
 
 ```bash
-# Dashboard only
-./scripts/startup.sh start --dashboard-only
-
 # MLflow UI only
 ./scripts/startup.sh start --mlflow-only
 
@@ -1809,7 +1810,7 @@ The `startup.sh` script provides a convenient way to manage all HRP services fro
 
 ```bash
 # Custom ports
-HRP_DASHBOARD_PORT=8080 ./scripts/startup.sh start
+HRP_API_PORT=8091 ./scripts/startup.sh start
 HRP_MLFLOW_PORT=5001 ./scripts/startup.sh start
 
 # Custom scheduler times
@@ -1838,7 +1839,7 @@ Enables the complete research agent pipeline:
   HRP System Manager
 ========================================
 
-  Dashboard:      RUNNING (PID: 12345, Port: 8501)
+  Consumer API:   RUNNING (PID: 12345, Port: 8090)
   MLflow UI:      RUNNING (PID: 12346, Port: 5010)
   Scheduler:      RUNNING (PID: 12347)
 
@@ -1862,7 +1863,7 @@ The startup script automatically detects port conflicts and provides helpful err
 | Port | Typical Conflict | Solution |
 |------|------------------|----------|
 | 5000 | macOS ControlCenter (AirPlay Receiver) | Default changed to 5010, or use `HRP_MLFLOW_PORT=5011` |
-| 8501 | Previous dashboard instance | Run `./scripts/startup.sh stop` first, or kill old process |
+| 8090 | Previous API instance | Run `./scripts/startup.sh stop` first, or kill old process |
 | 5010 | Another MLflow instance | Use `HRP_MLFLOW_PORT=5011 ./scripts/startup.sh start` |
 
 **Check what's using a port:**
@@ -1879,53 +1880,49 @@ kill <PID>
 
 ---
 
-## 8. Using the Dashboard
+## 8. Using the Web App & API
 
-### 8.1 Start the Dashboard
+### 8.1 Start the API and Web App
 
-**Option A: Using the startup script (recommended)**
+**Option A: Using the startup script (recommended for the API)**
 
 ```bash
-# Start dashboard along with MLflow and scheduler
+# Start the consumer API along with MLflow and scheduler
 ./scripts/startup.sh start
-
-# Or start dashboard only
-./scripts/startup.sh start --dashboard-only
 ```
 
 **Option B: Manual start**
 
 ```bash
-# Start Streamlit dashboard manually
-streamlit run hrp/dashboard/app.py
+# Start the HTTP/JSON API manually
+python -m hrp.api.http --port 8090
+# Routes are served under http://localhost:8090/api
 
-# Access at http://localhost:8501
+# Launch the Next.js web app (opens http://localhost:3000)
+./scripts/open_hrp.sh
+# Or run the dev server directly:
+cd web && npm run dev
 ```
 
-### 8.2 Dashboard Pages
+### 8.2 Consumer App Views
 
-| Page | Purpose | Key Features |
-|------|---------|--------------|
-| **Home** | System overview | Health status, recent activity, quick stats |
-| **Data Health** | Data quality | Quality scores, issue summary, trends |
-| **Ingestion Status** | Job monitoring | Job history, next runs, failure alerts |
-| **Hypotheses** | Research management | Create, view, update hypotheses |
-| **Experiments** | Backtest results | View metrics, compare experiments, MLflow link |
-| **Pipeline Progress** | Agent pipeline | Kanban view of hypothesis stages, agent launcher |
-| **Agents Monitor** | Agent status | Real-time agent status, historical timeline |
-| **Job Health** | Job execution | Job health metrics, error tracking |
-| **Ops** | System monitoring | CPU/memory/disk, alert thresholds |
-| **Trading** | Live execution | Portfolio overview, positions, trades, drift status |
-| **Risk Metrics** | VaR/CVaR analysis | Portfolio VaR, per-symbol breakdown, method comparison |
-| **Performance Attribution** | Strategy analysis | Brinson-Fachler, factor contributions, feature importance |
-| **Backtest Performance** | Backtest visualization | Equity curves, drawdowns, rolling metrics, exports |
+The Next.js web app (`web/app/`) consumes the API and provides:
+
+| View | Purpose |
+|------|---------|
+| **Conviction List** | Ranked recommendations |
+| **Recommendation Dossier** | Per-pick thesis, risks, and detail |
+| **My Portfolio** | Current positions and allocation |
+| **Track Record** | Win rate, average return, cumulative performance |
+| **Vault Assistant** | Conversational research assistant |
+| **Settings** | Preferences and configuration |
 
 ### 8.3 Start MLflow UI
 
 **Option A: Using the startup script (recommended)**
 
 ```bash
-# Start MLflow along with dashboard and scheduler
+# Start MLflow along with the API and scheduler
 ./scripts/startup.sh start
 
 # Or start MLflow only
@@ -1941,49 +1938,26 @@ mlflow ui --backend-store-uri sqlite:///$HOME/hrp-data/mlflow/mlflow.db
 # Access at http://localhost:5000
 ```
 
-### 8.4 Dashboard Authentication
+### 8.4 API Authentication
 
-The dashboard uses bcrypt password hashing with session cookies. Manage users via the auth CLI.
-
-**List users:**
-
-```bash
-python -m hrp.dashboard.auth_cli list-users
-```
-
-**Add a user:**
+The Streamlit dashboard's cookie-based auth was removed. The HTTP/JSON API uses a
+single bearer token instead. Set `HRP_API_TOKEN` to require an
+`Authorization: Bearer <token>` header on all `/api` routes:
 
 ```bash
-python -m hrp.dashboard.auth_cli add-user \
-    --username admin \
-    --email admin@example.com \
-    --name "Admin User"
-# You'll be prompted for the password
-```
+# Require a bearer token on the API
+HRP_API_TOKEN="your-secret-token" python -m hrp.api.http --port 8090
 
-**Reset a password:**
-
-```bash
-python -m hrp.dashboard.auth_cli reset-password --username admin
-# You'll be prompted for the new password
-
-# Or non-interactively:
-python -m hrp.dashboard.auth_cli reset-password --username admin --password "newpass"
-```
-
-**Remove a user:**
-
-```bash
-python -m hrp.dashboard.auth_cli remove-user --username olduser
+# Example authenticated request
+curl -H "Authorization: Bearer your-secret-token" http://localhost:8090/api/health
 ```
 
 **Environment variables:**
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HRP_AUTH_ENABLED` | Enable/disable auth | `true` |
-| `HRP_AUTH_COOKIE_KEY` | Secret for session cookies (32+ chars) | Required |
-| `HRP_AUTH_USERS_FILE` | Path to users YAML | `~/hrp-data/auth/users.yaml` |
+| `HRP_API_TOKEN` | Bearer token required on `/api` routes (unset = no auth) | unset |
+| `HRP_API_PORT` | Port the API listens on | `8090` |
 
 ---
 
@@ -2448,9 +2422,10 @@ value = api.get_portfolio_value()
 print(f"Portfolio value: ${value:,.2f}")
 ```
 
-### 13.6 Trading Dashboard
+### 13.6 Trading View
 
-Access the Trading dashboard page at http://localhost:8501 (after starting the dashboard):
+Open the **My Portfolio** view in the web app at http://localhost:3000 (after
+running `./scripts/open_hrp.sh`):
 - Portfolio overview (value, P&L, positions)
 - Current positions with market values
 - Recent trades history
@@ -2632,7 +2607,8 @@ python -m hrp.agents.cli list-jobs
 python -m hrp.agents.cli job-status
 
 # Services
-streamlit run hrp/dashboard/app.py          # Dashboard (port 8501)
+python -m hrp.api.http --port 8090          # Consumer API (port 8090)
+./scripts/open_hrp.sh                        # Web app (port 3000)
 mlflow ui --backend-store-uri sqlite:///$HOME/hrp-data/mlflow/mlflow.db  # MLflow (port 5000)
 
 # Testing
@@ -2655,7 +2631,7 @@ pytest tests/test_api/ -v  # Specific module
 
 After mastering these recipes, consider:
 
-1. **Explore the Dashboard** - Visual interface for monitoring
+1. **Explore the Web App** - Visual interface for monitoring
 2. **Read the Spec** - `docs/plans/2026-01-19-hrp-spec.md` for architecture details
 3. **Review the Roadmap** - `docs/plans/Roadmap.md` for implementation status
 4. **Run Tests** - `pytest tests/ -v` to understand test coverage

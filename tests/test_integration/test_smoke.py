@@ -23,7 +23,6 @@ import pytest
 from hrp.data.db import DatabaseManager
 from hrp.data.schema import create_tables
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -54,8 +53,7 @@ def smoke_test_db():
 
     with db.connection() as conn:
         # Insert data_sources for jobs (required FK)
-        conn.execute(
-            """
+        conn.execute("""
             INSERT INTO data_sources (source_id, source_type, status)
             VALUES
                 ('price_ingestion', 'scheduled_job', 'active'),
@@ -64,24 +62,20 @@ def smoke_test_db():
                 ('polygon', 'api', 'active'),
                 ('test', 'test', 'active')
             ON CONFLICT DO NOTHING
-            """
-        )
+            """)
 
         # Insert symbols first to satisfy FK constraints
-        conn.execute(
-            """
+        conn.execute("""
             INSERT INTO symbols (symbol, name, exchange)
             VALUES
                 ('AAPL', 'Apple Inc.', 'NASDAQ'),
                 ('MSFT', 'Microsoft Corporation', 'NASDAQ'),
                 ('GOOGL', 'Alphabet Inc.', 'NASDAQ')
             ON CONFLICT DO NOTHING
-            """
-        )
+            """)
 
         # Insert sample universe (3 tech stocks) - need entries for both start and query dates
-        conn.execute(
-            """
+        conn.execute("""
             INSERT INTO universe (symbol, date, in_universe, sector, market_cap)
             VALUES
                 ('AAPL', '2024-01-01', TRUE, 'Technology', 3000000000000),
@@ -90,8 +84,7 @@ def smoke_test_db():
                 ('AAPL', '2024-01-10', TRUE, 'Technology', 3000000000000),
                 ('MSFT', '2024-01-10', TRUE, 'Technology', 2800000000000),
                 ('GOOGL', '2024-01-10', TRUE, 'Technology', 1800000000000)
-            """
-        )
+            """)
 
         # Insert sample prices for 10 trading days
         base_prices = {"AAPL": 180.0, "MSFT": 380.0, "GOOGL": 140.0}
@@ -271,12 +264,10 @@ class TestSmoke:
         # Compute feature (mocked)
         with db.connection() as conn:
             # Insert computed feature value
-            conn.execute(
-                """
+            conn.execute("""
                 INSERT INTO features (symbol, date, feature_name, value, version)
                 VALUES ('AAPL', '2024-01-10', 'test_momentum', 0.025, 'v1')
-                """
-            )
+                """)
 
         # Verify feature is retrievable
         features_df = api.get_features(["AAPL"], ["test_momentum"], date(2024, 1, 10))
@@ -343,7 +334,7 @@ class TestSmoke:
                     assert "feature_computation" in job_ids
 
         # Test CLI list_scheduled_jobs
-        with patch("hrp.agents.cli.IngestionScheduler") as mock_sched_class:
+        with patch("hrp.agents.scheduler.IngestionScheduler") as mock_sched_class:
             mock_sched = MagicMock()
             mock_sched.list_jobs.return_value = [
                 {"id": "price_ingestion", "name": "Daily Prices", "next_run": None},

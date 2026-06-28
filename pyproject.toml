@@ -31,10 +31,6 @@ dependencies = [
     # Experiment tracking
     "mlflow>=2.10.0",
 
-    # Dashboard
-    "streamlit>=1.30.0",
-    "plotly>=5.18.0",
-
     # Agent integration
     "fastmcp>=0.1.0",
     "anthropic>=0.18.0",
@@ -62,7 +58,6 @@ dependencies = [
     "psutil>=5.9.0",
 
     # Security
-    "streamlit-authenticator>=0.3.0",
     "bcrypt>=4.1.0",
     "cryptography>=42.0.0",
 ]

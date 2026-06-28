@@ -22,7 +22,7 @@ Personal, professional-grade quantitative research platform for systematic tradi
 For a local daily-use experience on macOS, double-click:
 
 - `Install HRP.command` — first-time install
-- `Open HRP.command` — start the dashboard on the Today page
+- `Open HRP.command` — launch the web app and API (http://localhost:3000)
 - `Enable Daily HRP.command` — run the local daily refresh automatically
 
 See [Consumer Mode](docs/operations/consumer-mode.md) for the daily schedule and safety defaults.
@@ -55,7 +55,7 @@ The setup script walks you through 11 phases:
 | .env Config | Interactive API key / environment setup |
 | Database | Initializes DuckDB schema |
 | Fix Configs | Updates `.mcp.json` and launchd plist paths |
-| Auth | Creates dashboard login user |
+| Auth | Sets `HRP_API_TOKEN` bearer token for the `/api` routes |
 | Data Bootstrap | Loads universe + 2 years of prices/features for top 20 stocks |
 | Launchd | Optional: installs scheduled jobs |
 | Verification | Runs all checks, prints PASS/FAIL summary |
@@ -122,12 +122,38 @@ Without `ANTHROPIC_API_KEY`, Claude-powered agents (Alpha Researcher, CIO, Repor
 
 ### Running Services
 
+The `hrp` CLI is the unified front door for service management (wraps `scripts/startup.sh`):
+
 ```bash
-# Start all services (dashboard, MLflow, scheduler)
+hrp start            # Start API, MLflow, scheduler
+hrp start --full     # ...with all research agents
+hrp status           # Show running services
+hrp stop             # Stop all services
+hrp doctor           # Run setup verification checks (PASS/FAIL)
+```
+
+Consumer HTTP/JSON API (web app backend):
+
+```bash
+python -m hrp.api.http --port 8090     # http://localhost:8090/api/health
+# Set HRP_API_TOKEN to require `Authorization: Bearer <token>` on /api routes.
+```
+
+Next.js consumer web app (talks to the API above):
+
+```bash
+./scripts/open_hrp.sh                   # http://localhost:3000
+# Or run the dev server directly:
+cd web && npm run dev
+```
+
+The underlying scripts remain available:
+
+```bash
+# Start all services (API, MLflow, scheduler)
 ./scripts/startup.sh start
 
 # Or individually
-./scripts/startup.sh start --dashboard-only   # http://localhost:8501
 ./scripts/startup.sh start --mlflow-only       # http://localhost:5010
 
 # Check status / stop
@@ -140,7 +166,7 @@ Without `ANTHROPIC_API_KEY`, Claude-powered agents (Alpha Researcher, CIO, Repor
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    CONTROL LAYER                                │
-│   Streamlit Dashboard │ MCP Servers │ Scheduled Agents          │
+│   Next.js App + HTTP API │ MCP Servers │ Scheduled Agents       │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
                     ┌───────────▼───────────┐
@@ -265,23 +291,16 @@ print(f"Model is stable: {result.is_stable}")
 
 **Pipeline:** Signal Scientist → Alpha Researcher → ML Scientist → ML Quality Sentinel → Quant Developer → Kill Gate Enforcer → Validation Analyst → Risk Manager → CIO Agent → **Human CIO**
 
-### Dashboard Pages (13)
+### Consumer App Views
 
-| Page | Purpose |
-|------|---------|
-| Home | System status, recent activity |
-| Data Health | Quality scores, anomalies, trends |
-| Ingestion Status | Job history, source status |
-| Hypotheses | Create, view, update hypotheses |
-| Experiments | MLflow integration, comparison |
-| Pipeline Progress | Kanban view of hypothesis pipeline |
-| Agents Monitor | Real-time agent status and timeline |
-| Job Health | Job execution health, error tracking |
-| Ops | CPU/memory/disk, alert thresholds |
-| Trading | Portfolio, positions, trades, drift |
-| Risk Metrics | VaR/CVaR analysis, breach tracking |
-| Performance Attribution | Brinson-Fachler, factor contributions, SHAP |
-| Backtest Performance | Equity curves, drawdowns, exports |
+The Next.js web app (`web/app/`) provides:
+
+- **Conviction List** — ranked recommendations
+- **Recommendation Dossier** — per-pick thesis, risks, and detail
+- **My Portfolio** — current positions and allocation
+- **Track Record** — win rate, average return, cumulative performance
+- **Vault Assistant** — conversational research assistant
+- **Settings** — preferences and configuration
 
 ## Testing
 

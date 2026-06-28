@@ -1,8 +1,8 @@
 # HRP Consumer Mode
 
 Consumer mode is the local, low-friction way to use HRP as a daily research brief.
-It keeps trading in dry-run mode by default and makes the dashboard open to the
-new Today page first.
+It keeps trading in dry-run mode by default and launches the Next.js web app
+(backed by the HTTP/JSON API) in your browser.
 
 ## First-Time Install
 
@@ -35,7 +35,8 @@ Or run:
 ./scripts/open_hrp.sh
 ```
 
-The dashboard opens at `http://localhost:8501` and starts on the Today page.
+This starts the HTTP/JSON API (`http://localhost:8090/api`) and the Next.js web
+app, then opens `http://localhost:3000` in your browser.
 
 ## Enable Daily Local Runs
 
@@ -74,7 +75,7 @@ universe -> prices -> features -> quality-monitoring -> recommendations -> daily
 ```
 
 Recommendations require at least one active production model deployment. If there
-are no deployed models yet, the Today page still shows data freshness and job
+are no deployed models yet, the web app still shows data freshness and job
 history while the research pipeline builds toward usable recommendations.
 
 ## Safety Defaults
