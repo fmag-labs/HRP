@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from hrp.api.http.auth import require_token
 from hrp.api.http.routers import (
     assistant,
+    consult,
     portfolio,
     recommendations,
     screens,
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
         assistant,
         status,
         screens,
+        consult,
     ):
         app.include_router(module.router, prefix=API_PREFIX, dependencies=protected)
 

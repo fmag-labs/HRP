@@ -385,6 +385,19 @@ Examples:
         help="Run setup verification checks (PASS/FAIL summary)",
     )
 
+    # consult command — ask any configured LLM
+    consult_parser = subparsers.add_parser(
+        "consult",
+        help="Ask any configured LLM a question (claude|gpt|glm)",
+    )
+    consult_parser.add_argument("question", nargs="?", help="The question to ask")
+    consult_parser.add_argument(
+        "--model", default=None, help="Model key: claude | gpt | glm (default: claude)"
+    )
+    consult_parser.add_argument(
+        "--list-models", action="store_true", help="List models and configuration"
+    )
+
     args = parser.parse_args()
 
     # Handle commands
@@ -486,6 +499,30 @@ Examples:
         code = _run_project_script("scripts/setup.sh", ["--check"])
         _print_data_health()
         sys.exit(code)
+
+    elif args.command == "consult":
+        from hrp import llm
+
+        if args.list_models:
+            for m in llm.list_models():
+                mark = "available" if m["available"] else "no key"
+                print(f"  {m['key']:8} {m['label']:20} {m['model']:26} [{mark}]")
+            sys.exit(0)
+        if not args.question:
+            print("error: provide a question, or use --list-models")
+            sys.exit(1)
+        model_key = args.model or llm.default_model()
+        try:
+            print(
+                llm.complete(
+                    model_key,
+                    "You are a helpful, concise expert assistant.",
+                    args.question,
+                )
+            )
+        except llm.LLMError as exc:
+            print(f"error: {exc}")
+            sys.exit(1)
 
     else:
         parser.print_help()

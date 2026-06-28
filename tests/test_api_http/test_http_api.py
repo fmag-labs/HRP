@@ -312,21 +312,49 @@ class TestAssistant:
         r = client.post("/api/assistant/query", json={"question": "What do I own?"})
         assert r.status_code == 503
 
-    def test_answers_with_key(self, client, monkeypatch):
+    def test_answers_with_default_model(self, client, monkeypatch):
         from hrp.api.http.routers import assistant as assistant_mod
         from hrp.utils.rate_limiter import RateLimiter
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.setattr(assistant_mod, "RATE_LIMITER", RateLimiter(5, 3600.0))
         monkeypatch.setattr(
-            assistant_mod, "answer", lambda api, q: ("You own NVDA.", ["portfolio"])
+            assistant_mod, "answer", lambda api, q, m: ("You own NVDA.", ["portfolio"])
         )
         r = client.post("/api/assistant/query", json={"question": "What do I own?"})
         assert r.status_code == 200
         body = r.json()
         assert body["answer"] == "You own NVDA."
         assert body["grounded_on"] == ["portfolio"]
+        assert body["model"] == "claude"  # default
         assert body["remaining_today"] >= 0
+
+    def test_select_model_is_passed_through(self, client, monkeypatch):
+        from hrp.api.http.routers import assistant as assistant_mod
+        from hrp.utils.rate_limiter import RateLimiter
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setattr(assistant_mod, "RATE_LIMITER", RateLimiter(5, 3600.0))
+        captured = {}
+
+        def fake_answer(api, q, m):
+            captured["model"] = m
+            return ("hi from gpt", [])
+
+        monkeypatch.setattr(assistant_mod, "answer", fake_answer)
+        r = client.post("/api/assistant/query", json={"question": "hi", "model": "gpt"})
+        assert r.status_code == 200
+        assert r.json()["model"] == "gpt"
+        assert captured["model"] == "gpt"
+
+    def test_unknown_model_400(self, client):
+        r = client.post("/api/assistant/query", json={"question": "hi", "model": "x"})
+        assert r.status_code == 400
+
+    def test_models_endpoint(self, client):
+        r = client.get("/api/assistant/models")
+        assert r.status_code == 200
+        assert {m["key"] for m in r.json()} == {"claude", "gpt", "glm"}
 
     def test_rate_limited(self, client, monkeypatch):
         from hrp.api.http.routers import assistant as assistant_mod
@@ -334,7 +362,7 @@ class TestAssistant:
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.setattr(assistant_mod, "RATE_LIMITER", RateLimiter(1, 3600.0))
-        monkeypatch.setattr(assistant_mod, "answer", lambda api, q: ("ok", []))
+        monkeypatch.setattr(assistant_mod, "answer", lambda api, q, m: ("ok", []))
         first = client.post("/api/assistant/query", json={"question": "hi"})
         second = client.post("/api/assistant/query", json={"question": "hi"})
         assert first.status_code == 200
@@ -347,7 +375,7 @@ class TestAssistant:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.setattr(assistant_mod, "RATE_LIMITER", RateLimiter(5, 3600.0))
 
-        def boom(api, q):
+        def boom(api, q, m):
             raise RuntimeError("credit balance too low; request_id=req_secret123")
 
         monkeypatch.setattr(assistant_mod, "answer", boom)
@@ -357,6 +385,31 @@ class TestAssistant:
         assert "request_id" not in r.text
         assert "credit balance" not in r.text
         assert "temporarily unavailable" in r.json()["detail"]
+
+
+class TestConsult:
+    def test_models(self, client):
+        r = client.get("/api/consult/models")
+        assert r.status_code == 200
+        assert {m["key"] for m in r.json()} == {"claude", "gpt", "glm"}
+
+    def test_consult_answer(self, client, monkeypatch):
+        import hrp.llm as llm_mod
+        from hrp.api.http.routers import consult as consult_mod
+        from hrp.utils.rate_limiter import RateLimiter
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setattr(consult_mod, "RATE_LIMITER", RateLimiter(5, 3600.0))
+        monkeypatch.setattr(llm_mod, "complete", lambda k, s, u: f"[{k}] answer")
+        r = client.post("/api/consult", json={"question": "2+2?", "model": "gpt"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["model"] == "gpt"
+        assert body["answer"] == "[gpt] answer"
+
+    def test_consult_unknown_model_400(self, client):
+        r = client.post("/api/consult", json={"question": "hi", "model": "nope"})
+        assert r.status_code == 400
 
 
 class TestStatus:

@@ -112,6 +112,14 @@ export interface AssistantResponse {
   answer: string;
   remaining_today: number;
   grounded_on: string[];
+  model?: string;
+}
+
+export interface ModelInfo {
+  key: string;
+  label: string;
+  model: string;
+  available: boolean;
 }
 
 export type Horizon = "short" | "medium" | "long";
@@ -295,10 +303,14 @@ export const api = {
     return request<TrackRecordPeriod[]>(`/api/track-record${qs(params)}`);
   },
 
-  askAssistant(question: string): Promise<AssistantResponse> {
+  getAssistantModels(): Promise<ModelInfo[]> {
+    return request<ModelInfo[]>(`/api/assistant/models`);
+  },
+
+  askAssistant(question: string, model?: string): Promise<AssistantResponse> {
     return request<AssistantResponse>(`/api/assistant/query`, {
       method: "POST",
-      body: { question },
+      body: { question, model },
     });
   },
 
