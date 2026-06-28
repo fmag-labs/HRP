@@ -405,6 +405,79 @@ class TestStatus:
         assert "no market data" in body["message"].lower()
 
 
+class TestScreens:
+    def test_list_screens(self, client):
+        r = client.get("/api/screens")
+        assert r.status_code == 200
+        keys = {s["key"] for s in r.json()}
+        assert {"momentum", "value", "unusual-volume"} <= keys
+
+    def test_run_screen_ranks_rows(self, client, monkeypatch):
+        def fake_query(self, sql, params=None):
+            assert "momentum_20d" in (params or ())  # screen feature is bound
+            assert "FROM prices p" in sql  # continuity guard applied (time-series)
+            return pd.DataFrame(
+                [
+                    {
+                        "symbol": "NVDA",
+                        "name": "NVIDIA",
+                        "sector": "Tech",
+                        "value": 0.21,
+                        "as_of": "2026-06-26",
+                    },
+                    {
+                        "symbol": "MELI",
+                        "name": "MercadoLibre",
+                        "sector": "Cons",
+                        "value": 0.15,
+                        "as_of": "2026-06-26",
+                    },
+                ]
+            )
+
+        monkeypatch.setattr(StubAPI, "query_readonly", fake_query)
+        r = client.get("/api/screens/momentum", params={"limit": 10})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["screen"] == "momentum"
+        assert body["as_of"] == "2026-06-26"
+        assert body["rows"][0] == {
+            "rank": 1,
+            "symbol": "NVDA",
+            "name": "NVIDIA",
+            "sector": "Tech",
+            "value": 0.21,
+        }
+        assert body["rows"][1]["rank"] == 2
+
+    def test_fundamental_screen_has_no_continuity_guard(self, client, monkeypatch):
+        captured = {}
+
+        def fake_query(self, sql, params=None):
+            captured["sql"] = sql
+            return pd.DataFrame(
+                [
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "sector": "Tech",
+                        "value": 15.2,
+                        "as_of": "2026-06-26",
+                    }
+                ]
+            )
+
+        monkeypatch.setattr(StubAPI, "query_readonly", fake_query)
+        r = client.get("/api/screens/value")
+        assert r.status_code == 200
+        # point-in-time fundamental screens must NOT apply the price-continuity guard
+        assert "FROM prices p" not in captured["sql"]
+
+    def test_unknown_screen_404(self, client):
+        r = client.get("/api/screens/does-not-exist")
+        assert r.status_code == 404
+
+
 class TestCors:
     def test_cors_header_for_configured_origin(self, client):
         # SPA on a different origin must receive an allow-origin header.
