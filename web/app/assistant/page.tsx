@@ -1,13 +1,14 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { api, ApiError } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, ApiError, ModelInfo } from "@/lib/api";
 import { PageHeader, ErrorBanner, ComingSoon, isComingSoon } from "@/components/ui";
 
 interface Message {
   role: "user" | "assistant";
   text: string;
   grounded_on?: string[];
+  model?: string;
 }
 
 export default function AssistantPage() {
@@ -19,7 +20,33 @@ export default function AssistantPage() {
   const [notConfigured, setNotConfigured] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .getAssistantModels()
+      .then((list) => {
+        if (!active) return;
+        setModels(list);
+        const def = list.find((m) => m.available) ?? list[0];
+        if (def) setSelectedModel(def.key);
+      })
+      .catch(() => {
+        // Selector is optional; a failed model fetch falls back to the
+        // server's default model (empty selection sends no override).
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const modelLabel = (key?: string): string | null => {
+    if (!key) return null;
+    return models.find((m) => m.key === key)?.label ?? key;
+  };
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -33,11 +60,16 @@ export default function AssistantPage() {
     setLimitReached(false);
 
     try {
-      const res = await api.askAssistant(question);
+      const res = await api.askAssistant(question, selectedModel || undefined);
       setRemaining(res.remaining_today);
       setMessages((m) => [
         ...m,
-        { role: "assistant", text: res.answer, grounded_on: res.grounded_on },
+        {
+          role: "assistant",
+          text: res.answer,
+          grounded_on: res.grounded_on,
+          model: res.model,
+        },
       ]);
     } catch (err) {
       if (err instanceof ApiError && err.status === 503) {
@@ -99,6 +131,11 @@ export default function AssistantPage() {
                       {m.role === "user" ? "You" : "Desk"}
                     </div>
                     <p className="whitespace-pre-wrap">{m.text}</p>
+                    {m.role === "assistant" && m.model ? (
+                      <p className="mono mt-2 text-[11px] text-muted">
+                        via {modelLabel(m.model)}
+                      </p>
+                    ) : null}
                     {m.grounded_on && m.grounded_on.length > 0 ? (
                       <p className="mono mt-2 text-[11px] text-muted">
                         grounded on: {m.grounded_on.join(", ")}
@@ -131,6 +168,28 @@ export default function AssistantPage() {
           ) : null}
 
           <form onSubmit={send} className="flex gap-2">
+            {models.length > 0 ? (
+              <label className="flex items-center gap-2 border border-[var(--border-strong)] bg-[var(--surface)] px-3">
+                <span className="label">Model</span>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="mono bg-transparent py-3 text-xs text-foreground outline-none"
+                >
+                  {models.map((m) => (
+                    <option
+                      key={m.key}
+                      value={m.key}
+                      disabled={!m.available}
+                      className="bg-[var(--surface)] text-foreground"
+                    >
+                      {m.label}
+                      {m.available ? "" : " (no key)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
