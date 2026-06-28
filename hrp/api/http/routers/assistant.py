@@ -19,7 +19,7 @@ from hrp.utils.rate_limiter import RateLimiter
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 DAILY_LIMIT = int(os.getenv("HRP_ASSISTANT_DAILY_LIMIT", "30"))
-ASSISTANT_MODEL = os.getenv("HRP_ASSISTANT_MODEL", "claude-sonnet-4-20250514")
+ASSISTANT_MODEL = os.getenv("HRP_ASSISTANT_MODEL", "claude-sonnet-4-6")
 # Token-bucket approximating a per-day quota (refills continuously over 24h).
 RATE_LIMITER = RateLimiter(max_calls=DAILY_LIMIT, period=86400.0)
 
