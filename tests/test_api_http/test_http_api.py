@@ -415,6 +415,7 @@ class TestScreens:
     def test_run_screen_ranks_rows(self, client, monkeypatch):
         def fake_query(self, sql, params=None):
             assert "momentum_20d" in (params or ())  # screen feature is bound
+            assert "FROM prices p" in sql  # continuity guard applied (time-series)
             return pd.DataFrame(
                 [
                     {
@@ -448,6 +449,29 @@ class TestScreens:
             "value": 0.21,
         }
         assert body["rows"][1]["rank"] == 2
+
+    def test_fundamental_screen_has_no_continuity_guard(self, client, monkeypatch):
+        captured = {}
+
+        def fake_query(self, sql, params=None):
+            captured["sql"] = sql
+            return pd.DataFrame(
+                [
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "sector": "Tech",
+                        "value": 15.2,
+                        "as_of": "2026-06-26",
+                    }
+                ]
+            )
+
+        monkeypatch.setattr(StubAPI, "query_readonly", fake_query)
+        r = client.get("/api/screens/value")
+        assert r.status_code == 200
+        # point-in-time fundamental screens must NOT apply the price-continuity guard
+        assert "FROM prices p" not in captured["sql"]
 
     def test_unknown_screen_404(self, client):
         r = client.get("/api/screens/does-not-exist")
