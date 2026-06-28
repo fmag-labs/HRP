@@ -8,7 +8,7 @@
 #   - .env configuration
 #   - Database initialization
 #   - Config file fixes (launchd plists, .mcp.json)
-#   - Optional: dashboard auth, data bootstrap, launchd jobs
+#   - Optional: API access notes, data bootstrap, launchd jobs
 #
 # Usage:
 #   ./scripts/setup.sh              # Interactive setup
@@ -275,7 +275,7 @@ phase_python_env() {
     # Verify critical imports
     log_info "Verifying critical imports..."
     local import_failures=0
-    for pkg in duckdb pandas numpy vectorbt mlflow lightgbm xgboost streamlit empyrical scikit-learn; do
+    for pkg in duckdb pandas numpy vectorbt mlflow lightgbm xgboost fastapi empyrical scikit-learn; do
         # Map package names to Python import names
         local import_name="$pkg"
         case "$pkg" in
@@ -713,44 +713,13 @@ with open('$mcp_file', 'w') as f:
 # Phase 7: Dashboard Authentication
 ###############################################################################
 
-phase_dashboard_auth() {
-    log_phase "7" "Dashboard Authentication"
+phase_api_access() {
+    log_phase "7" "API Access"
 
-    if ! ask_yes_no "Create a dashboard user now?" "y"; then
-        log_info "Skipped — create later with: python -m hrp.dashboard.auth_cli add-user"
-        return 0
-    fi
-
-    local venv_python="$PROJECT_ROOT/.venv/bin/python"
-
-    # Load .env for auth config
-    if [[ -f "$PROJECT_ROOT/.env" ]]; then
-        set -a
-        # shellcheck disable=SC1091
-        source "$PROJECT_ROOT/.env"
-        set +a
-    fi
-
-    local username
-    username=$(ask_input "Username" "admin")
-    local email
-    email=$(ask_input "Email" "")
-    local display_name
-    display_name=$(ask_input "Display name" "$username")
-
-    echo -en "${BOLD}Password: ${NC}" > /dev/tty
-    read -rs password < /dev/tty
-    echo "" > /dev/tty
-
-    if "$venv_python" -m hrp.dashboard.auth_cli add-user \
-        --username "$username" \
-        --email "$email" \
-        --name "$display_name" \
-        --password "$password" 2>/dev/null; then
-        log_success "Dashboard user '$username' created"
-    else
-        log_warning "Failed to create user. Create later with: python -m hrp.dashboard.auth_cli add-user"
-    fi
+    log_info "The consumer app runs local-first — no login is required by default."
+    log_info "To require a bearer token (e.g. for non-localhost access), set"
+    log_info "HRP_API_TOKEN in .env; the web app reads NEXT_PUBLIC_API_TOKEN."
+    return 0
 }
 
 ###############################################################################
@@ -905,7 +874,7 @@ phase_verification() {
     fi
 
     # 2. Critical imports
-    for pkg in duckdb vectorbt mlflow lightgbm xgboost streamlit empyrical; do
+    for pkg in duckdb vectorbt mlflow lightgbm xgboost fastapi empyrical; do
         if "$venv_python" -c "import $pkg" 2>/dev/null; then
             check_result "import $pkg" "pass"
         else
@@ -1030,7 +999,7 @@ print(d.get('mcpServers',{}).get('hrp-research',{}).get('env',{}).get('PYTHONPAT
     echo "  1. Activate venv:       source .venv/bin/activate"
     echo "  2. Run tests:           pytest tests/ -v"
     echo "  3. Start services:      ./scripts/startup.sh start"
-    echo "  4. Open dashboard:      http://localhost:8501"
+    echo "  4. Open the app:        ./scripts/open_hrp.sh   (web app + API)"
     echo "  5. Load data:           python -m hrp.agents.run_job --job prices"
     echo ""
 }
@@ -1094,7 +1063,7 @@ main() {
     phase_env_config
     phase_database
     phase_fix_configs
-    phase_dashboard_auth
+    phase_api_access
     phase_data_bootstrap
     phase_launchd
     phase_verification

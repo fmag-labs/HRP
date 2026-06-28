@@ -318,7 +318,7 @@ Examples:
     # start command
     start_parser = subparsers.add_parser(
         "start",
-        help="Start HRP services (dashboard, MLflow, scheduler)",
+        help="Start HRP services (API, MLflow, scheduler)",
     )
     start_scope = start_parser.add_mutually_exclusive_group()
     start_scope.add_argument(
@@ -327,9 +327,9 @@ Examples:
         help="Start with all research agents enabled",
     )
     start_scope.add_argument(
-        "--dashboard-only",
+        "--api-only",
         action="store_true",
-        help="Start only the dashboard",
+        help="Start only the API server",
     )
     start_scope.add_argument(
         "--mlflow-only",
@@ -437,8 +437,8 @@ Examples:
         scope_args = []
         if args.full:
             scope_args.append("--full")
-        elif args.dashboard_only:
-            scope_args.append("--dashboard-only")
+        elif args.api_only:
+            scope_args.append("--api-only")
         elif args.mlflow_only:
             scope_args.append("--mlflow-only")
         sys.exit(_run_project_script("scripts/startup.sh", ["start", *scope_args]))

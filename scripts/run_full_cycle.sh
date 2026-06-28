@@ -53,4 +53,4 @@ run cio-review
 run recommendations
 run daily-report
 
-printf '\033[0;32m[cycle]\033[0m Full cycle complete. Watch handoffs in the dashboard (Pipeline Progress / Agents Monitor).\n'
+printf '\033[0;32m[cycle]\033[0m Full cycle complete. Review recommendations in the app (./scripts/open_hrp.sh).\n'
