@@ -191,11 +191,30 @@ class Status(BaseModel):
     position_count: int = 0
 
 
+class ModelInfo(BaseModel):
+    key: str
+    label: str
+    model: str
+    available: bool
+
+
 class AssistantQuery(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+    model: str | None = None  # registry key (claude|gpt|glm); None = default
 
 
 class AssistantAnswer(BaseModel):
     answer: str
     remaining_today: int
     grounded_on: list[str] = Field(default_factory=list)
+    model: str | None = None
+
+
+class ConsultQuery(BaseModel):
+    question: str = Field(min_length=1, max_length=8000)
+    model: str | None = None
+
+
+class ConsultAnswer(BaseModel):
+    answer: str
+    model: str
