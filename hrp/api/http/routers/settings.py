@@ -12,9 +12,7 @@ from hrp.api.http.schemas import Settings, SettingsUpdate
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
-_SELECT_ACTIVE = (
-    "SELECT * FROM user_profiles WHERE active = TRUE " "ORDER BY created_at DESC LIMIT 1"
-)
+_SELECT_ACTIVE = "SELECT * FROM user_profiles WHERE active = TRUE ORDER BY created_at DESC LIMIT 1"
 
 
 def _csv_to_list(value: Any) -> list[str]:

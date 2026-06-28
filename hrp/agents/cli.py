@@ -43,8 +43,8 @@ def _print_data_health() -> None:
         print(f"  Symbols loaded:  {symbols}")
         print(f"  Last price date: {last} ({days} days ago) [{state}]")
         try:
-            recs = len(api.get_recommendations(limit=1000))
-            positions = len(api.get_live_positions())
+            recs = api.fetchone_readonly("SELECT COUNT(*) FROM recommendations")[0]
+            positions = api.fetchone_readonly("SELECT COUNT(*) FROM live_positions")[0]
             print(f"  Recommendations: {recs}")
             print(f"  Open positions:  {positions}")
         except Exception:

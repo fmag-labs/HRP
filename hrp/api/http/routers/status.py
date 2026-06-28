@@ -5,22 +5,28 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from hrp.api.http.deps import df_to_records, get_api
+from hrp.api.http.deps import get_api
 from hrp.api.http.schemas import DataFreshness, Status
 
 router = APIRouter(prefix="/status", tags=["status"])
+
+
+def _count(api, sql: str) -> int:
+    """Return the integer scalar from a COUNT-style query (0 if empty)."""
+    df = api.query_readonly(sql, [])
+    return 0 if df is None or df.empty else int(df.iloc[0, 0] or 0)
 
 
 @router.get("", response_model=Status)
 def get_status(api=Depends(get_api)) -> Status:
     summary = api.get_data_health_summary()
     freshness = summary.get("data_freshness", {})
-    symbol_count = int(summary.get("symbol_count", 0) or 0)
+    symbol_count = int(summary.get("symbol_count") or 0)
     is_fresh = bool(freshness.get("is_fresh", False))
     days_stale = freshness.get("days_stale")
 
-    rec_count = len(df_to_records(api.get_recommendations(limit=1000)))
-    pos_count = len(df_to_records(api.get_live_positions()))
+    rec_count = _count(api, "SELECT COUNT(*) FROM recommendations")
+    pos_count = _count(api, "SELECT COUNT(*) FROM live_positions")
 
     has_data = symbol_count > 0 and freshness.get("last_date") is not None
     ok = has_data and is_fresh
