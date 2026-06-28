@@ -27,6 +27,36 @@ def _run_project_script(rel_path: str, script_args: list[str] | None = None) -> 
     return subprocess.run(cmd, cwd=str(PROJECT_ROOT)).returncode
 
 
+def _print_data_health() -> None:
+    """Print a best-effort data-freshness + advisory summary for `hrp doctor`."""
+    print("\n=== Data Health ===")
+    try:
+        from hrp.api.platform import PlatformAPI
+
+        api = PlatformAPI(read_only=True)
+        summary = api.get_data_health_summary()
+        freshness = summary.get("data_freshness", {})
+        symbols = summary.get("symbol_count", 0)
+        last = freshness.get("last_date")
+        days = freshness.get("days_stale")
+        state = "OK" if freshness.get("is_fresh") else "STALE"
+        print(f"  Symbols loaded:  {symbols}")
+        print(f"  Last price date: {last} ({days} days ago) [{state}]")
+        try:
+            recs = len(api.get_recommendations(limit=1000))
+            positions = len(api.get_live_positions())
+            print(f"  Recommendations: {recs}")
+            print(f"  Open positions:  {positions}")
+        except Exception:
+            pass
+        if symbols == 0:
+            print("  -> No data loaded. Bootstrap: " "python -m hrp.agents.run_job --job prices")
+        elif not freshness.get("is_fresh"):
+            print("  -> Data is stale. Refresh: hrp start --full (or the daily job)")
+    except Exception as exc:
+        print(f"  (could not read data health: {exc})")
+
+
 # NOTE: heavy modules (jobs, scheduler, PlatformAPI, ingestion) are imported
 # lazily inside the handlers that need them, so lightweight service commands
 # (start/stop/status/doctor) and --help stay fast and quiet.
@@ -453,7 +483,9 @@ Examples:
         sys.exit(_run_project_script("scripts/startup.sh", ["status"]))
 
     elif args.command == "doctor":
-        sys.exit(_run_project_script("scripts/setup.sh", ["--check"]))
+        code = _run_project_script("scripts/setup.sh", ["--check"])
+        _print_data_health()
+        sys.exit(code)
 
     else:
         parser.print_help()

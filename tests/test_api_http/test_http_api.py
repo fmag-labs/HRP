@@ -127,6 +127,16 @@ class StubAPI:
             ]
         )
 
+    def get_data_health_summary(self):
+        return {
+            "symbol_count": 20,
+            "data_freshness": {
+                "last_date": "2026-06-27",
+                "days_stale": 1,
+                "is_fresh": True,
+            },
+        }
+
     # --- generic DB access used by settings endpoints ---
     def query_readonly(self, sql, params=None):
         return pd.DataFrame()  # default: no active profile
@@ -347,6 +357,52 @@ class TestAssistant:
         assert "request_id" not in r.text
         assert "credit balance" not in r.text
         assert "temporarily unavailable" in r.json()["detail"]
+
+
+class TestStatus:
+    def test_status_ok(self, client):
+        r = client.get("/api/status")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        assert body["data"]["is_fresh"] is True
+        assert body["symbol_count"] == 20
+        assert "up to date" in body["message"].lower()
+
+    def test_status_stale(self, client, monkeypatch):
+        from hrp.api.http.routers import status as status_mod  # noqa: F401
+
+        def stale_summary(self):
+            return {
+                "symbol_count": 20,
+                "data_freshness": {
+                    "last_date": "2026-06-20",
+                    "days_stale": 6,
+                    "is_fresh": False,
+                },
+            }
+
+        monkeypatch.setattr(StubAPI, "get_data_health_summary", stale_summary)
+        r = client.get("/api/status")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is False
+        assert "stale" in body["message"].lower()
+        assert body["data"]["days_stale"] == 6
+
+    def test_status_no_data(self, client, monkeypatch):
+        def empty_summary(self):
+            return {
+                "symbol_count": 0,
+                "data_freshness": {"last_date": None, "days_stale": None, "is_fresh": False},
+            }
+
+        monkeypatch.setattr(StubAPI, "get_data_health_summary", empty_summary)
+        r = client.get("/api/status")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is False
+        assert "no market data" in body["message"].lower()
 
 
 class TestCors:

@@ -3,6 +3,7 @@ import { Playfair_Display, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Clock } from "@/components/Clock";
 import { Nav } from "@/components/Nav";
+import { StatusBanner } from "@/components/StatusBanner";
 
 const serif = Playfair_Display({
   subsets: ["latin"],
@@ -41,6 +42,8 @@ export default function RootLayout({
             </div>
             <Clock />
           </header>
+
+          <StatusBanner />
 
           <div className="flex flex-1">
             {/* Left nav */}
