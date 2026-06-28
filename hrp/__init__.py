@@ -4,9 +4,9 @@ HRP - Hedgefund Research Platform
 Personal quantitative research platform for systematic trading strategy development.
 """
 
-# Prefer the literal pyproject version (CalVer YYYY.MMDD.MICRO) so the displayed
-# version keeps its leading zero (e.g. 2026.0628.0); installed metadata is PEP 440
-# -normalized (2026.628.0). Fall back to metadata for packaged installs without
+# Read the version from pyproject (CalVer YYYY.MMDD.MICRO, e.g. 2026.628.0) so
+# __version__ always matches the source in editable/dev installs without a
+# reinstall. Fall back to installed metadata for packaged installs without
 # pyproject on disk.
 try:
     import tomllib

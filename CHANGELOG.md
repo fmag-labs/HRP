@@ -1,10 +1,13 @@
 # Changelog
 
-Versioning: CalVer `YYYY.MMDD.MICRO` (e.g. `2026.0628.0`).
+Versioning: CalVer `YYYY.MMDD.MICRO`, where `MMDD` is the month and day with the
+leading zero dropped (PEP 440 form) and `MICRO` increments for multiple releases
+on the same day — e.g. `2026.628.0` for 2026-06-28, `2026.105.0` for Jan 5. The
+version is auto-bumped by `scripts/bump_version.py`; it is never hand-set.
 
 ## [Unreleased]
 
-## [2026.0628.0] - 2026-06-28
+## [2026.628.0] - 2026-06-28
 
 ### Added
 - **Consumer platform rework** — retired the Streamlit dashboard in favor of a
