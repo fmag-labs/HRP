@@ -76,6 +76,15 @@ export interface Position {
   unrealized_pnl_pct: number;
 }
 
+export interface Status {
+  ok: boolean;
+  message: string;
+  data: { last_date: string | null; days_stale: number | null; is_fresh: boolean };
+  symbol_count: number;
+  recommendation_count: number;
+  position_count: number;
+}
+
 export interface Portfolio {
   total_value: number;
   position_count: number;
@@ -248,6 +257,10 @@ export const api = {
 
   getPortfolio(): Promise<Portfolio> {
     return request<Portfolio>(`/api/portfolio`);
+  },
+
+  getStatus(): Promise<Status> {
+    return request<Status>(`/api/status`);
   },
 
   getTrackRecord(params: { start?: string; end?: string } = {}): Promise<

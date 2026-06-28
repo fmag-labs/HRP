@@ -13,6 +13,7 @@ from hrp.api.http.routers import (
     portfolio,
     recommendations,
     settings,
+    status,
     track_record,
 )
 
@@ -46,7 +47,14 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     protected = [Depends(require_token)]
-    for module in (recommendations, portfolio, track_record, settings, assistant):
+    for module in (
+        recommendations,
+        portfolio,
+        track_record,
+        settings,
+        assistant,
+        status,
+    ):
         app.include_router(module.router, prefix=API_PREFIX, dependencies=protected)
 
     return app

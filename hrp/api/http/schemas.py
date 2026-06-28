@@ -148,6 +148,23 @@ class SettingsUpdate(BaseModel):
     preferred_horizon: str | None = None
 
 
+class DataFreshness(BaseModel):
+    last_date: str | None = None
+    days_stale: int | None = None
+    is_fresh: bool = False
+
+
+class Status(BaseModel):
+    """Lightweight app status so the UI can warn instead of showing empty charts."""
+
+    ok: bool
+    message: str
+    data: DataFreshness
+    symbol_count: int = 0
+    recommendation_count: int = 0
+    position_count: int = 0
+
+
 class AssistantQuery(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
 
