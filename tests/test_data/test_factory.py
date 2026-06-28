@@ -3,6 +3,7 @@
 import pytest
 
 from hrp.data.sources.factory import DataSourceFactory
+from hrp.utils.config import reset_config
 
 
 class TestDataSourceFactory:
@@ -11,6 +12,7 @@ class TestDataSourceFactory:
     def test_create_polygon_source_with_fallback(self, monkeypatch):
         """Test creating Polygon source with YFinance fallback."""
         monkeypatch.setenv("POLYGON_API_KEY", "test_key")
+        reset_config()  # rebuild cached config from the patched env
         primary, fallback = DataSourceFactory.create("polygon", with_fallback=True)
 
         assert primary is not None
@@ -29,6 +31,7 @@ class TestDataSourceFactory:
     def test_create_polygon_without_fallback(self, monkeypatch):
         """Test creating Polygon source without explicit fallback."""
         monkeypatch.setenv("POLYGON_API_KEY", "test_key")
+        reset_config()  # rebuild cached config from the patched env
         primary, fallback = DataSourceFactory.create("polygon", with_fallback=False)
 
         assert primary is not None
@@ -49,6 +52,7 @@ class TestDataSourceFactory:
 
         # Monkey-patch PolygonSource.__init__ to raise ValueError
         import hrp.data.sources.polygon_source as ps
+
         monkeypatch.setattr(ps.PolygonSource, "__init__", mock_polygon_init_error)
 
         primary, fallback = DataSourceFactory.create("polygon", with_fallback=True)
