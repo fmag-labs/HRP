@@ -7,8 +7,9 @@ const ITEMS: { href: string; label: string; code: string }[] = [
   { href: "/", label: "Conviction List", code: "01" },
   { href: "/portfolio", label: "My Portfolio", code: "02" },
   { href: "/track-record", label: "Track Record", code: "03" },
-  { href: "/assistant", label: "Vault Assistant", code: "04" },
-  { href: "/settings", label: "Settings", code: "05" },
+  { href: "/research", label: "Research", code: "04" },
+  { href: "/assistant", label: "Vault Assistant", code: "05" },
+  { href: "/settings", label: "Settings", code: "06" },
 ];
 
 function isActive(pathname: string, href: string): boolean {

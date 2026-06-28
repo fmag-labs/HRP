@@ -140,6 +140,32 @@ export interface SettingsUpdate {
   preferred_horizon?: Horizon;
 }
 
+// ---- Research screens ----
+
+export interface ScreenInfo {
+  key: string;
+  title: string;
+  subtitle: string;
+  value_label: string;
+}
+
+export interface ScreenRow {
+  rank: number;
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  value: number | null;
+}
+
+export interface ScreenResult {
+  screen: string;
+  title: string;
+  subtitle: string;
+  value_label: string;
+  as_of: string | null;
+  rows: ScreenRow[];
+}
+
 // ---- Error type ----
 
 export class ApiError extends Error {
@@ -282,5 +308,15 @@ export const api = {
 
   updateSettings(body: SettingsUpdate): Promise<Settings> {
     return request<Settings>(`/api/settings`, { method: "PUT", body });
+  },
+
+  getScreens(): Promise<ScreenInfo[]> {
+    return request<ScreenInfo[]>(`/api/screens`);
+  },
+
+  getScreen(key: string, limit?: number): Promise<ScreenResult> {
+    return request<ScreenResult>(
+      `/api/screens/${encodeURIComponent(key)}${qs({ limit })}`
+    );
   },
 };
