@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from hrp.api.http.auth import require_token
 from hrp.api.http.routers import (
@@ -22,6 +25,20 @@ def create_app() -> FastAPI:
         title="HRP API",
         description="Advisory HTTP/JSON API for the HRP consumer front-end",
         version="1.0.0",
+    )
+
+    # CORS for the SPA front-end (different origin/port). Configurable via
+    # HRP_API_CORS_ORIGINS (comma-separated); defaults to the Next.js dev server.
+    origins = [
+        o.strip()
+        for o in os.getenv("HRP_API_CORS_ORIGINS", "http://localhost:3000").split(",")
+        if o.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.get(f"{API_PREFIX}/health", tags=["health"])

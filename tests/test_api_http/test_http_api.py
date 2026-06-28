@@ -331,6 +331,13 @@ class TestAssistant:
         assert second.status_code == 429
 
 
+class TestCors:
+    def test_cors_header_for_configured_origin(self, client):
+        # SPA on a different origin must receive an allow-origin header.
+        r = client.get("/api/health", headers={"Origin": "http://localhost:3000"})
+        assert r.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
 class TestAuth:
     def test_no_token_required_when_unset(self, client, monkeypatch):
         monkeypatch.delenv("HRP_API_TOKEN", raising=False)
