@@ -148,6 +148,32 @@ class SettingsUpdate(BaseModel):
     preferred_horizon: str | None = None
 
 
+class ScreenInfo(BaseModel):
+    key: str
+    title: str
+    subtitle: str
+    value_label: str
+
+
+class ScreenRow(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    rank: int
+    symbol: str
+    name: str | None = None
+    sector: str | None = None
+    value: float | None = None
+
+
+class ScreenResult(BaseModel):
+    screen: str
+    title: str
+    subtitle: str
+    value_label: str
+    as_of: str | None = None
+    rows: list[ScreenRow]
+
+
 class DataFreshness(BaseModel):
     last_date: str | None = None
     days_stale: int | None = None

@@ -12,6 +12,7 @@ from hrp.api.http.routers import (
     assistant,
     portfolio,
     recommendations,
+    screens,
     settings,
     status,
     track_record,
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
         settings,
         assistant,
         status,
+        screens,
     ):
         app.include_router(module.router, prefix=API_PREFIX, dependencies=protected)
 
