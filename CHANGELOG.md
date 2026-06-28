@@ -1,6 +1,34 @@
+# Changelog
+
+Versioning: CalVer `YYYY.MMDD.MICRO` (e.g. `2026.0628.0`).
+
 ## [Unreleased]
 
+## [2026.0628.0] - 2026-06-28
+
 ### Added
+- **Consumer platform rework** — retired the Streamlit dashboard in favor of a
+  Next.js consumer app over a new HTTP/JSON API (`hrp/api/http`, `python -m
+  hrp.api.http`): conviction list, recommendation dossier, portfolio, track
+  record, Vault Assistant, settings, plus 8 research screens (momentum, value,
+  oversold, strong-trend, above-trend, low-volatility, unusual-volume,
+  dividends) with a price-data continuity guard.
+- **Data-freshness status + staleness banner** (`GET /api/status`) so views are
+  never silently empty; richer `hrp doctor`.
+- **Multi-provider LLM layer** (`hrp/llm`) — consult Claude, GPT, or Z.ai GLM via
+  the Vault Assistant model selector, `POST /api/consult`, or `hrp consult`.
+- **Unified `hrp` service CLI**: `start` / `stop` / `restart` / `status` /
+  `doctor` / `consult`.
+
+### Changed
+- Version scheme adopted: CalVer `YYYY.MMDD.MICRO`.
+- FastAPI apps report `hrp.__version__`; `hrp.agents` exports lazily (faster CLI).
+
+### Removed
+- Streamlit dashboard (`hrp/dashboard/`) and the `streamlit` / `plotly` /
+  `streamlit-authenticator` dependencies.
+
+### Added (prior, unreleased)
 - **Real-Time Data Ingestion** (TASK-007): WebSocket-based intraday data pipeline:
   - `PolygonWebSocketClient`: Auto-reconnecting WebSocket with heartbeat monitoring
   - `IntradayBarBuffer`: Thread-safe 10K-bar buffer with batch writes

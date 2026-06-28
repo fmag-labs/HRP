@@ -4,20 +4,22 @@ HRP - Hedgefund Research Platform
 Personal quantitative research platform for systematic trading strategy development.
 """
 
+# Prefer the literal pyproject version (CalVer YYYY.MMDD.MICRO) so the displayed
+# version keeps its leading zero (e.g. 2026.0628.0); installed metadata is PEP 440
+# -normalized (2026.628.0). Fall back to metadata for packaged installs without
+# pyproject on disk.
 try:
-    from importlib.metadata import version
+    import tomllib
+    from pathlib import Path
 
-    __version__ = version("hrp")
+    pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+    with open(pyproject_path, "rb") as f:
+        __version__ = tomllib.load(f)["project"]["version"]
 except Exception:
-    # Fallback: read version from pyproject.toml
     try:
-        import tomllib
-        from pathlib import Path
+        from importlib.metadata import version
 
-        pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
-        with open(pyproject_path, "rb") as f:
-            data = tomllib.load(f)
-        __version__ = data["project"]["version"]
+        __version__ = version("hrp")
     except Exception:
         __version__ = "0.0.0"  # Final fallback
 
