@@ -7,6 +7,7 @@ import os
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from hrp import __version__
 from hrp.api.http.auth import require_token
 from hrp.api.http.routers import (
     assistant,
@@ -27,7 +28,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="HRP API",
         description="Advisory HTTP/JSON API for the HRP consumer front-end",
-        version="1.0.0",
+        version=__version__,
     )
 
     # CORS for the SPA front-end (different origin/port). Configurable via

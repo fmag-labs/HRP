@@ -15,6 +15,8 @@ from prometheus_client import (
     generate_latest,
 )
 
+from hrp import __version__
+
 # Define custom metrics
 REQUEST_COUNT = Counter(
     "hrp_http_requests_total",
@@ -68,7 +70,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="HRP Ops",
         description="Health and metrics endpoints for HRP",
-        version="1.0.0",
+        version=__version__,
     )
 
     @app.get("/health")
