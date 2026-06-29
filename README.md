@@ -255,6 +255,7 @@ print(f"Model is stable: {result.is_stable}")
 
 ## Documentation
 
+- [Running the Platform](docs/operations/running-the-platform.md) - Start-to-finish runbook: install → run → verify → configure
 - [Project Status](docs/plans/Project-Status.md) - Development roadmap and tier status
 - [Cookbook](docs/operations/cookbook.md) - Practical guide with examples
 - [Decision Pipeline](docs/agents/decision-pipeline.md) - Agent architecture and signal-to-deployment flow

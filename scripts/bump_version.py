@@ -24,9 +24,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 CHANGELOG = ROOT / "CHANGELOG.md"
+WEB_PACKAGE = ROOT / "web" / "package.json"
 
 # Match the version on the first `version = "..."` line of [project].
 _VERSION_RE = re.compile(r'^version = "([^"]+)"', re.MULTILINE)
+# Match the "version": "..." field in package.json.
+_PKG_VERSION_RE = re.compile(r'("version":\s*")[^"]+(")')
 
 
 def current_version() -> str:
@@ -66,9 +69,20 @@ def _stamp_changelog(version: str) -> None:
         CHANGELOG.write_text(text)
 
 
+def _bump_web(version: str) -> None:
+    """Keep the Next.js app (web/package.json) version in sync."""
+    if not WEB_PACKAGE.exists():
+        return
+    text = WEB_PACKAGE.read_text()
+    new_text, count = _PKG_VERSION_RE.subn(rf"\g<1>{version}\g<2>", text, count=1)
+    if count:
+        WEB_PACKAGE.write_text(new_text)
+
+
 def bump() -> str:
     new = next_version()
     PYPROJECT.write_text(_VERSION_RE.sub(f'version = "{new}"', PYPROJECT.read_text(), count=1))
+    _bump_web(new)
     _stamp_changelog(new)
     return new
 
