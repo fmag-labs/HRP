@@ -7,6 +7,8 @@ version is auto-bumped by `scripts/bump_version.py`; it is never hand-set.
 
 ## [Unreleased]
 
+## [2026.629.0] - 2026-06-29
+
 ## [2026.628.0] - 2026-06-28
 
 ### Added
