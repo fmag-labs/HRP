@@ -94,6 +94,20 @@ To backfill a specific date range, see [Data Backfill](data-backfill.md).
 Schedule these automatically via `hrp start --full` or the launchd jobs
 (`./scripts/manage_launchd.sh install`).
 
+**Data source.** Prices default to **yfinance** (free, no key — good for the full
+historical backfill). For broker-grade daily data from **Interactive Brokers**
+(needs IB Gateway/TWS running + the trading extra), select it per run:
+
+```bash
+pip install -e ".[trading]"                                  # ib-insync
+python -m hrp.agents.run_job --job prices --price-source ibkr
+```
+
+IBKR paces historical requests, so it's best for ongoing/daily updates rather
+than a multi-year first backfill (use yfinance for that). Falls back to yfinance
+if the Gateway isn't reachable. **Robinhood is execution-only** — not a price
+source.
+
 ## 5. Configure API keys (`.env`)
 
 Most of the platform runs without keys, but some features need them. Edit `.env`

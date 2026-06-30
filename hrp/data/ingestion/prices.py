@@ -5,7 +5,7 @@ Fetches and stores daily price data from configured sources.
 """
 
 import argparse
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -13,6 +13,7 @@ from loguru import logger
 
 from hrp.data.constants import TEST_SYMBOLS
 from hrp.data.db import get_db
+from hrp.data.sources.base import DataSourceBase
 from hrp.data.sources.polygon_source import PolygonSource
 from hrp.data.sources.yfinance_source import YFinanceSource
 
@@ -45,8 +46,8 @@ def ingest_prices(
     db = get_db()
 
     # Initialize primary data source with fallback
-    primary_source: PolygonSource | YFinanceSource | None = None
-    fallback_source: PolygonSource | YFinanceSource | None = None
+    primary_source: DataSourceBase | None = None
+    fallback_source: DataSourceBase | None = None
 
     if source == "polygon":
         try:
@@ -62,8 +63,19 @@ def ingest_prices(
         primary_source = YFinanceSource()
         fallback_source = None
         logger.info("Using YFinance as primary source")
+    elif source == "ibkr":
+        try:
+            from hrp.data.sources.ibkr_source import IBKRDataSource
+
+            primary_source = IBKRDataSource()
+            fallback_source = YFinanceSource()
+            logger.info("Using IBKR as primary source with YFinance fallback")
+        except Exception as e:
+            logger.warning(f"IBKR unavailable ({e}), falling back to YFinance")
+            primary_source = YFinanceSource()
+            fallback_source = None
     else:
-        raise ValueError(f"Unknown source: {source}. Use 'polygon' or 'yfinance'")
+        raise ValueError(f"Unknown source: {source}. Use 'polygon', 'yfinance', or 'ibkr'")
 
     stats: dict[str, Any] = {
         "symbols_requested": len(symbols),
@@ -80,7 +92,9 @@ def ingest_prices(
         used_fallback = False
 
         try:
-            logger.info(f"Fetching {symbol} from {start} to {end} using {primary_source.source_name}")
+            logger.info(
+                f"Fetching {symbol} from {start} to {end} using {primary_source.source_name}"
+            )
 
             # Try primary source
             df = primary_source.get_daily_bars(symbol, start, end)
@@ -121,7 +135,9 @@ def ingest_prices(
             stats["rows_inserted"] += rows_inserted
             stats["symbols_success"] += 1
 
-            source_used = fallback_source.source_name if used_fallback else primary_source.source_name
+            source_used = (
+                fallback_source.source_name if used_fallback else primary_source.source_name
+            )
             logger.info(f"Inserted {rows_inserted} rows for {symbol} from {source_used}")
 
         except Exception as e:
@@ -149,7 +165,7 @@ def _upsert_prices(db, df: pd.DataFrame) -> int:
         return 0
 
     # Prepare data for insertion
-    records = df.to_dict('records')
+    records = df.to_dict("records")
 
     with db.connection() as conn:
         # Create temporary table for bulk insert
@@ -158,20 +174,23 @@ def _upsert_prices(db, df: pd.DataFrame) -> int:
 
         # Insert into temp table
         for record in records:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO temp_prices (symbol, date, open, high, low, close, adj_close, volume, source)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                record['symbol'],
-                record['date'],
-                record.get('open'),
-                record.get('high'),
-                record.get('low'),
-                record['close'],
-                record.get('adj_close'),
-                record.get('volume'),
-                record.get('source', 'unknown'),
-            ))
+            """,
+                (
+                    record["symbol"],
+                    record["date"],
+                    record.get("open"),
+                    record.get("high"),
+                    record.get("low"),
+                    record["close"],
+                    record.get("adj_close"),
+                    record.get("volume"),
+                    record.get("source", "unknown"),
+                ),
+            )
 
         # Upsert from temp to main table
         conn.execute("""
@@ -198,9 +217,7 @@ def get_price_stats() -> dict[str, Any]:
         symbols = conn.execute("SELECT COUNT(DISTINCT symbol) FROM prices").fetchone()[0]
 
         # Date range
-        date_range = conn.execute(
-            "SELECT MIN(date), MAX(date) FROM prices"
-        ).fetchone()
+        date_range = conn.execute("SELECT MIN(date), MAX(date) FROM prices").fetchone()
 
         # Rows per symbol
         per_symbol = conn.execute("""
@@ -218,8 +235,7 @@ def get_price_stats() -> dict[str, Any]:
             "end": date_range[1],
         },
         "per_symbol": [
-            {"symbol": r[0], "rows": r[1], "start": r[2], "end": r[3]}
-            for r in per_symbol
+            {"symbol": r[0], "rows": r[1], "start": r[2], "end": r[3]} for r in per_symbol
         ],
     }
 
@@ -263,12 +279,12 @@ def main():
 
     if args.stats:
         stats = get_price_stats()
-        print(f"\nPrice Data Statistics:")
+        print("\nPrice Data Statistics:")
         print(f"  Total rows: {stats['total_rows']:,}")
         print(f"  Unique symbols: {stats['unique_symbols']}")
         print(f"  Date range: {stats['date_range']['start']} to {stats['date_range']['end']}")
-        print(f"\nPer Symbol:")
-        for s in stats['per_symbol']:
+        print("\nPer Symbol:")
+        for s in stats["per_symbol"]:
             print(f"  {s['symbol']:6} {s['rows']:6,} rows  ({s['start']} to {s['end']})")
         return
 
@@ -282,10 +298,10 @@ def main():
         source=args.source,
     )
 
-    print(f"\nIngestion Complete:")
+    print("\nIngestion Complete:")
     print(f"  Symbols: {stats['symbols_success']}/{stats['symbols_requested']} success")
     print(f"  Rows: {stats['rows_fetched']} fetched, {stats['rows_inserted']} inserted")
-    if stats['failed_symbols']:
+    if stats["failed_symbols"]:
         print(f"  Failed: {', '.join(stats['failed_symbols'])}")
 
 

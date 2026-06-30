@@ -28,7 +28,6 @@ from datetime import date
 
 from loguru import logger
 
-
 # Configure logging to file + stderr
 LOG_DIR = "~/hrp-data/logs"
 
@@ -51,15 +50,15 @@ def _setup_logging(job_name: str) -> None:
     )
 
 
-def run_prices(dry_run: bool = False) -> dict:
-    """Run daily price ingestion."""
+def run_prices(dry_run: bool = False, source: str = "yfinance") -> dict:
+    """Run daily price ingestion. source: yfinance | polygon | ibkr."""
     from hrp.agents.jobs import PriceIngestionJob
 
     if dry_run:
-        logger.info("[DRY RUN] Would run price ingestion")
+        logger.info(f"[DRY RUN] Would run price ingestion (source={source})")
         return {"status": "dry_run", "job": "prices"}
 
-    job = PriceIngestionJob(symbols=None)
+    job = PriceIngestionJob(symbols=None, source=source)
     return job.run()
 
 
@@ -136,9 +135,7 @@ def run_fundamentals_backfill(dry_run: bool = False, days: int = 365) -> dict:
     return job.run()
 
 
-def run_signal_scan(
-    dry_run: bool = False, ic_threshold: float = 0.03
-) -> dict:
+def run_signal_scan(dry_run: bool = False, ic_threshold: float = 0.03) -> dict:
     """Run weekly signal scan."""
     from hrp.agents.research_agents import SignalScientist
 
@@ -282,6 +279,7 @@ def run_agent_pipeline(dry_run: bool = False) -> dict:
         if passed > 0:
             logger.info(f"Triggering Risk Manager for {passed} passed hypotheses")
             from hrp.agents.risk_manager import RiskManager
+
             risk_mgr = RiskManager(hypothesis_ids=None, send_alerts=True)
             risk_mgr.run()
 
@@ -298,6 +296,7 @@ def run_agent_pipeline(dry_run: bool = False) -> dict:
         if passed > 0:
             logger.info(f"Triggering CIO Agent for {passed} risk-cleared hypotheses")
             from hrp.agents.cio import CIOAgent
+
             agent = CIOAgent(
                 job_id=f"cio-triggered-{date.today().strftime('%Y%m%d')}",
                 actor="agent:cio",
@@ -454,7 +453,7 @@ def run_drift_monitor(dry_run: bool = False, auto_rollback: bool = False) -> dic
         dry_run: If True, skip job entirely
         auto_rollback: If True, automatically rollback drifting models
     """
-    from hrp.agents.drift_monitor_job import DriftMonitorJob, DriftConfig
+    from hrp.agents.drift_monitor_job import DriftConfig, DriftMonitorJob
 
     if dry_run:
         logger.info("[DRY RUN] Would run drift monitor job")
@@ -540,6 +539,13 @@ Available jobs:
         help="Data source for fundamentals job (default: simfin)",
     )
     parser.add_argument(
+        "--price-source",
+        type=str,
+        default="yfinance",
+        choices=["yfinance", "polygon", "ibkr"],
+        help="Data source for the prices job (default: yfinance)",
+    )
+    parser.add_argument(
         "--days",
         type=int,
         default=365,
@@ -568,6 +574,8 @@ Available jobs:
         kwargs: dict = {"dry_run": args.dry_run}
         if args.job == "signal-scan":
             kwargs["ic_threshold"] = args.ic_threshold
+        elif args.job == "prices":
+            kwargs["source"] = args.price_source
         elif args.job == "fundamentals":
             kwargs["source"] = args.fundamentals_source
         elif args.job == "fundamentals-backfill":

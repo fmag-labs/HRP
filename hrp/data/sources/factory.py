@@ -3,6 +3,7 @@
 from loguru import logger
 
 from hrp.data.sources.base import DataSourceBase
+from hrp.data.sources.ibkr_source import IBKRDataSource
 from hrp.data.sources.polygon_source import PolygonSource
 from hrp.data.sources.yfinance_source import YFinanceSource
 
@@ -26,10 +27,13 @@ class DataSourceFactory:
     _sources = {
         "polygon": (PolygonSource, YFinanceSource),
         "yfinance": (YFinanceSource, None),
+        "ibkr": (IBKRDataSource, YFinanceSource),
     }
 
     @staticmethod
-    def create(source: str, with_fallback: bool = True) -> tuple[DataSourceBase, DataSourceBase | None]:
+    def create(
+        source: str, with_fallback: bool = True
+    ) -> tuple[DataSourceBase, DataSourceBase | None]:
         """
         Create data source with optional fallback.
 
@@ -64,10 +68,14 @@ class DataSourceFactory:
             if with_fallback and fallback_cls is not None:
                 try:
                     fallback = fallback_cls()
-                    logger.info(f"Using {primary.source_name} as primary with {fallback.source_name} fallback")
+                    logger.info(
+                        f"Using {primary.source_name} as primary with {fallback.source_name} fallback"
+                    )
                 except ValueError:
                     # Fallback initialization failed - this is unusual but shouldn't prevent primary use
-                    logger.warning(f"{fallback_cls.__name__} initialization failed, using {primary.source_name} only")
+                    logger.warning(
+                        f"{fallback_cls.__name__} initialization failed, using {primary.source_name} only"
+                    )
                     fallback = None
             else:
                 logger.info(f"Using {primary.source_name} as primary source")
@@ -75,7 +83,9 @@ class DataSourceFactory:
         except ValueError as e:
             # Primary source initialization failed
             if with_fallback and fallback_cls is not None:
-                logger.warning(f"{primary_cls.__name__} unavailable ({e}), falling back to {fallback_cls.__name__}")
+                logger.warning(
+                    f"{primary_cls.__name__} unavailable ({e}), falling back to {fallback_cls.__name__}"
+                )
                 primary = fallback_cls()
                 fallback = None
             else:
