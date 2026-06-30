@@ -7,6 +7,16 @@ version is auto-bumped by `scripts/bump_version.py`; it is never hand-set.
 
 ## [Unreleased]
 
+## [2026.629.1] - 2026-06-29
+
+### Added
+- Interactive Brokers historical price source (`ibkr`), selectable via
+  `run_job --price-source ibkr`; yfinance remains the default.
+
+### Changed
+- Replaced synthetic price data with real yfinance history (prices + features
+  re-ingested for the full universe).
+
 ## [2026.629.0] - 2026-06-29
 
 ## [2026.628.0] - 2026-06-28
